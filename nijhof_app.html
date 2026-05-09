@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#E87722">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<title>Nijhof Brothers — BI Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
+/* Login scherm */
+#login-scherm{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#FFF4EC 0%,#f3f4f6 100%);padding:20px}
+.login-kaart{background:var(--wd);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(0,0,0,.1);border-top:4px solid var(--or)}
+.login-kaart h1{font-size:22px;font-weight:900;color:var(--or);margin-bottom:4px;text-align:center}
+.login-kaart .sub{font-size:13px;color:var(--gr);text-align:center;margin-bottom:24px}
+.login-kaart .fg{margin-bottom:14px}
+.login-kaart .fg label{display:block;font-size:12px;font-weight:600;color:var(--gr);margin-bottom:4px}
+.login-kaart .fg input{width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:10px 12px;font-size:14px;outline:none;transition:.15s}
+.login-kaart .fg input:focus{border-color:var(--or);box-shadow:0 0 0 3px rgba(232,119,34,.12)}
+.login-btn{width:100%;padding:11px;border:none;border-radius:8px;background:var(--or);color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:.15s;margin-top:6px}
+.login-btn:hover{background:#d06b1a}
+.login-btn:disabled{opacity:.5;cursor:wait}
+.login-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}
+#app-container{display:none}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--dk);font-size:14px}
+#nav{position:sticky;top:0;z-index:200;background:var(--wd);border-left:4px solid var(--or);box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:54px;gap:8px;flex-wrap:wrap}
+#nav .brand{font-weight:900;font-size:17px;color:var(--or);white-space:nowrap}
+#nav-links{display:flex;gap:2px;flex-wrap:wrap}
+#nav-links a{text-decoration:none;color:var(--dk);font-weight:600;font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap;transition:.15s}
+#nav-links a:hover{background:var(--orl);color:var(--or)}
+#klok{font-size:11px;color:var(--gr);white-space:nowrap}
+main{max-width:1280px;margin:0 auto;padding:16px}
+.sec{background:var(--wd);border-radius:12px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow:hidden}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-left:4px solid var(--or);cursor:pointer;user-select:none}
+.sec-hdr h2{font-size:15px;font-weight:700}
+.sec-hdr .arr{font-size:12px;color:var(--gr);transition:.3s}
+.sec-body{padding:18px}
+.sec.shut .sec-body{display:none}
+.sec.shut .arr{transform:rotate(-90deg)}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg label{font-size:12px;font-weight:600;color:var(--gr)}
+.fg label.r::after{content:" *";color:var(--or)}
+.fg input,.fg select,.fg textarea{border:1.5px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:14px;outline:none;background:var(--wd);color:var(--dk);width:100%;transition:.15s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--or);box-shadow:0 0 0 3px rgba(232,119,34,.12)}
+.fg textarea{resize:vertical;min-height:60px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;transition:.15s;line-height:1;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn-or{background:var(--or);color:#fff}.btn-or:hover{background:#d06b1a}
+.btn-rd{background:var(--rd);color:#fff}.btn-rd:hover{background:#b91c1c}
+.btn-gy{background:#e5e7eb;color:var(--dk)}.btn-gy:hover{background:#d1d5db}
+.btn-gn{background:var(--gn);color:#fff}.btn-gn:hover{background:#15803d}
+.btn-bl{background:var(--bl);color:#fff}.btn-bl:hover{background:#1d4ed8}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-xs{padding:3px 8px;font-size:11px;border-radius:5px}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.kaart{border:1.5px solid var(--bd);border-radius:10px;overflow:hidden;transition:.2s;display:flex;flex-direction:column;background:var(--wd)}
+.kaart:hover{box-shadow:0 4px 14px rgba(0,0,0,.1)}
+.kaart.verkocht{opacity:.55;filter:grayscale(.3)}
+.kaart.afgestort{opacity:.4;filter:grayscale(.6)}
+.kico{height:80px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:36px;flex-shrink:0;position:relative}
+.kico-emoji{opacity:.25}
+.dpill{position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;pointer-events:none}
+.dg{background:#dcfce7;color:#15803d}.do{background:#fff7ed;color:#c2410c}.dr{background:#fee2e2;color:#b91c1c}
+.kbody{padding:11px;flex:1}
+.kname{font-weight:700;font-size:14px;margin-bottom:4px}
+.badges{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px}
+.badge{padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600}
+.b-cat{background:var(--orl);color:var(--or)}.b-ok{background:#dcfce7;color:#15803d}
+.b-res{background:#dbeafe;color:#1d4ed8}.b-vk{background:#f3f4f6;color:#6b7280}
+.b-af{background:#fee2e2;color:#b91c1c}
+.kinfo{font-size:12px;color:var(--gr);line-height:1.7}
+.knote{font-size:11px;color:#9ca3af;margin-top:5px;font-style:italic}
+.kacts{display:flex;gap:5px;padding:9px 11px;border-top:1px solid #f3f4f6;flex-wrap:wrap}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.mc{background:var(--orl);border-radius:10px;padding:14px;border:1px solid #fde8d0}
+.mc.blue{background:#eff6ff;border-color:#bfdbfe}.mc.green{background:#f0fdf4;border-color:#bbf7d0}
+.mc.red{background:#fff1f2;border-color:#fecdd3}.mc.grey{background:#f9fafb;border-color:#e5e7eb}
+.ml{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gr);margin-bottom:3px}
+.mv{font-size:20px;font-weight:800}.mt{font-size:11px;margin-top:3px}
+.tup{color:var(--gn)}.tdn{color:var(--rd)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:8px 10px;font-size:11px;color:var(--gr);border-bottom:2px solid var(--bd);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.tbl td{padding:8px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;vertical-align:middle}
+.tbl tr:last-child td{border:none}.tbl tr:hover td{background:#fafafa}
+.pw{background:#f3f4f6;border-radius:6px;height:16px;overflow:hidden;margin-top:5px}
+.pb{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:6px;font-size:10px;color:#fff;font-weight:700;transition:width .4s;min-width:0}
+.por{background:var(--or)}.prd{background:var(--rd)}.pgn{background:var(--gn)}
+.sw{position:relative;width:34px;height:18px;flex-shrink:0;display:inline-block}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw-s{position:absolute;inset:0;background:#d1d5db;border-radius:20px;cursor:pointer;transition:.25s}
+.sw-s::before{content:'';position:absolute;width:12px;height:12px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.25s}
+.sw input:checked+.sw-s{background:var(--or)}
+.sw input:checked+.sw-s::before{transform:translateX(16px)}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center;padding:16px}
+.modal-bg.open{display:flex}
+.modal{background:var(--wd);border-radius:14px;padding:24px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;position:relative;z-index:2}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:16px;border-left:3px solid var(--or);padding-left:8px}
+.modal-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--gr);line-height:1}
+.term-row{display:grid;grid-template-columns:40px 90px 120px 110px auto;gap:6px;align-items:center;padding:6px 8px;border-radius:7px;margin-bottom:5px;background:#f9fafb;border:1px solid var(--bd);font-size:12px}
+.term-inp{border:1px solid var(--bd);border-radius:5px;padding:4px 6px;font-size:12px;background:var(--wd);color:var(--dk);width:100%;outline:none}
+.alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-start}
+.alert-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+.alert-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8}
+#toast{position:fixed;bottom:20px;right:20px;background:#15803d;color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:13px;z-index:9999;transform:translateY(70px);opacity:0;transition:.35s;pointer-events:none;max-width:300px}
+#toast.on{transform:translateY(0);opacity:1}
+#ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}
+#ov.on{display:flex}
+#pb{background:var(--wd);border-radius:18px;padding:32px 26px;text-align:center;max-width:380px;width:90%;z-index:2;position:relative;animation:pi .4s cubic-bezier(.175,.885,.32,1.275) both}
+@keyframes pi{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+#cv{position:fixed;inset:0;pointer-events:none;z-index:1}
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.chip-gn{background:#dcfce7;color:#15803d}.chip-or{background:#fff7ed;color:#c2410c}
+.chip-rd{background:#fee2e2;color:#b91c1c}.chip-gy{background:#f3f4f6;color:#6b7280}
+.chip-bl{background:#dbeafe;color:#1d4ed8}
+.sb-row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.sb-lbl{width:34px;font-size:11px;color:var(--gr);text-align:right;flex-shrink:0}
+.sb-wrap{flex:1;background:#f3f4f6;border-radius:4px;height:16px;overflow:hidden}
+.sb-bar{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:5px;font-size:9px;color:#fff;font-weight:700;min-width:0;transition:width .4s}
+.sb-or{background:var(--or)}.sb-dk{background:#c2410c}.sb-gy{background:#d1d5db}
+.kpi-warn{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;font-weight:600}
+.kpi-r{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+.kpi-o{background:#fff7ed;border:1px solid #fed7aa;color:#c2410c}
+.db-card{background:var(--wd);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
+.db-card-title{font-size:13px;font-weight:700;margin-bottom:8px;border-left:3px solid var(--or);padding-left:7px}
+@media(max-width:640px){
+  .grid2,.grid3,.fgrid{grid-template-columns:1fr}
+  .mgrid{grid-template-columns:1fr 1fr}
+  .kgrid{grid-template-columns:1fr}
+  .term-row{grid-template-columns:1fr 1fr;gap:4px}
+  .tbl{font-size:12px}.tbl th,.tbl td{padding:6px 7px}
+}
+@media(max-width:400px){.mgrid{grid-template-columns:1fr}}
+@media print{
+  #nav,.kacts,.sec-hdr .arr,.btn,#toast,#ov,.modal-bg{display:none!important}
+  .sec-body,.sec.shut .sec-body{display:block!important}
+  body{background:#fff;font-size:11px}
+  .kaart{break-inside:avoid;border:1px solid #ccc}
+  .sec{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
+  #ph{display:block!important}
+}
+#ph{display:none;text-align:center;margin-bottom:16px;border-bottom:3px solid var(--or);padding-bottom:10px}
+#ph h1{color:var(--or);font-size:20px}
+</style>
+</head>
+<body>
+<!-- LOGIN SCHERM -->
+<div id="login-scherm">
+  <div class="login-kaart">
+    <div style="font-size:40px;text-align:center;margin-bottom:8px">🛋️</div>
+    <h1>Nijhof Brothers</h1>
+    <div class="sub">Log in om door te gaan</div>
+    <div class="login-err" id="login-err"></div>
+    <div class="fg"><label>E-mailadres</label><input type="email" id="login-email" placeholder="naam@voorbeeld.nl" autocomplete="email"></div>
+    <div class="fg"><label>Wachtwoord</label><input type="password" id="login-ww" placeholder="••••••••" autocomplete="current-password"></div>
+    <button class="login-btn" id="login-btn" onclick="doeLogin()">Inloggen</button>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--gr)">
+      <a href="#" onclick="toggleWwReset(event)" style="color:var(--or);text-decoration:none;font-weight:600">Wachtwoord vergeten?</a>
+    </div>
+    <div id="ww-reset" style="display:none;margin-top:12px">
+      <div class="fg"><label>E-mail voor reset link</label><input type="email" id="reset-email" placeholder="naam@voorbeeld.nl"></div>
+      <button class="login-btn" style="background:var(--bl)" onclick="doeReset()">📧 Stuur reset link</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP (verborgen tot ingelogd) -->
+<div id="app-container">
+<div id="ph"><h1>🛋️ Nijhof Brothers — BI Dashboard</h1><p id="ph-d"></p></div>
+<nav id="nav">
+  <div class="brand">🛋️ NB</div>
+  <div id="nav-links">
+    <a href="#s-inkoop">📥 Inkoop</a>
+    <a href="#s-voorraad">📦 Voorraad</a>
+    <a href="#s-lasten">💸 Lasten</a>
+    <a href="#s-debiteuren">📋 Debiteuren</a>
+    <a href="#s-dash">📊 Dashboard</a>
+    <a href="#s-export">📤 Export</a>
+  </div>
+  <span id="klok"></span>
+  <button class="btn btn-gy btn-xs" onclick="doeUitloggen()" title="Uitloggen">🚪</button>
+</nav>
+<main>
+
+<!-- INKOOP -->
+<div class="sec" id="s-inkoop">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📥 Nieuwe inkoop invoeren</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div class="fgrid">
+      <div class="fg"><label class="r">Naam meubelstuk</label><input id="f-naam" placeholder="bijv. IKEA Ektorp bank"></div>
+      <div class="fg"><label class="r">Categorie</label>
+        <select id="f-cat">
+          <option value="">— kies —</option>
+          <option value="bank">Bank</option><option value="hoekbank">Hoekbank</option>
+          <option value="fauteuil">Fauteuil</option><option value="loveseat">Loveseat</option>
+          <option value="kast">Kast</option><option value="dressoir">Dressoir</option>
+          <option value="overig">Overig</option>
+        </select>
+      </div>
+      <div class="fg"><label class="r">Stof / kleur</label><input id="f-stof" placeholder="bijv. beige stof"></div>
+      <div class="fg"><label class="r">Inkooplocatie</label><input id="f-loc" placeholder="bijv. Marktplaats Rotterdam"></div>
+      <div class="fg"><label class="r">Inkoopprijs (€)</label><input type="number" id="f-ip" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="fg"><label>Verwachte verkoopprijs (€)</label><input type="number" id="f-vvp" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="fg"><label class="r">Inkoopdatum</label><input type="date" id="f-dat"></div>
+
+      <div class="fg" style="grid-column:1/-1"><label>Notities</label><textarea id="f-not" placeholder="beschadigingen, bijzonderheden..."></textarea></div>
+    </div>
+    <button class="btn btn-or" style="margin-top:12px" onclick="voegToe()">✚ Toevoegen aan voorraad</button>
+    <div id="inkoop-target" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- VOORRAAD -->
+<div class="sec" id="s-voorraad">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📦 Voorraad</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="flt-z" placeholder="🔍 Zoeken..." oninput="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;min-width:140px;background:var(--wd);color:var(--dk);outline:none">
+      <select id="flt-c" onchange="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="">Alle categorieën</option>
+        <option value="bank">Bank</option><option value="hoekbank">Hoekbank</option>
+        <option value="fauteuil">Fauteuil</option><option value="loveseat">Loveseat</option>
+        <option value="kast">Kast</option><option value="dressoir">Dressoir</option><option value="overig">Overig</option>
+      </select>
+      <select id="flt-s" onchange="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="">Alle statussen</option>
+        <option value="beschikbaar">Beschikbaar</option><option value="gereserveerd">Gereserveerd</option>
+        <option value="verkocht">Verkocht</option><option value="afgestort">Afgestort</option>
+      </select>
+      <select id="flt-o" onchange="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="nieuwste">Nieuwste eerst</option><option value="oudste">Oudste eerst</option>
+        <option value="prijs">Laagste prijs</option><option value="dagen">Langst in voorraad</option>
+      </select>
+    </div>
+    <div class="kgrid" id="k-container"></div>
+  </div>
+</div>
+
+<!-- VASTE LASTEN -->
+<div class="sec" id="s-lasten">
+  <div class="sec-hdr" onclick="tog(this)"><h2>💸 Vaste lasten</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div class="mgrid" style="flex:1;margin:0;min-width:0">
+        <div class="mc"><div class="ml">Totaal actief/maand</div><div class="mv" id="vl-tot">€0,00</div></div>
+        <div class="mc red"><div class="ml">Nog te betalen</div><div class="mv" id="vl-open">€0,00</div></div>
+        <div class="mc green"><div class="ml">Betaald</div><div class="mv" id="vl-bet">€0,00</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+        <button class="btn btn-or btn-sm" onclick="openLastenModal(null)">✚ Last toevoegen</button>
+        <label class="btn btn-gy btn-sm" style="cursor:pointer">📂 Importeer Excel/CSV
+          <input type="file" accept=".xlsx,.xls,.csv" onchange="importLastenExcel(event)" style="display:none">
+        </label>
+      </div>
+    </div>
+    <div id="lasten-lijst"></div>
+  </div>
+</div>
+
+<!-- DEBITEUREN -->
+<div class="sec" id="s-debiteuren">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📋 Openstaande betalingen</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div class="mgrid" style="margin-bottom:14px">
+      <div class="mc red"><div class="ml">Achterstallig</div><div class="mv" id="deb-acht">€0,00</div></div>
+      <div class="mc"><div class="ml">Totaal openstaand</div><div class="mv" id="deb-open">€0,00</div></div>
+      <div class="mc blue"><div class="ml">Verwacht deze maand</div><div class="mv" id="deb-mnd0">€0,00</div></div>
+      <div class="mc blue" style="opacity:.8"><div class="ml">Verwacht volgende maand</div><div class="mv" id="deb-mnd1">€0,00</div></div>
+      <div class="mc grey"><div class="ml">Verwacht maand daarna</div><div class="mv" id="deb-mnd2">€0,00</div></div>
+      <div class="mc green"><div class="ml">Ontvangen YTD</div><div class="mv" id="deb-ytd">€0,00</div></div>
+    </div>
+    <div id="deb-stats" style="margin-bottom:12px"></div>
+    <div id="deb-lijst"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="sec" id="s-dash">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📊 Dashboard</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;background:#f3f4f6;border-radius:8px;padding:3px;gap:2px">
+        <button id="tog-week" onclick="setPeriode('week')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:var(--or);color:#fff;transition:.15s">Week</button>
+        <button id="tog-maand" onclick="setPeriode('maand')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:var(--gr);transition:.15s">Maand</button>
+        <button id="tog-jaar" onclick="setPeriode('jaar')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:var(--gr);transition:.15s">Jaar</button>
+      </div>
+      <button onclick="chPeriode(-1)" class="btn btn-gy btn-sm">◀</button>
+      <span id="periode-lbl" style="font-weight:700;font-size:15px;min-width:180px;text-align:center"></span>
+      <button onclick="chPeriode(1)" class="btn btn-gy btn-sm">▶</button>
+    </div>
+    <div id="kpi-warns" style="margin-bottom:12px"></div>
+    <div id="dash-main"></div>
+  </div>
+</div>
+
+<!-- EXPORT -->
+<div class="sec" id="s-export">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📤 Export & Databeheer</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div class="grid3" style="gap:14px">
+      <div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📊 AI Analyse Export</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="btn btn-or btn-sm" onclick="aiExport('mtd','json')">📄 JSON — deze maand</button>
+          <button class="btn btn-or btn-sm" onclick="aiExport('ytd','json')">📄 JSON — jaar tot nu</button>
+          <button class="btn btn-gy btn-sm" onclick="aiExport('mtd','csv')">📑 CSV — deze maand</button>
+          <button class="btn btn-gy btn-sm" onclick="aiExport('ytd','csv')">📑 CSV — jaar tot nu</button>
+          <button class="btn btn-bl btn-sm" onclick="aiExport('mtd','txt')">📝 TXT samenvatting</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">💾 Backup & Restore</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="btn btn-gn btn-sm" onclick="exportJSON()">⬇️ Exporteer JSON backup</button>
+          <label class="btn btn-gy btn-sm" style="cursor:pointer">⬆️ Importeer JSON
+            <input type="file" accept=".json" onchange="importJSON(event)" style="display:none">
+          </label>
+          <button class="btn btn-gy btn-sm" onclick="window.print()">🖨️ PDF / Printen</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">⚠️ Databeheer</div>
+        <button class="btn btn-rd btn-sm" onclick="resetAll()">🗑️ Reset alle data</button>
+        <div style="font-size:11px;color:var(--gr);margin-top:10px" id="backup-info"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<div id="toast"></div>
+<div id="ov" onclick="ovKlik(event)">
+  <canvas id="cv"></canvas>
+  <div id="pb">
+    <div style="font-size:26px;font-weight:900;color:var(--or);margin-bottom:3px">NB 🛋️</div>
+    <div style="font-size:11px;color:var(--gr);margin-bottom:10px">Nijhof Brothers Furniture</div>
+    <div id="pb-item" style="font-size:16px;font-weight:700;margin-bottom:3px"></div>
+    <div id="pb-prijs" style="font-size:28px;font-weight:900;color:var(--or);margin-bottom:2px"></div>
+    <div id="pb-marge" style="font-size:13px;color:var(--gn);font-weight:700;margin-bottom:12px"></div>
+    <div id="pb-bericht" style="font-size:16px;font-weight:700;margin-bottom:18px;line-height:1.4"></div>
+    <button class="btn btn-or" style="width:100%" onclick="sluitOv()">Doorgaan →</button>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="m-bewerk"><div class="modal">
+  <button class="modal-close" onclick="sluitModal('m-bewerk')">✕</button>
+  <h3>✏️ Item bewerken</h3><div id="m-bewerk-body"></div>
+</div></div>
+<div class="modal-bg" id="m-del"><div class="modal" style="max-width:420px">
+  <button class="modal-close" onclick="sluitModal('m-del')">✕</button>
+  <h3 id="m-del-titel">🗑️ Item</h3>
+  <div id="m-del-body"></div>
+</div></div>
+<div class="modal-bg" id="m-vk"><div class="modal">
+  <button class="modal-close" onclick="sluitModal('m-vk')">✕</button>
+  <h3 id="m-vk-titel">💰 Verkoop registreren</h3>
+  <div id="m-vk-body"></div>
+</div></div>
+<div class="modal-bg" id="m-last"><div class="modal">
+  <button class="modal-close" onclick="sluitModal('m-last')">✕</button>
+  <h3 id="m-last-titel">💸 Vaste last</h3>
+  <div id="m-last-body"></div>
+</div></div>
+<div class="modal-bg" id="m-betaaldat"><div class="modal" style="max-width:380px">
+  <button class="modal-close" onclick="sluitModal('m-betaaldat')">✕</button>
+  <h3>✓ Termijn betaald</h3>
+  <div id="m-betaaldat-body"></div>
+</div></div>
+
+</div><!-- /app-container -->
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════
+// SUPABASE CONFIG — Vul hier je eigen gegevens in!
+// Ga naar Supabase → Project Settings → API
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://JOUW-PROJECT.supabase.co';  // ← Vervang dit
+const SUPABASE_ANON = 'jouw-anon-key-hier';                // ← Vervang dit
+
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── AUTH (login/logout) ──────────────────────────────────────
+async function doeLogin(){
+  const email=val('login-email').trim(),ww=val('login-ww');
+  if(!email||!ww){toonLoginErr('Vul e-mail en wachtwoord in');return;}
+  el('login-btn').disabled=true;el('login-btn').textContent='Even geduld...';
+  const{error}=await _sb.auth.signInWithPassword({email,password:ww});
+  el('login-btn').disabled=false;el('login-btn').textContent='Inloggen';
+  if(error){toonLoginErr(error.message==='Invalid login credentials'?'Ongeldig e-mail of wachtwoord':error.message);return;}
+}
+async function doeUitloggen(){
+  if(!confirm('Wil je uitloggen?'))return;
+  await _sb.auth.signOut();
+}
+async function doeReset(){
+  const email=val('reset-email').trim();
+  if(!email){toonLoginErr('Vul je e-mailadres in');return;}
+  const{error}=await _sb.auth.resetPasswordForEmail(email);
+  if(error){toonLoginErr(error.message);return;}
+  toonLoginErr('');
+  alert('📧 Check je inbox voor de reset link!');
+}
+function toggleWwReset(e){e.preventDefault();const r=el('ww-reset');r.style.display=r.style.display==='none'?'block':'none';}
+function toonLoginErr(msg){const e=el('login-err');e.textContent=msg;e.style.display=msg?'block':'none';}
+
+// Luister naar auth state changes
+_sb.auth.onAuthStateChange(async(event,session)=>{
+  if(session){
+    el('login-scherm').style.display='none';
+    el('app-container').style.display='block';
+    await laadAllesVanDB();
+    renderAll();
+  } else {
+    el('login-scherm').style.display='flex';
+    el('app-container').style.display='none';
+  }
+});
+
+// Enter-toets op login velden
+document.addEventListener('DOMContentLoaded',()=>{
+  ['login-email','login-ww'].forEach(id=>{
+    const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')doeLogin();});
+  });
+});
+
+// ── DATA ─────────────────────────────────────────────────────────
+const VER = 3;
+const LEEG = () => ({ version:VER, items:[], verkopen:[], lasten:[] });
+let DB = LEEG();
+let _opslaan = false; // voorkom dubbele saves
+
+// ── LADEN VANUIT SUPABASE ────────────────────────────────────────
+async function laadAllesVanDB(){
+  try {
+    const [itemsRes, verkopenRes, termijnenRes, lastenRes, instRes] = await Promise.all([
+      _sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),
+      _sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),
+      _sb.from('termijnen').select('*'),
+      _sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),
+      _sb.from('instellingen').select('*')
+    ]);
+    // Items
+    DB.items = (itemsRes.data||[]).map(r=>({
+      id:r.id, naam:r.naam, categorie:r.categorie, stof:r.stof||'', locatie:r.locatie||'',
+      prijs:Number(r.prijs)||0, verwacht_vp:Number(r.verwacht_vp)||0, datum:r.datum||'',
+      notitie:r.notitie||'', status:r.status||'beschikbaar', del_reden:r.del_reden,
+      del_toel:r.del_toel, stortkosten:Number(r.stortkosten)||0,
+      afgestortOp:r.afgestort_op, aangemaaktOp:r.aangemaakt_op, bewerkt:r.bewerkt||[]
+    }));
+    // Verkopen + termijnen koppelen
+    const termMap={};
+    (termijnenRes.data||[]).forEach(t=>{
+      if(!termMap[t.verkoop_id])termMap[t.verkoop_id]=[];
+      termMap[t.verkoop_id].push({
+        id:t.id, nr:t.nr, bedrag:Number(t.bedrag)||0, vervaldatum:t.vervaldatum||'',
+        betaalmethode:t.betaalmethode||'pin', betaald:!!t.betaald,
+        betaaldOp:t.betaald_op, label:t.label||'', notitie:t.notitie||''
+      });
+    });
+    DB.verkopen = (verkopenRes.data||[]).map(r=>({
+      id:r.id, itemId:r.item_id, verkoopprijs:Number(r.verkoopprijs)||0,
+      verkooplocatie:r.verkooplocatie||'', factuur:r.factuur||'', datum:r.datum||'',
+      type:r.type||'volledig', impregneer:Number(r.impregneer)||0,
+      brutoMarge:Number(r.bruto_marge)||0, nettoMarge:Number(r.netto_marge)||0,
+      btw:Number(r.btw)||0, nettoNaBtw:Number(r.netto_na_btw)||0,
+      datum_registratie:r.datum_registratie,
+      termijnen:(termMap[r.id]||[]).sort((a,b)=>a.nr-b.nr)
+    }));
+    // Lasten
+    DB.lasten = (lastenRes.data||[]).map(r=>({
+      id:r.id, naam:r.naam, bedrag:Number(r.bedrag)||0, btwPct:r.btw_pct||0,
+      btwType:r.btw_type||'excl', betaalmethode:r.betaalmethode||'pin',
+      betaaldatum:r.betaaldatum, typeKosten:r.type_kosten||'vast',
+      terugkerend:!!r.terugkerend, fluctuerend:!!r.fluctuerend,
+      betaald:r.betaald!==false, actief:r.actief!==false,
+      aangemaaktOp:r.aangemaakt_op
+    }));
+    // Instellingen
+    if(instRes.data&&instRes.data.length>0){
+      const inst=instRes.data[0];
+      _instellingen.inkoopTarget=inst.inkoop_target||3;
+      _instellingen.gemMargeOverride=inst.gem_marge_override||null;
+    }
+  } catch(e) { console.error('Laden mislukt:',e); toast('⚠️ Laden mislukt — controleer je verbinding','#dc2626'); }
+}
+
+// ── OPSLAAN NAAR SUPABASE (per actie) ────────────────────────────
+async function dbInsertItem(item){
+  const{error}=await _sb.from('items').insert({
+    id:item.id, naam:item.naam, categorie:item.categorie, stof:item.stof,
+    locatie:item.locatie, prijs:item.prijs, verwacht_vp:item.verwacht_vp,
+    datum:item.datum, notitie:item.notitie, status:item.status,
+    del_reden:item.del_reden, del_toel:item.del_toel, stortkosten:item.stortkosten,
+    aangemaakt_op:item.aangemaaktOp, bewerkt:item.bewerkt,
+    user_id:(await _sb.auth.getUser()).data.user?.id
+  });
+  if(error)throw error;
+}
+async function dbUpdateItem(item){
+  const{error}=await _sb.from('items').update({
+    naam:item.naam, categorie:item.categorie, stof:item.stof, locatie:item.locatie,
+    prijs:item.prijs, verwacht_vp:item.verwacht_vp, datum:item.datum, notitie:item.notitie,
+    status:item.status, del_reden:item.del_reden, del_toel:item.del_toel,
+    stortkosten:item.stortkosten, afgestort_op:item.afgestortOp, bewerkt:item.bewerkt
+  }).eq('id',item.id);
+  if(error)throw error;
+}
+async function dbDeleteItem(id){
+  const{error}=await _sb.from('items').delete().eq('id',id);
+  if(error)throw error;
+}
+async function dbInsertVerkoop(vk,termijnen){
+  const uid_user=(await _sb.auth.getUser()).data.user?.id;
+  const{error:e1}=await _sb.from('verkopen').insert({
+    id:vk.id, item_id:vk.itemId, verkoopprijs:vk.verkoopprijs,
+    verkooplocatie:vk.verkooplocatie, factuur:vk.factuur, datum:vk.datum,
+    type:vk.type, impregneer:vk.impregneer, bruto_marge:vk.brutoMarge,
+    netto_marge:vk.nettoMarge, btw:vk.btw, netto_na_btw:vk.nettoNaBtw,
+    datum_registratie:vk.datum_registratie, user_id:uid_user
+  });
+  if(e1)throw e1;
+  if(termijnen.length){
+    const{error:e2}=await _sb.from('termijnen').insert(termijnen.map(t=>({
+      id:t.id, verkoop_id:vk.id, nr:t.nr, bedrag:t.bedrag, vervaldatum:t.vervaldatum,
+      betaalmethode:t.betaalmethode, betaald:t.betaald, betaald_op:t.betaaldOp,
+      label:t.label, notitie:t.notitie||''
+    })));
+    if(e2)throw e2;
+  }
+}
+async function dbUpdateVerkoop(vk){
+  const{error}=await _sb.from('verkopen').update({
+    verkoopprijs:vk.verkoopprijs, verkooplocatie:vk.verkooplocatie,
+    factuur:vk.factuur, datum:vk.datum, bruto_marge:vk.brutoMarge,
+    netto_marge:vk.nettoMarge, btw:vk.btw, netto_na_btw:vk.nettoNaBtw
+  }).eq('id',vk.id);
+  if(error)throw error;
+}
+async function dbDeleteVerkoop(vkId){
+  await _sb.from('termijnen').delete().eq('verkoop_id',vkId);
+  const{error}=await _sb.from('verkopen').delete().eq('id',vkId);
+  if(error)throw error;
+}
+async function dbUpdateTermijn(t){
+  const{error}=await _sb.from('termijnen').update({
+    betaald:t.betaald, betaald_op:t.betaaldOp, notitie:t.notitie||''
+  }).eq('id',t.id);
+  if(error)throw error;
+}
+async function dbInsertLast(l){
+  const{error}=await _sb.from('lasten').insert({
+    id:l.id, naam:l.naam, bedrag:l.bedrag, btw_pct:l.btwPct, btw_type:l.btwType,
+    betaalmethode:l.betaalmethode, betaaldatum:l.betaaldatum, type_kosten:l.typeKosten,
+    terugkerend:l.terugkerend, fluctuerend:l.fluctuerend, betaald:l.betaald, actief:l.actief,
+    aangemaakt_op:l.aangemaaktOp,
+    user_id:(await _sb.auth.getUser()).data.user?.id
+  });
+  if(error)throw error;
+}
+async function dbUpdateLast(l){
+  const{error}=await _sb.from('lasten').update({
+    naam:l.naam, bedrag:l.bedrag, btw_pct:l.btwPct, btw_type:l.btwType,
+    betaalmethode:l.betaalmethode, betaaldatum:l.betaaldatum, type_kosten:l.typeKosten,
+    terugkerend:l.terugkerend, fluctuerend:l.fluctuerend, betaald:l.betaald, actief:l.actief
+  }).eq('id',l.id);
+  if(error)throw error;
+}
+async function dbDeleteLast(id){
+  const{error}=await _sb.from('lasten').delete().eq('id',id);
+  if(error)throw error;
+}
+async function dbSaveInstellingen(){
+  const uid_user=(await _sb.auth.getUser()).data.user?.id;
+  if(!uid_user)return;
+  const{error}=await _sb.from('instellingen').upsert({
+    user_id:uid_user,
+    inkoop_target:_instellingen.inkoopTarget,
+    gem_marge_override:_instellingen.gemMargeOverride
+  });
+  if(error)console.error('Instellingen opslaan mislukt:',error);
+}
+
+// Legacy slaOp — slaat alles op naar Supabase (debounced)
+let _saveTimer=null;
+function slaOp(){
+  if(_saveTimer)clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(()=>_syncNaarSupabase(),500);
+  const bi=el('backup-info');if(bi)bi.textContent='Opgeslagen: '+fmtDT(new Date());
+}
+async function _syncNaarSupabase(){
+  try{
+    // Items: upsert alles
+    if(DB.items.length){
+      const uid_user=(await _sb.auth.getUser()).data.user?.id;
+      const rows=DB.items.map(i=>({
+        id:i.id,naam:i.naam,categorie:i.categorie,stof:i.stof||'',locatie:i.locatie||'',
+        prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum,notitie:i.notitie||'',
+        status:i.status,del_reden:i.del_reden,del_toel:i.del_toel,stortkosten:i.stortkosten||0,
+        afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp,bewerkt:i.bewerkt||[],
+        user_id:uid_user
+      }));
+      await _sb.from('items').upsert(rows,{onConflict:'id'});
+    }
+    // Verkopen + termijnen
+    if(DB.verkopen.length){
+      const uid_user=(await _sb.auth.getUser()).data.user?.id;
+      const vkRows=DB.verkopen.map(v=>({
+        id:v.id,item_id:v.itemId,verkoopprijs:v.verkoopprijs,verkooplocatie:v.verkooplocatie||'',
+        factuur:v.factuur||'',datum:v.datum,type:v.type||'volledig',impregneer:v.impregneer||0,
+        bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
+        netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie,user_id:uid_user
+      }));
+      await _sb.from('verkopen').upsert(vkRows,{onConflict:'id'});
+      // Termijnen
+      const allTerm=[];
+      DB.verkopen.forEach(v=>(v.termijnen||[]).forEach(t=>allTerm.push({
+        id:t.id,verkoop_id:v.id,nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum||null,
+        betaalmethode:t.betaalmethode||'pin',betaald:!!t.betaald,betaald_op:t.betaaldOp||null,
+        label:t.label||'',notitie:t.notitie||''
+      })));
+      if(allTerm.length)await _sb.from('termijnen').upsert(allTerm,{onConflict:'id'});
+    }
+    // Lasten
+    if(DB.lasten.length){
+      const uid_user=(await _sb.auth.getUser()).data.user?.id;
+      const lRows=DB.lasten.map(l=>({
+        id:l.id,naam:l.naam,bedrag:l.bedrag,btw_pct:l.btwPct||0,btw_type:l.btwType||'excl',
+        betaalmethode:l.betaalmethode||'pin',betaaldatum:l.betaaldatum||null,
+        type_kosten:l.typeKosten||'vast',terugkerend:!!l.terugkerend,fluctuerend:!!l.fluctuerend,
+        betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp,
+        user_id:uid_user
+      }));
+      await _sb.from('lasten').upsert(lRows,{onConflict:'id'});
+    }
+  }catch(e){console.error('Sync mislukt:',e);}
+}
+function laadDB(){/* niet meer nodig, data komt van Supabase */}
+
+// ── UTILS ────────────────────────────────────────────────────────
+const MN = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+const MK = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+let _seq = 0;
+const uid  = () => 'id-'+Date.now()+'-'+(++_seq)+'-'+Math.random().toString(36).slice(2,6);
+const pad  = n  => String(n).padStart(2,'0');
+const eur  = v  => '€'+Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const pct  = (v,t) => t>0?Math.round((v/t)*100)+'%':'0%';
+const dgl  = d  => Math.max(0,Math.floor((Date.now()-new Date(d).getTime())/86400000));
+const esc  = s  => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const el   = id => document.getElementById(id);
+const val  = id => { const e=el(id); return e?e.value:''; };
+const fval = id => parseFloat(val(id))||0;
+const chk  = id => { const e=el(id); return!!e&&e.checked; };
+const vandaag = () => new Date().toISOString().split('T')[0];
+function fmtDT(d){const dt=new Date(d);if(isNaN(dt))return'';return`${pad(dt.getDate())}-${pad(dt.getMonth()+1)}-${dt.getFullYear()} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;}
+function fmtD(d){if(!d)return'—';const dt=new Date(d);if(isNaN(dt))return esc(String(d));return`${pad(dt.getDate())}-${pad(dt.getMonth()+1)}-${dt.getFullYear()}`;}
+
+// ── KLOK ────────────────────────────────────────────────────────
+function updateKlok(){const n=new Date(),s=`${pad(n.getDate())}-${pad(n.getMonth()+1)}-${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`;const k=el('klok');if(k)k.textContent=s;const p=el('ph-d');if(p)p.textContent='Gegenereerd: '+s;}
+updateKlok();setInterval(updateKlok,60000);
+const _fdat=el('f-dat');if(_fdat)_fdat.value=vandaag();
+
+// ── UI ───────────────────────────────────────────────────────────
+function tog(hdr){hdr.parentElement.classList.toggle('shut');}
+function openModal(id){el(id).classList.add('open');}
+function sluitModal(id){el(id).classList.remove('open');}
+let _toastT=null;
+function toast(msg,kleur='#15803d'){const t=el('toast');t.textContent=msg;t.style.background=kleur;t.classList.add('on');if(_toastT)clearTimeout(_toastT);_toastT=setTimeout(()=>t.classList.remove('on'),2800);}
+
+// ── INKOOP ───────────────────────────────────────────────────────
+function resetForm(){
+  ['f-naam','f-stof','f-loc','f-not'].forEach(id=>{const e=el(id);if(e)e.value='';});
+  el('f-cat').selectedIndex=0;el('f-ip').value='';el('f-vvp').value='';el('f-dat').value=vandaag();
+}
+function voegToe(){
+  const naam=val('f-naam').trim(),cat=val('f-cat'),stof=val('f-stof').trim();
+  const loc=val('f-loc').trim(),ipStr=val('f-ip').trim(),dat=val('f-dat');
+  const ip=parseFloat(ipStr);
+  if(!naam||!cat||!stof||!loc||!dat||ipStr===''||isNaN(ip)||ip<0){toast('Vul alle verplichte velden (*) in','#dc2626');return;}
+  DB.items.unshift({id:uid(),naam,categorie:cat,stof,locatie:loc,prijs:ip,verwacht_vp:fval('f-vvp'),datum:dat,notitie:val('f-not').trim(),status:'beschikbaar',del_reden:null,del_toel:null,stortkosten:0,aangemaaktOp:new Date().toISOString(),bewerkt:[]});
+  slaOp();renderV();renderDash();renderDebiteuren();renderInkoopTarget();resetForm();toast('✚ Item toegevoegd!');
+}
+
+// ── VOORRAAD ─────────────────────────────────────────────────────
+function renderV(){
+  const z=val('flt-z').toLowerCase().trim(),c=val('flt-c'),s=val('flt-s'),o=val('flt-o');
+  let items=DB.items.filter(i=>i.status!=='verwijderd');
+  if(c)items=items.filter(i=>i.categorie===c);
+  if(s)items=items.filter(i=>i.status===s);
+  if(z)items=items.filter(i=>(i.naam||'').toLowerCase().includes(z)||(i.stof||'').toLowerCase().includes(z)||(i.locatie||'').toLowerCase().includes(z));
+  if(o==='oudste')items.sort((a,b)=>new Date(a.datum)-new Date(b.datum));
+  else if(o==='nieuwste')items.sort((a,b)=>new Date(b.datum)-new Date(a.datum));
+  else if(o==='prijs')items.sort((a,b)=>a.prijs-b.prijs);
+  else if(o==='dagen')items.sort((a,b)=>dgl(b.datum)-dgl(a.datum));
+  const cont=el('k-container');
+  if(!items.length){cont.innerHTML='<div style="text-align:center;padding:40px;color:var(--gr);grid-column:1/-1"><div style="font-size:44px;margin-bottom:10px">🛋️</div><p style="font-size:15px;font-weight:500">Voeg je eerste item toe →</p></div>';return;}
+  cont.innerHTML=items.map(kaartHTML).join('');
+}
+
+function kaartHTML(item){
+  const d=dgl(item.datum),pk=d<=20?'dg':d<=45?'do':'dr';
+  const sb=({beschikbaar:'<span class="badge b-ok">✓ Beschikbaar</span>',gereserveerd:'<span class="badge b-res">🕐 Gereserveerd</span>',verkocht:'<span class="badge b-vk">✕ Verkocht</span>',afgestort:'<span class="badge b-af">🚮 Afgestort</span>'})[item.status]||'';
+  const iid=esc(item.id);
+  let acts;
+  if(item.status==='verkocht'){
+    acts=`<button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${iid}')">✏️ Bewerk</button>
+          <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${iid}')">↩️ Ongedaan</button>`;
+  } else if(item.status==='afgestort'){
+    acts=`<span style="font-size:11px;color:var(--gr)">🚮 ${esc(item.del_reden||'—')}${item.stortkosten>0?' · stortk: '+eur(item.stortkosten):''}</span>
+      <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','verwijderen')">🗑️ Verwijder</button>`;
+  } else {
+    const resLbl=item.status==='gereserveerd'?'📌 Annuleer':'📌 Res.';
+    acts=`<button class="btn btn-gy btn-xs" onclick="openBewerk('${iid}')">✏️</button>
+          <button class="btn btn-or btn-xs" onclick="openVerkoop('${iid}')">💰 Verkoop</button>
+          <button class="btn btn-gy btn-xs" onclick="toggleRes('${iid}')">${resLbl}</button>
+          <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','afstorten')">🚮 Afstort</button>
+          <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','verwijderen')">🗑️ Verwijder</button>`;
+  }
+  return `<div class="kaart${item.status==='verkocht'?' verkocht':item.status==='afgestort'?' afgestort':''}" id="k-${iid}">
+    <div class="kico"><span class="kico-emoji">🛋️</span><span class="dpill ${pk}">${d>45?'🔴 ':d>20?'⏰ ':''}${d}d</span></div>
+    <div class="kbody">
+      <div class="kname">${esc(item.naam)}</div>
+      <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}</div>
+      <div class="kinfo">📍 ${esc(item.locatie)}<br>💶 Inkoop: ${eur(item.prijs)}${item.verwacht_vp>0?`<br>🎯 Verwacht: ${eur(item.verwacht_vp)}`:''}<br>📅 ${esc(item.datum)}</div>
+      ${item.notitie?`<div class="knote">📝 ${esc(item.notitie)}</div>`:''}
+    </div>
+    <div class="kacts">${acts}</div>
+  </div>`;
+}
+
+function toggleRes(id){
+  const i=DB.items.find(x=>x.id===id);
+  if(!i||i.status==='verkocht'||i.status==='afgestort')return;
+  i.status=i.status==='gereserveerd'?'beschikbaar':'gereserveerd';
+  slaOp();renderV();toast(i.status==='gereserveerd'?'📌 Gereserveerd':'📌 Reservering opgeheven','#2563eb');
+}
+
+// ── BEWERK ───────────────────────────────────────────────────────
+let _bewerkId=null;
+function openBewerk(id){
+  const i=DB.items.find(x=>x.id===id);if(!i)return;
+  _bewerkId=id;
+  const CATS=['bank','hoekbank','fauteuil','loveseat','kast','dressoir','overig'];
+  el('m-bewerk-body').innerHTML=`
+    <div class="fgrid">
+      <div class="fg"><label class="r">Naam</label><input id="bw-naam" value="${esc(i.naam||'')}"></div>
+      <div class="fg"><label class="r">Categorie</label><select id="bw-cat">${CATS.map(c=>`<option value="${c}"${i.categorie===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Stof</label><input id="bw-stof" value="${esc(i.stof||'')}"></div>
+      <div class="fg"><label>Locatie</label><input id="bw-loc" value="${esc(i.locatie||'')}"></div>
+      <div class="fg"><label>Inkoopprijs (€)</label><input type="number" id="bw-ip" value="${i.prijs}" step="0.01" min="0"></div>
+      <div class="fg"><label>Verwachte VP (€)</label><input type="number" id="bw-vvp" value="${i.verwacht_vp||0}" step="0.01" min="0"></div>
+      <div class="fg"><label>Datum</label><input type="date" id="bw-dat" value="${esc(i.datum||'')}"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Notities</label><textarea id="bw-not">${esc(i.notitie||'')}</textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-or" onclick="slaBewerk()">💾 Opslaan</button>
+      <button class="btn btn-gy" onclick="sluitModal('m-bewerk')">Annuleer</button>
+    </div>`;
+  openModal('m-bewerk');
+}
+function slaBewerk(){
+  const i=DB.items.find(x=>x.id===_bewerkId);if(!i)return;
+  const naam=val('bw-naam').trim(),cat=val('bw-cat');
+  if(!naam||!cat){toast('Naam en categorie zijn verplicht','#dc2626');return;}
+  i.naam=naam;i.categorie=cat;i.stof=val('bw-stof').trim();i.locatie=val('bw-loc').trim();
+  i.prijs=fval('bw-ip');i.verwacht_vp=fval('bw-vvp');i.datum=val('bw-dat');
+  i.notitie=val('bw-not').trim();
+  if(!Array.isArray(i.bewerkt))i.bewerkt=[];
+  i.bewerkt.push({ts:new Date().toISOString()});
+  slaOp();renderV();renderDash();sluitModal('m-bewerk');toast('✏️ Item bijgewerkt');
+}
+
+// ── AFSTORTEN / VERWIJDEREN ───────────────────────────────────────
+let _delId=null,_delActie=null;
+function openDel(id,actie){
+  _delId=id;_delActie=actie;
+  const i=DB.items.find(x=>x.id===id);if(!i)return;
+  if(actie==='verwijderen'){
+    el('m-del-titel').textContent='🗑️ Item verwijderen';
+    el('m-del-body').innerHTML=`
+      <p style="color:var(--gr);font-size:13px;margin-bottom:14px"><strong>${esc(i.naam)}</strong> wordt permanent verwijderd.</p>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-rd" onclick="bevestigDel()">🗑️ Definitief verwijderen</button>
+        <button class="btn btn-gy" onclick="sluitModal('m-del')">Annuleer</button>
+      </div>`;
+  } else {
+    el('m-del-titel').textContent='🚮 Item afstorten';
+    el('m-del-body').innerHTML=`
+      <p style="color:var(--gr);font-size:13px;margin-bottom:12px">Inkoopprijs <strong>${eur(i.prijs)}</strong> wordt als verlies geboekt in het dashboard.</p>
+      <div class="fg" style="margin-bottom:10px"><label>Reden</label>
+        <select id="del-reden">
+          <option value="beschadigd">Beschadigd</option>
+          <option value="niet_verkoopbaar">Niet verkoopbaar</option>
+          <option value="verkeerd_ingekocht">Verkeerd ingekocht</option>
+          <option value="grofvuil">Grofvuil / afgestort</option>
+          <option value="anders">Anders</option>
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:10px"><label>Toelichting</label><input id="del-toel" placeholder="optioneel"></div>
+      <div class="fg" style="margin-bottom:14px"><label>Stortkosten (€)</label><input type="number" id="del-stortk" min="0" step="0.01" placeholder="0.00" value="0"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-rd" onclick="bevestigDel()">🚮 Afstorten</button>
+        <button class="btn btn-gy" onclick="sluitModal('m-del')">Annuleer</button>
+      </div>`;
+  }
+  openModal('m-del');
+}
+async function bevestigDel(){
+  const i=DB.items.find(x=>x.id===_delId);if(!i)return;
+  if(_delActie==='verwijderen'){
+    try{await _sb.from('items').delete().eq('id',_delId);}catch(e){toast('⚠️ Verwijderen mislukt','#dc2626');return;}
+    DB.items=DB.items.filter(x=>x.id!==_delId);
+    renderV();renderDash();sluitModal('m-del');toast('🗑️ Item verwijderd','#6b7280');
+  } else {
+    i.status='afgestort';
+    i.del_reden=val('del-reden');
+    i.del_toel=val('del-toel').trim();
+    i.stortkosten=fval('del-stortk');
+    i.afgestortOp=vandaag();
+    slaOp();renderV();renderDash();sluitModal('m-del');
+    toast(`🚮 Afgestort — verlies ${eur(i.prijs+(i.stortkosten||0))}`,'#6b7280');
+  }
+}
+
+// ── VERKOOP BEWERKEN / ONGEDAAN ───────────────────────────────────
+function openBewerkVerkoop(itemId) {
+  const item = DB.items.find(x=>x.id===itemId);
+  const vk   = DB.verkopen.find(v=>v.itemId===itemId);
+  if (!item||!vk) return;
+  el('m-vk-titel').textContent = '✏️ Verkoop bewerken — ' + item.naam;
+  el('m-vk-body').innerHTML = `
+    <div class="alert alert-info" style="margin-bottom:12px">✏️ Pas de verkoopgegevens aan. Termijnen zijn zichtbaar in Debiteuren.</div>
+    <div class="fgrid">
+      <div class="fg"><label class="r">Verkoopprijs (€)</label>
+        <input type="number" id="bvk-vp" value="${vk.verkoopprijs}" min="0" step="0.01" oninput="updateBewerkVkPrev('${esc(itemId)}')">
+      </div>
+      <div class="fg"><label>Verkooplocatie</label>
+        <select id="bvk-loc">
+          <option ${vk.verkooplocatie==='Marktplaats online'?'selected':''}>Marktplaats online</option>
+          <option ${vk.verkooplocatie==='Proefzitten in loods'?'selected':''}>Proefzitten in loods</option>
+          <option ${vk.verkooplocatie==='Anders'?'selected':''}>Anders</option>
+        </select>
+      </div>
+      <div class="fg"><label>Factuurnummer</label><input id="bvk-fac" value="${esc(vk.factuur||'')}"></div>
+      <div class="fg"><label>Verkoopdatum</label><input type="date" id="bvk-dat" value="${esc(vk.datum||'')}"></div>
+    </div>
+    <div id="bvk-prev" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-or" onclick="slaVerkKopOp('${esc(itemId)}')">💾 Opslaan</button>
+      <button class="btn btn-gy" onclick="sluitModal('m-vk')">Annuleer</button>
+    </div>`;
+  updateBewerkVkPrev(itemId);
+  openModal('m-vk');
+}
+
+function updateBewerkVkPrev(itemId) {
+  const item=DB.items.find(x=>x.id===itemId);const prevEl=el('bvk-prev');if(!item||!prevEl)return;
+  const vp=fval('bvk-vp'),imp=DB.verkopen.find(v=>v.itemId===itemId)?.impregneer||0;
+  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  prevEl.innerHTML=`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd);font-size:13px">
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Bruto marge</span><span style="color:${bruto>=0?'var(--gn)':'var(--rd)'}">${eur(bruto)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
+  </div>`;
+}
+
+function slaVerkKopOp(itemId) {
+  const vk=DB.verkopen.find(v=>v.itemId===itemId);if(!vk)return;
+  const vpStr=val('bvk-vp').trim(),vp=parseFloat(vpStr);
+  if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
+  const item=DB.items.find(x=>x.id===itemId);
+  const bruto=vp-item.prijs,netto=bruto+(vk.impregneer||0);
+  const btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  vk.verkoopprijs=vp;vk.verkooplocatie=val('bvk-loc');
+  vk.factuur=val('bvk-fac')||vk.factuur;vk.datum=val('bvk-dat')||vk.datum;
+  vk.brutoMarge=bruto;vk.nettoMarge=netto;vk.btw=btw;vk.nettoNaBtw=nNaBtw;
+  // Update ook de eerste termijn als volledig betaald
+  if(vk.type==='volledig'&&vk.termijnen?.length===1){vk.termijnen[0].bedrag=vp;}
+  slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');
+  toast('✏️ Verkoop bijgewerkt');
+}
+
+async function ongedaanVerkoop(itemId) {
+  const vk=DB.verkopen.find(v=>v.itemId===itemId);
+  if(!vk)return;
+  const open=(vk.termijnen||[]).filter(t=>!t.betaald);
+  if(open.length>0){
+    const openBed=open.reduce((a,t)=>a+t.bedrag,0);
+    if(!confirm(`⚠️ Er staan nog ${open.length} openstaande termijn(en) open (${eur(openBed)}).\n\nVerkoop toch ongedaan maken? Deze termijnen verdwijnen.`))return;
+  } else {
+    if(!confirm('Verkoop ongedaan maken? Het item komt terug als beschikbaar.'))return;
+  }
+  const item=DB.items.find(x=>x.id===itemId);if(!item)return;
+  try{
+    await _sb.from('termijnen').delete().eq('verkoop_id',vk.id);
+    await _sb.from('verkopen').delete().eq('id',vk.id);
+  }catch(e){toast('⚠️ Mislukt','#dc2626');return;}
+  DB.verkopen=DB.verkopen.filter(v=>v.itemId!==itemId);
+  item.status='beschikbaar';
+  slaOp();renderV();renderDash();renderDebiteuren();
+  toast('↩️ Verkoop ongedaan gemaakt','#2563eb');
+}
+
+// ── VERKOOP MODAL ────────────────────────────────────────────────
+let _vkId=null;
+function openVerkoop(id){
+  const i=DB.items.find(x=>x.id===id);if(!i)return;
+  _vkId=id;el('m-vk-titel').textContent='💰 Verkoop — '+i.naam;
+  renderVkForm();openModal('m-vk');
+}
+function renderVkForm(){
+  el('m-vk-body').innerHTML=`
+    <div class="fgrid">
+      <div class="fg"><label class="r">Verkoopprijs (€)</label><input type="number" id="vk-vp" min="0" step="0.01" placeholder="0.00" oninput="updateVkPrev()"></div>
+      <div class="fg"><label>Verkooplocatie</label><select id="vk-loc"><option value="Marktplaats online">Marktplaats online</option><option value="Proefzitten in loods">Proefzitten in loods</option><option value="Anders">Anders</option></select></div>
+      <div class="fg"><label>Factuurnummer</label><input id="vk-fac" value="${esc(volgendeFactuur())}"></div>
+      <div class="fg"><label>Verkoopdatum</label><input type="date" id="vk-dat" value="${vandaag()}"></div>
+    </div>
+    <div style="margin:10px 0">
+      <label style="font-size:12px;font-weight:600;color:var(--gr)">Betalingstype</label>
+      <div style="display:flex;gap:14px;margin-top:5px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-type" value="volledig" checked onchange="toggleTermijnen()"> Volledig betaald</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-type" value="termijn" onchange="toggleTermijnen()"> Termijnbetaling</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-type" value="aanbetaling" onchange="toggleTermijnen()"> 🏠 Aanbetaling + rest bij levering</label>
+      </div>
+    </div>
+    <div id="vk-vol-sect">
+      <label style="font-size:12px;font-weight:600;color:var(--gr)">Betaalmethode</label>
+      <div style="display:flex;gap:12px;margin-top:5px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="pin" checked> 💳 Pin</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="contant"> 💵 Contant</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="overschrijving"> 🏦 Overschrijving</label>
+      </div>
+    </div>
+    <div id="vk-term-sect" style="display:none;margin-top:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <label style="font-size:12px;font-weight:600;color:var(--gr)">Aantal termijnen:</label>
+        <input type="number" id="vk-nterm" value="3" min="1" max="12" style="width:60px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <button class="btn btn-gy btn-xs" onclick="genTermijnen()">↻ Genereer</button>
+      </div>
+      <div id="vk-term-rows"></div>
+    </div>
+    <div id="vk-aanbet-sect" style="display:none;margin-top:10px">
+      <div style="background:var(--orl);border-radius:8px;padding:12px;border:1px solid #fde8d0;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:var(--or);margin-bottom:10px">💰 Aanbetaling (nu ontvangen)</div>
+        <div class="grid2" style="gap:8px;margin-bottom:10px">
+          <div class="fg"><label class="r">Aanbetalingsbedrag (€)</label><input type="number" id="vk-abed" min="0" step="0.01" placeholder="0.00" oninput="updateVkPrev()"></div>
+          <div class="fg"><label>Betaaldatum aanbetaling</label><input type="date" id="vk-adat" value="${vandaag()}"></div>
+        </div>
+        <label style="font-size:12px;font-weight:600;color:var(--gr)">Betaalmethode aanbetaling</label>
+        <div style="display:flex;gap:12px;margin-top:5px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="pin" checked> 💳 Pin</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="contant"> 💵 Contant</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="overschrijving"> 🏦 Overschrijving</label>
+        </div>
+      </div>
+      <div style="background:#f0fdf4;border-radius:8px;padding:12px;border:1px solid #bbf7d0">
+        <div style="font-size:12px;font-weight:700;color:var(--gn);margin-bottom:10px">🚚 Restbetaling bij levering</div>
+        <div class="grid2" style="gap:8px;margin-bottom:10px">
+          <div class="fg"><label>Restbedrag (€) — automatisch</label><input type="number" id="vk-rbed" min="0" step="0.01" readonly style="background:#e8faf0;color:var(--dk)"></div>
+          <div class="fg"><label class="r">Verwachte leverdatum</label><input type="date" id="vk-rdat"></div>
+        </div>
+        <label style="font-size:12px;font-weight:600;color:var(--gr)">Betaalmethode bij levering</label>
+        <div style="display:flex;gap:12px;margin-top:5px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="pin" checked> 💳 Pin</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="contant"> 💵 Contant</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="overschrijving"> 🏦 Overschrijving</label>
+        </div>
+      </div>
+    </div>
+    <div style="margin:10px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <label class="sw"><input type="checkbox" id="vk-imp" onchange="updateVkPrev()"><span class="sw-s"></span></label>
+      <span style="font-size:13px;font-weight:600">💧 Impregneerbehandeling</span>
+      <input type="number" id="vk-imp-p" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+    </div>
+    <div id="vk-prev"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-or" onclick="bevestigVk()">✓ Bevestig verkoop</button>
+      <button class="btn btn-gy" onclick="sluitModal('m-vk')">Annuleer</button>
+    </div>`;
+}
+function toggleTermijnen(){
+  const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
+  el('vk-vol-sect').style.display=type==='volledig'?'':'none';
+  el('vk-term-sect').style.display=type==='termijn'?'':'none';
+  el('vk-aanbet-sect').style.display=type==='aanbetaling'?'':'none';
+  if(type==='termijn')genTermijnen();
+  updateVkPrev();
+}
+function _updateRest(){const r=el('vk-rbed');if(!r)return;const vp=fval('vk-vp'),ab=fval('vk-abed');r.value=vp>ab?( vp-ab).toFixed(2):'';}
+function genTermijnen(){
+  const vp=fval('vk-vp');
+  const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
+  // Fix bug: n is altijd ≥1 door Math.max hierboven
+  const per=vp/n;
+  let html='';
+  for(let i=0;i<n;i++){
+    const d=new Date();d.setMonth(d.getMonth()+i);
+    html+=`<div class="term-row"><span style="font-size:12px;font-weight:700">T${i+1}</span>
+      <input class="term-inp" type="number" id="t-bed-${i}" value="${per.toFixed(2)}" min="0" step="0.01">
+      <input class="term-inp" type="date" id="t-dat-${i}" value="${d.toISOString().split('T')[0]}">
+      <select class="term-inp" id="t-bet-${i}"><option value="pin">💳 Pin</option><option value="contant">💵 Contant</option><option value="overschrijving">🏦 Oversch.</option></select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="t-ok-${i}"> Betaald</label>
+    </div>`;
+  }
+  el('vk-term-rows').innerHTML=html;
+}
+function updateVkPrev(){
+  const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
+  const prevEl=el('vk-prev');if(!item||!prevEl)return;
+  _updateRest();
+  const vp=fval('vk-vp'),imp=chk('vk-imp')?fval('vk-imp-p'):0;
+  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  const warn=vp>0&&vp<item.prijs?'<div class="alert alert-err" style="margin-bottom:8px">⚠️ Verkoopprijs lager dan inkoopprijs!</div>':'';
+  const catVk=DB.verkopen.filter(v=>{const vi=DB.items.find(x=>x.id===v.itemId);return vi&&vi.categorie===item.categorie;});
+  let sw='';
+  if(catVk.length>0){
+    const gm=catVk.reduce((a,v)=>{const vi=DB.items.find(x=>x.id===v.itemId);return a+(vi?v.verkoopprijs-vi.prijs:0);},0)/catVk.length;
+    sw=`<div style="padding:6px 10px;border-radius:6px;font-size:12px;margin-top:6px;background:${bruto>=gm?'#f0fdf4':'#fff7ed'};color:${bruto>=gm?'#15803d':'#c2410c'}">${bruto>=gm?'✓':'↓'} Gem. marge ${esc(item.categorie)}: ${eur(gm)} — jouw marge: ${eur(bruto)}</div>`;
+  }
+  prevEl.innerHTML=warn+`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd)">
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Verkoopprijs</span><span>${eur(vp)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Inkoopprijs</span><span>−${eur(item.prijs)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:${bruto>=0?'var(--gn)':'var(--rd)'}"><span>Bruto marge</span><span>${eur(bruto)}</span></div>
+    ${imp>0?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--gn)"><span>+ Impregneer</span><span>+${eur(imp)}</span></div>`:''}
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Netto marge</span><span>${eur(netto)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
+  </div>${sw}`;
+}
+function volgendeFactuur(){
+  const jr=new Date().getFullYear();
+  const nrs=DB.verkopen.map(v=>{const m=v.factuur&&v.factuur.match(/NJB-\d{4}-(\d+)/);return m?parseInt(m[1],10):0;});
+  return`NJB-${jr}-${String((nrs.length?Math.max(...nrs):0)+1).padStart(3,'0')}`;
+}
+function bevestigVk(){
+  const item=_vkId?DB.items.find(x=>x.id===_vkId):null;if(!item)return;
+  const vpStr=val('vk-vp').trim(),vp=parseFloat(vpStr);
+  if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
+  const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
+  const imp=chk('vk-imp')?fval('vk-imp-p'):0;
+  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  let termijnen=[];
+  if(type==='aanbetaling'){
+    const abed=fval('vk-abed');
+    if(abed<=0){toast('Vul een aanbetalingsbedrag in','#dc2626');return;}
+    if(abed>vp){toast('Aanbetaling kan niet hoger zijn dan verkoopprijs','#dc2626');return;}
+    const rdat=val('vk-rdat');if(!rdat){toast('Vul een verwachte leverdatum in','#dc2626');return;}
+    const adat=val('vk-adat')||vandaag();
+    const abet=(document.querySelector('input[name="vk-abet"]:checked')||{}).value||'pin';
+    const rbet=(document.querySelector('input[name="vk-rbet"]:checked')||{}).value||'pin';
+    const rbed=Math.max(0,vp-abed);
+    termijnen=[
+      {id:uid(),nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:abet,betaald:true,betaaldOp:adat,label:'Aanbetaling'},
+      ...(rbed>0?[{id:uid(),nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:rbet,betaald:false,betaaldOp:null,label:'Restbetaling bij levering'}]:[])
+    ];
+  } else if(type==='termijn'){
+    const n=Math.max(1,parseInt(val('vk-nterm'))||3);
+    for(let t=0;t<n;t++) termijnen.push({id:uid(),nr:t+1,bedrag:fval('t-bed-'+t),vervaldatum:val('t-dat-'+t)||vandaag(),betaalmethode:val('t-bet-'+t)||'pin',betaald:chk('t-ok-'+t),betaaldOp:chk('t-ok-'+t)?vandaag():null,label:`Termijn ${t+1}`});
+    const som=termijnen.reduce((a,t)=>a+t.bedrag,0);
+    if(Math.abs(som-vp)>0.02)toast(`⚠️ Som termijnen (${eur(som)}) wijkt af van verkoopprijs (${eur(vp)})`,'#c2410c');
+  } else {
+    const bet=(document.querySelector('input[name="vk-bet"]:checked')||{}).value||'pin';
+    termijnen=[{id:uid(),nr:1,bedrag:vp,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
+  }
+  DB.verkopen.push({id:uid(),itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),factuur:val('vk-fac')||volgendeFactuur(),datum:val('vk-dat')||vandaag(),type,termijnen,impregneer:imp,brutoMarge:bruto,nettoMarge:netto,btw,nettoNaBtw:nNaBtw,datum_registratie:new Date().toISOString()});
+  item.status='verkocht';
+  slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
+  setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
+}
+
+// ── TERMIJN AFVINKEN ─────────────────────────────────────────────
+let _betaalVkId=null,_betaalTermId=null;
+function toggleTermijn(vkId,termId){
+  const vk=DB.verkopen.find(v=>v.id===vkId);if(!vk||!Array.isArray(vk.termijnen))return;
+  const t=vk.termijnen.find(x=>x.id===termId);if(!t)return;
+  if(t.betaald){
+    if(!confirm('Termijn terugzetten naar openstaand?'))return;
+    t.betaald=false;t.betaaldOp=null;t.notitie='';
+    slaOp();renderDebiteuren();renderDash();toast('Termijn heropend','#2563eb');
+  } else {
+    _betaalVkId=vkId;_betaalTermId=termId;
+    el('m-betaaldat-body').innerHTML=`
+      <div class="fg" style="margin-bottom:10px"><label class="r">Betaaldatum</label><input type="date" id="bd-dat" value="${vandaag()}"></div>
+      <div class="fg" style="margin-bottom:14px"><label>Notitie (optioneel)</label><input id="bd-not" placeholder='bijv. "contant ontvangen bij levering"'></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-or" onclick="bevestigBetaaldat()">✓ Markeer als betaald</button>
+        <button class="btn btn-gy" onclick="sluitModal('m-betaaldat')">Annuleer</button>
+      </div>`;
+    openModal('m-betaaldat');
+  }
+}
+function bevestigBetaaldat(){
+  const vk=DB.verkopen.find(v=>v.id===_betaalVkId);if(!vk)return;
+  const t=vk.termijnen.find(x=>x.id===_betaalTermId);if(!t)return;
+  t.betaald=true;t.betaaldOp=val('bd-dat')||vandaag();t.notitie=val('bd-not').trim();
+  slaOp();renderDebiteuren();renderDash();sluitModal('m-betaaldat');toast('✓ Betaald gemarkeerd','#2563eb');
+}
+
+// ── DEBITEUREN ────────────────────────────────────────────────────
+function renderDebiteuren(){
+  const nu=new Date();
+  const mS=off=>new Date(nu.getFullYear(),nu.getMonth()+off,1);
+  const mE=off=>new Date(nu.getFullYear(),nu.getMonth()+off+1,0,23,59,59,999);
+  let openBed=0,achtBed=0,mnd0=0,mnd1=0,mnd2=0,ytdBed=0;
+  let totTermijnen=0,opTijd=0,teLaat=0;
+  const rows=[];
+  DB.verkopen.forEach(vk=>{
+    const item=DB.items.find(x=>x.id===vk.itemId);
+    (vk.termijnen||[]).forEach(t=>{
+      if(t.betaald){
+        const d=new Date(t.betaaldOp||vk.datum);if(!isNaN(d)&&d.getFullYear()===nu.getFullYear())ytdBed+=t.bedrag;
+        if(t.betaaldOp&&t.vervaldatum){totTermijnen++;new Date(t.betaaldOp)<=new Date(t.vervaldatum)?opTijd++:teLaat++;}
+        return;
+      }
+      openBed+=t.bedrag;
+      const vd=new Date(t.vervaldatum);
+      const dtl=!isNaN(vd)?Math.max(0,Math.floor((nu-vd)/86400000)):0;
+      if(dtl>0)achtBed+=t.bedrag;
+      if(!isNaN(vd)){if(vd>=mS(0)&&vd<=mE(0))mnd0+=t.bedrag;if(vd>=mS(1)&&vd<=mE(1))mnd1+=t.bedrag;if(vd>=mS(2)&&vd<=mE(2))mnd2+=t.bedrag;}
+      rows.push({vk,item,t,dtl});
+    });
+  });
+  el('deb-acht').textContent=eur(achtBed);el('deb-open').textContent=eur(openBed);
+  el('deb-mnd0').textContent=eur(mnd0);el('deb-mnd1').textContent=eur(mnd1);
+  el('deb-mnd2').textContent=eur(mnd2);el('deb-ytd').textContent=eur(ytdBed);
+  // Betaalgedrag statistiek
+  if(totTermijnen>0){
+    const pctOpTijd=Math.round((opTijd/totTermijnen)*100);const pctTeLaat=100-pctOpTijd;
+    el('deb-stats').innerHTML=`<div style="display:flex;align-items:center;gap:12px;background:#f9fafb;border-radius:8px;padding:10px 14px;border:1px solid var(--bd);flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700;color:var(--gr)">Betaalgedrag (${totTermijnen} betalingen):</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--gn)">✅ Op tijd: ${opTijd} (${pctOpTijd}%)</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--rd)">⏰ Te laat: ${teLaat} (${pctTeLaat}%)</span>
+      <div style="flex:1;min-width:100px"><div style="background:#e5e7eb;border-radius:4px;height:8px;overflow:hidden"><div style="height:100%;background:var(--gn);width:${pctOpTijd}%;border-radius:4px"></div></div></div>
+    </div>`;
+  } else { el('deb-stats').innerHTML=''; }
+  if(!rows.length){el('deb-lijst').innerHTML='<div class="alert alert-ok">✓ Geen openstaande betalingen</div>';return;}
+  rows.sort((a,b)=>b.dtl-a.dtl);
+  el('deb-lijst').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Item</th><th>Omschrijving</th><th>Bedrag</th><th>Vervaldatum</th><th>Status</th><th>✓</th></tr></thead>
+    <tbody>${rows.map(r=>{
+      const kl=r.dtl>30?'chip-rd':r.dtl>0?'chip-or':'chip-bl';
+      const st=r.dtl>0?`${r.dtl}d te laat`:'openstaand';
+      const lbl=r.t.label||`Termijn ${r.t.nr}`;
+      return`<tr>
+        <td><strong>${esc(r.item?.naam||'?')}</strong></td>
+        <td>${r.t.label==='Restbetaling bij levering'?'🚚 ':''}${esc(lbl)}${r.t.notitie?`<br><span style="font-size:11px;color:var(--gr);font-style:italic">📝 ${esc(r.t.notitie)}</span>`:''}</td>
+        <td>${eur(r.t.bedrag)}</td><td>${fmtD(r.t.vervaldatum)}</td>
+        <td><span class="chip ${kl}">${st}</span></td>
+        <td style="text-align:center"><input type="checkbox" onchange="toggleTermijn('${esc(r.vk.id)}','${esc(r.t.id)}')" title="Markeer als betaald"></td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+// ── VASTE LASTEN ──────────────────────────────────────────────────
+let _lastenEditId=null;
+function openLastenModal(id){
+  _lastenEditId=id;const l=id?DB.lasten.find(x=>x.id===id):null;
+  el('m-last-titel').textContent=id?'✏️ Last bewerken':'💸 Vaste last toevoegen';
+  el('m-last-body').innerHTML=`
+    <div class="fgrid">
+      <div class="fg"><label class="r">Naam</label><input id="vl-naam" value="${esc(l?.naam||'')}" placeholder="bijv. Huur loods"></div>
+      <div class="fg"><label class="r">Bedrag (€)</label><input type="number" id="vl-bed" value="${l?.bedrag||''}" min="0" step="0.01"></div>
+      <div class="fg"><label>BTW %</label><select id="vl-btwp"><option value="0"${(!l||l.btwPct===0||l.btwPct===undefined)?' selected':''}>0%</option><option value="9"${l?.btwPct===9?' selected':''}>9%</option><option value="21"${l?.btwPct===21?' selected':''}>21%</option></select></div>
+      <div class="fg"><label>Incl/excl BTW</label><select id="vl-btwtype"><option value="excl"${(!l||l.btwType==='excl'||!l.btwType)?' selected':''}>Exclusief BTW</option><option value="incl"${l?.btwType==='incl'?' selected':''}>Inclusief BTW</option></select></div>
+      <div class="fg"><label>Betaalmethode</label><select id="vl-betm"><option value="pin"${(!l||l.betaalmethode==='pin')?' selected':''}>Pin</option><option value="overschrijving"${l?.betaalmethode==='overschrijving'?' selected':''}>Overschrijving</option><option value="incasso"${l?.betaalmethode==='incasso'?' selected':''}>Incasso</option><option value="contant"${l?.betaalmethode==='contant'?' selected':''}>Contant</option></select></div>
+      <div class="fg"><label>Betaaldatum</label><input type="date" id="vl-dat" value="${l?.betaaldatum||vandaag()}"></div>
+      <div class="fg"><label>Type kosten</label><select id="vl-type"><option value="vast"${(!l||l.typeKosten!=='variabel')?' selected':''}>Vast</option><option value="variabel"${l?.typeKosten==='variabel'?' selected':''}>Variabel</option></select></div>
+    </div>
+    <div style="display:flex;gap:16px;margin:12px 0;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="vl-rec" ${l?.terugkerend?'checked':''}> 🔄 Terugkerend</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="vl-flu" ${l?.fluctuerend?'checked':''}> Fluctuerend</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="vl-betok" ${l?.betaald!==false?'checked':''}> ✓ Betaald</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="vl-act" ${l?.actief!==false?'checked':''}> Actief</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-or" onclick="slaLastOp()">💾 Opslaan</button>
+      <button class="btn btn-gy" onclick="sluitModal('m-last')">Annuleer</button>
+    </div>`;
+  openModal('m-last');
+}
+function slaLastOp(){
+  const naam=val('vl-naam').trim(),bed=fval('vl-bed');
+  if(!naam||bed<=0){toast('Vul naam en een positief bedrag in','#dc2626');return;}
+  const bestaand=_lastenEditId?DB.lasten.find(x=>x.id===_lastenEditId):null;
+  const data={id:_lastenEditId||uid(),naam,bedrag:bed,btwPct:parseInt(val('vl-btwp'))||0,btwType:val('vl-btwtype')||'excl',betaalmethode:val('vl-betm'),betaaldatum:val('vl-dat'),typeKosten:val('vl-type')||'vast',terugkerend:chk('vl-rec'),fluctuerend:chk('vl-flu'),betaald:chk('vl-betok'),actief:chk('vl-act'),aangemaaktOp:bestaand?.aangemaaktOp||new Date().toISOString()};
+  if(_lastenEditId){const idx=DB.lasten.findIndex(x=>x.id===_lastenEditId);if(idx>=0)DB.lasten[idx]=data;else DB.lasten.push(data);}
+  else DB.lasten.push(data);
+  slaOp();renderLasten();renderDash();sluitModal('m-last');toast(_lastenEditId?'✏️ Last bijgewerkt':'✚ Last toegevoegd');
+}
+async function verwijderLast(id){if(!confirm('Vaste last definitief verwijderen?'))return;try{await _sb.from('lasten').delete().eq('id',id);}catch(e){toast('⚠️ Mislukt','#dc2626');return;}DB.lasten=DB.lasten.filter(x=>x.id!==id);renderLasten();renderDash();toast('🗑️ Last verwijderd','#6b7280');}
+function renderLasten(){
+  const actief=DB.lasten.filter(l=>l.actief!==false);
+  const tot=actief.reduce((a,l)=>a+l.bedrag,0),bet=actief.filter(l=>l.betaald).reduce((a,l)=>a+l.bedrag,0);
+  el('vl-tot').textContent=eur(tot);el('vl-bet').textContent=eur(bet);el('vl-open').textContent=eur(tot-bet);
+  if(!DB.lasten.length){el('lasten-lijst').innerHTML='<div class="alert alert-info">ℹ️ Nog geen vaste lasten ingevoerd.</div>';return;}
+  const vast=actief.filter(l=>l.typeKosten!=='variabel'),variabel=actief.filter(l=>l.typeKosten==='variabel'),inactief=DB.lasten.filter(l=>l.actief===false);
+  const tblH=items=>`<div style="overflow-x:auto"><table class="tbl" style="margin-bottom:8px"><thead><tr><th>Naam</th><th>Bedrag</th><th>BTW</th><th>Methode</th><th>Betaaldatum</th><th>Status</th><th></th></tr></thead><tbody>${items.map(l=>`<tr><td><strong>${esc(l.naam)}</strong>${l.terugkerend?' 🔄':''}</td><td>${eur(l.bedrag)}</td><td>${l.btwPct||0}% ${esc(l.btwType||'excl')}</td><td>${esc(l.betaalmethode||'—')}</td><td>${fmtD(l.betaaldatum)}</td><td><span class="chip ${l.betaald?'chip-gn':'chip-or'}">${l.betaald?'Betaald':'Openstaand'}</span></td><td style="white-space:nowrap"><button class="btn btn-gy btn-xs" onclick="openLastenModal('${esc(l.id)}')">✏️</button> <button class="btn btn-rd btn-xs" onclick="verwijderLast('${esc(l.id)}')">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
+  const sectie=(titel,items,kleur)=>items.length===0?'':`<div style="font-size:12px;font-weight:700;color:${kleur};margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px">${titel} (${items.length})</div>${tblH(items)}`;
+  el('lasten-lijst').innerHTML=sectie('🔒 Vaste kosten',vast,'var(--or)')+sectie('📊 Variabele kosten',variabel,'var(--bl)')+(inactief.length?`<div style="font-size:12px;color:var(--gr);margin-top:8px">+ ${inactief.length} inactieve last(en) verborgen</div>`:'');
+}
+
+// ── EXCEL IMPORT ──────────────────────────────────────────────────
+let _importRijen=[];
+function importLastenExcel(evt){
+  const file=evt.target.files[0];evt.target.value='';if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      let rijen=[];const isCSV=file.name.toLowerCase().endsWith('.csv');
+      if(isCSV){
+        const tekst=e.target.result;const regels=tekst.split(/\r?\n/).filter(r=>r.trim());
+        if(regels.length<2){toast('Bestand is leeg','#dc2626');return;}
+        const headers=regels[0].split(',').map(h=>h.trim().toLowerCase().replace(/[\s/]/g,'_').replace('%','pct'));
+        rijen=regels.slice(1).map(regel=>{const cellen=regel.split(',').map(c=>c.trim().replace(/^"|"$/g,''));const obj={};headers.forEach((h,i)=>obj[h]=cellen[i]||'');return obj;}).filter(r=>Object.values(r).some(v=>v));
+      } else {
+        if(typeof XLSX==='undefined'){toast('SheetJS niet geladen — gebruik .csv','#dc2626');return;}
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        rijen=XLSX.utils.sheet_to_json(ws,{defval:''}).map(r=>{const norm={};Object.keys(r).forEach(k=>norm[k.toLowerCase().replace(/[\s/]/g,'_').replace('%','pct')]=r[k]);return norm;});
+      }
+      if(!rijen.length){toast('Geen gegevensrijen gevonden','#dc2626');return;}
+      const get=(obj,keys)=>{for(const k of keys){if(obj[k]!==undefined&&String(obj[k]).trim()!=='')return String(obj[k]).trim();}return'';};
+      const geldig=[],ongeldig=[];
+      rijen.forEach((r,idx)=>{
+        const naam=get(r,['naam','name','omschrijving','description']);
+        const bedrag=parseFloat(get(r,['bedrag','amount','prijs','price']).replace(',','.'));
+        if(!naam||isNaN(bedrag)||bedrag<=0){ongeldig.push(idx+2);return;}
+        const btwRaw=get(r,['btwpct','btw','vat','btw_pct']);
+        const btwPct=[0,9,21].includes(parseInt(btwRaw))?parseInt(btwRaw):0;
+        const btwType=get(r,['incl_excl','inclexcl','type_btw']).toLowerCase().includes('incl')?'incl':'excl';
+        const betRaw=get(r,['betaalmethode','betaalwijze','methode','payment']).toLowerCase();
+        const betaalmethode=betRaw.includes('over')||betRaw.includes('bank')?'overschrijving':betRaw.includes('inc')||betRaw.includes('auto')?'incasso':betRaw.includes('cont')||betRaw.includes('cash')?'contant':'pin';
+        const terugRaw=get(r,['terugkerend','recurring','herhalend']).toLowerCase();
+        const terugkerend=terugRaw.startsWith('j')||terugRaw==='1'||terugRaw==='true';
+        const typeRaw=get(r,['type','soort','categorie']).toLowerCase();
+        const typeKosten=typeRaw.includes('var')?'variabel':'vast';
+        geldig.push({naam,bedrag,btwPct,btwType,betaalmethode,terugkerend,typeKosten});
+      });
+      if(!geldig.length){toast('Geen geldige rijen — controleer Naam en Bedrag','#dc2626');return;}
+      _toonImportPreview(geldig,ongeldig);
+    }catch(err){toast('Fout bij inlezen: '+err.message,'#dc2626');}
+  };
+  if(file.name.toLowerCase().endsWith('.csv'))reader.readAsText(file,'UTF-8');else reader.readAsArrayBuffer(file);
+}
+function _toonImportPreview(rijen,ongeldig){
+  _importRijen=rijen;el('m-last-titel').textContent=`📂 Importeer ${rijen.length} lasten`;
+  el('m-last-body').innerHTML=`<div class="alert alert-info" style="margin-bottom:12px">✅ <strong>${rijen.length} rijen</strong> herkend. ${ongeldig.length?`⚠️ ${ongeldig.length} overgeslagen (rij ${ongeldig.slice(0,5).join(', ')}${ongeldig.length>5?'…':''}).`:''}</div>
+    <div style="overflow-x:auto;margin-bottom:14px"><table class="tbl"><thead><tr><th>Naam</th><th>Bedrag</th><th>BTW</th><th>Methode</th><th>Type</th><th>Skip</th></tr></thead><tbody>${rijen.map((r,i)=>`<tr><td>${esc(r.naam)}</td><td>${eur(r.bedrag)}</td><td>${r.btwPct}% ${r.btwType}</td><td>${esc(r.betaalmethode)}</td><td><span class="chip ${r.typeKosten==='vast'?'chip-or':'chip-gn'}">${r.typeKosten}</span></td><td style="text-align:center"><input type="checkbox" id="imp-skip-${i}"></td></tr>`).join('')}</tbody></table></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-or" onclick="_bevestigImport()">✅ Importeer</button><button class="btn btn-gy" onclick="sluitModal('m-last')">Annuleer</button></div>`;
+  openModal('m-last');
+}
+function _bevestigImport(){
+  const rijen=_importRijen;if(!rijen||!rijen.length)return;
+  let toegevoegd=0,gedupliceerd=0;const bestaandeNamen=DB.lasten.map(l=>l.naam.toLowerCase().trim());
+  rijen.forEach((r,i)=>{if(chk('imp-skip-'+i))return;if(bestaandeNamen.includes(r.naam.toLowerCase().trim()))gedupliceerd++;DB.lasten.push({id:uid(),naam:r.naam,bedrag:r.bedrag,btwPct:r.btwPct,btwType:r.btwType,betaalmethode:r.betaalmethode,betaaldatum:vandaag(),typeKosten:r.typeKosten,terugkerend:r.terugkerend,fluctuerend:false,betaald:true,actief:true,aangemaaktOp:new Date().toISOString()});toegevoegd++;});
+  _importRijen=[];slaOp();renderLasten();renderDash();sluitModal('m-last');
+  toast(gedupliceerd>0?`✅ ${toegevoegd} geïmporteerd (${gedupliceerd} mogelijk dubbel)`:`✅ ${toegevoegd} lasten geïmporteerd`);
+}
+
+// ── INSTELLINGEN (target + gem marge) ────────────────────────────
+let _instellingen = { inkoopTarget:3, gemMargeOverride:null };
+function laadInstellingen(){/* geladen via laadAllesVanDB */}
+function slaInstellingenOp(){dbSaveInstellingen();}
+laadInstellingen();
+
+function getGemMarge(){
+  // Gebruik override als ingesteld, anders bereken uit historische data
+  if(_instellingen.gemMargeOverride&&_instellingen.gemMargeOverride>0) return{waarde:_instellingen.gemMargeOverride,bron:'handmatig'};
+  const marges=DB.verkopen.map(v=>v.brutoMarge||0).filter(m=>m>0);
+  if(!marges.length) return{waarde:400,bron:'standaard'};
+  return{waarde:Math.round(marges.reduce((a,b)=>a+b,0)/marges.length),bron:`${marges.length} verkopen`};
+}
+
+// ── INKOOP TARGET (los blok) ──────────────────────────────────────
+function renderInkoopTarget(){
+  const TARGET=_instellingen.inkoopTarget||3;
+  const nu=new Date();
+  const{wk:hWk,jr:hJr}=isoWeek(nu);
+  const maH=maandagVanWeek(hJr,hWk);
+  const zoH=new Date(maH);zoH.setUTCDate(maH.getUTCDate()+6);zoH.setUTCHours(23,59,59,999);
+  const inkopenDW=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=maH&&d<=zoH;}).length;
+  const{wk:vWk,jr:vJr}=vorigeWeek(hWk,hJr);
+  const maV=maandagVanWeek(vJr,vWk);
+  const zoV=new Date(maV);zoV.setUTCDate(maV.getUTCDate()+6);zoV.setUTCHours(23,59,59,999);
+  const inkopenVW=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=maV&&d<=zoV;}).length;
+  const dagVW=((nu.getDay()||7)-1);
+  const dagenRestW=6-dagVW;
+  const haalbaar=inkopenDW>=TARGET||(TARGET-inkopenDW)<=dagenRestW;
+  const tKleur=haalbaar?'var(--or)':'#991b1b';
+  const tBdr=haalbaar?'#fde8d0':'#fecdd3';
+  const tBg=haalbaar?'var(--orl)':'#fff1f2';
+  el('inkoop-target').innerHTML=`<div class="db-card" style="background:${tBg};border-color:${tBdr};margin-bottom:0">
+    <div class="db-card-title" style="border-color:${tKleur};color:${tKleur}">📥 Inkoop target — week ${hWk}</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="text-align:center"><div style="font-size:36px;font-weight:900;color:${tKleur}">${inkopenDW}/${TARGET}</div><div style="font-size:12px;color:var(--gr)">deze week</div></div>
+      <div style="flex:1">
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          ${Array.from({length:TARGET},(_,i)=>`<div style="width:32px;height:32px;border-radius:50%;background:${i<inkopenDW?tKleur:'#e5e7eb'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px">${i<inkopenDW?'✓':''}</div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--gr)">Vorige week: <strong>${inkopenVW}/${TARGET}</strong> ${inkopenVW>=TARGET?'✓':'✗'} &nbsp;·&nbsp; Nog ${dagenRestW} dag${dagenRestW!==1?'en':''} deze week</div>
+        ${!haalbaar?`<div style="font-size:12px;font-weight:700;color:#991b1b;margin-top:4px">⚠️ Target waarschijnlijk niet haalbaar deze week</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        <label style="font-size:11px;color:var(--gr)">Target/week</label>
+        <input type="number" min="1" max="20" value="${TARGET}"
+          style="width:60px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:14px;font-weight:700;text-align:center;background:var(--wd);color:var(--dk);outline:none"
+          onchange="setInkoopTarget(this.value)">
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────
+let _periodeType='week',_periodeOffset=0;
+
+function isoWeek(d){
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const dag=dt.getUTCDay()||7;dt.setUTCDate(dt.getUTCDate()+4-dag);
+  const nj=new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+  return{wk:Math.ceil((((dt-nj)/86400000)+1)/7),jr:dt.getUTCFullYear()};
+}
+function maandagVanWeek(jr,wk){
+  // Gecorrigeerde versie: werkt correct voor wk=1 en wk=52/53
+  const jan4=new Date(Date.UTC(jr,0,4)),dag=jan4.getUTCDay()||7;
+  const ma=new Date(jan4);ma.setUTCDate(jan4.getUTCDate()-(dag-1)+(wk-1)*7);return ma;
+}
+function vorigeWeek(wk,jr){
+  // Bug fix: correcte vorige week berekening zonder underflow
+  if(wk>1) return{wk:wk-1,jr};
+  // Week 1 → laatste week van vorig jaar
+  const dec28=new Date(Date.UTC(jr-1,11,28));
+  const{wk:lwk}=isoWeek(dec28);
+  return{wk:lwk,jr:jr-1};
+}
+
+function _periodeRange(){
+  const nu=new Date();
+  if(_periodeType==='week'){
+    const{wk,jr}=isoWeek(nu);
+    let w=wk+_periodeOffset,j=jr;
+    while(w<1){j--;const dec28=new Date(Date.UTC(j,11,28));w=isoWeek(dec28).wk+w;}
+    while(w>52){const dec28=new Date(Date.UTC(j,11,28));const maxWk=isoWeek(dec28).wk;if(w>maxWk){w-=maxWk;j++;}else break;}
+    const ma=maandagVanWeek(j,w);
+    const zo=new Date(ma);zo.setUTCDate(ma.getUTCDate()+6);zo.setUTCHours(23,59,59,999);
+    return{van:ma,tot:zo,wk:w,jr:j,type:'week'};
+  } else if(_periodeType==='jaar'){
+    const jr=nu.getFullYear()+_periodeOffset;
+    return{van:new Date(Date.UTC(jr,0,1)),tot:new Date(Date.UTC(jr,11,31,23,59,59,999)),jr,type:'jaar'};
+  } else {
+    let mn=nu.getMonth()+_periodeOffset,jr=nu.getFullYear();
+    while(mn<0){mn+=12;jr--;}while(mn>11){mn-=12;jr++;}
+    return{van:new Date(Date.UTC(jr,mn,1)),tot:new Date(Date.UTC(jr,mn+1,0,23,59,59,999)),mn,jr,type:'maand'};
+  }
+}
+function _periodeLbl(r){
+  if(r.type==='week'){const ma=r.van,zo=r.tot;return`Week ${r.wk} — ${pad(ma.getUTCDate())}-${pad(ma.getUTCMonth()+1)} t/m ${pad(zo.getUTCDate())}-${pad(zo.getUTCMonth()+1)}-${zo.getUTCFullYear()}`;}
+  if(r.type==='jaar')return'Jaaroverzicht '+r.jr;
+  return MN[r.mn]+' '+r.jr;
+}
+function _vorigePeriodeRange(){
+  const orig=_periodeOffset;_periodeOffset-=1;const v=_periodeRange();_periodeOffset=orig;return v;
+}
+function _ontvangenInRange(van,tot){
+  let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d>=van&&d<=tot)s+=t.bedrag;});});return s;
+}
+function _vkInRange(van,tot){return DB.verkopen.filter(v=>{const d=new Date(v.datum);return!isNaN(d)&&d>=van&&d<=tot;});}
+
+// Afstortverlies: gebruik afgestortOp indien aanwezig, anders datum van het item
+function _afstortVerliesInRange(van,tot){
+  return DB.items.filter(i=>{
+    if(i.status!=='afgestort')return false;
+    // Gebruik afgestortOp als beschikbaar, anders inkoopdatum als fallback
+    const datumStr=i.afgestortOp||i.datum;
+    if(!datumStr)return false;
+    const d=new Date(datumStr);
+    return!isNaN(d)&&d>=van&&d<=tot;
+  }).reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
+}
+
+function _calcPeriode(van,tot){
+  const vkSel=_vkInRange(van,tot);
+  const ontvangen=_ontvangenInRange(van,tot);
+  const inkwSel=vkSel.reduce((a,v)=>{const i=DB.items.find(x=>x.id===v.itemId);return a+(i?i.prijs:0);},0);
+  const bruto=ontvangen-inkwSel;
+  const btw=vkSel.reduce((a,v)=>a+(v.btw||0),0);
+  const afstortVerlies=_afstortVerliesInRange(van,tot);
+  const lastenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
+  const lastenP=_periodeType==='week'?lastenM/4.33:_periodeType==='jaar'?lastenM*12:lastenM;
+  const netto=bruto-btw-afstortVerlies;
+  const nNaLasten=netto-lastenP;
+  const beschikbaar=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
+  const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
+  const btwKosten=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
+  const btwSaldo=btw-btwKosten;
+  const inkopen=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen};
+}
+
+function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
+function jaarOntvangenOmzet(jr){let s=0;for(let m=0;m<12;m++)s+=ontvangenOmzet(jr,m);return s;}
+
+function setInkoopTarget(v){const n=Math.max(1,Math.min(20,parseInt(v)||3));_instellingen.inkoopTarget=n;slaInstellingenOp();renderInkoopTarget();renderDash();}
+function setGemMarge(v){const n=parseFloat(v);_instellingen.gemMargeOverride=(!isNaN(n)&&n>0)?n:null;slaInstellingenOp();renderDash();}
+
+function setPeriode(type){
+  _periodeType=type;_periodeOffset=0;
+  ['week','maand','jaar'].forEach(t=>{const b=el('tog-'+t);if(b){b.style.background=t===type?'var(--or)':'transparent';b.style.color=t===type?'#fff':'var(--gr)';}});
+  renderDash();
+}
+function chPeriode(d){_periodeOffset+=d;renderDash();}
+
+function renderDash(){
+  const range=_periodeRange();
+  el('periode-lbl').textContent=_periodeLbl(range);
+  _renderKpiWarns(range);
+  _renderDashMain(range);
+}
+
+function _renderKpiWarns(range){
+  const{beschikbaar,openBed,nNaLasten,lastenP,afstortVerlies}=_calcPeriode(range.van,range.tot);
+  const warns=[];
+  const lang=beschikbaar.filter(i=>dgl(i.datum)>45);
+  if(lang.length)warns.push({l:'r',m:`⏰ ${lang.length} item(s) staan langer dan 45 dagen in voorraad`});
+  if(openBed>500)warns.push({l:'o',m:`💳 ${eur(openBed)} aan openstaande betalingen`});
+  if(lastenP>0&&nNaLasten<0)warns.push({l:'r',m:`📉 Negatief resultaat: ${eur(nNaLasten)} (lasten: ${eur(lastenP)})`});
+  if(afstortVerlies>0)warns.push({l:'o',m:`🚮 ${eur(afstortVerlies)} verlies door afgestorte items`});
+  el('kpi-warns').innerHTML=warns.map(w=>`<div class="kpi-warn kpi-${w.l}">${w.m}</div>`).join('');
+}
+
+function _trEur(a,b){
+  // Bescherm tegen undefined/NaN vergelijkingen
+  if(typeof a!=='number'||typeof b!=='number'||isNaN(a)||isNaN(b))return'';
+  if(a>b)return`<span class="tup">▲ +${eur(a-b)}</span>`;
+  if(a<b)return`<span class="tdn">▼ −${eur(b-a)}</span>`;
+  return'';
+}
+
+function _renderDashMain(range){
+  const nu=new Date();
+  const cur=_calcPeriode(range.van,range.tot);
+  const vRng=_vorigePeriodeRange();
+  const prv=_calcPeriode(vRng.van,vRng.tot);
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen}=cur;
+  const inkW=beschikbaar.reduce((a,i)=>a+i.prijs,0);
+  const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
+
+  // ── KPI blokken ───────────────────────────────────────────────
+  const kpis=`<div class="mgrid">
+    <div class="mc green"><div class="ml">💰 Omzet ontvangen</div><div class="mv">${eur(ontvangen)}</div><div class="mt">${_trEur(ontvangen,prv.ontvangen)}</div></div>
+    <div class="mc"><div class="ml">📈 Bruto marge</div><div class="mv">${eur(bruto)}</div><div class="mt">${ontvangen>0?pct(bruto,ontvangen):''} ${_trEur(bruto,prv.bruto)}</div></div>
+    <div class="mc ${netto>=0?'':'red'}"><div class="ml">✅ Netto marge</div><div class="mv" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
+    <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">🧾 BTW saldo</div><div class="mv">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
+    <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">🏢 Netto na lasten</div><div class="mv" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
+    ${afstortVerlies>0?`<div class="mc red"><div class="ml">🚮 Afstortverlies</div><div class="mv">${eur(afstortVerlies)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. stortkosten</div></div>`:''}
+    <div class="mc ${openBed>0?'red':'green'}"><div class="ml">📋 Openstaand</div><div class="mv">${eur(openBed)}</div><div class="mt" style="color:var(--gr)">termijnen</div></div>
+  </div>`;
+
+  // ── Projected (huidige maand in maandweergave, huidig jaar in jaarweergave) ──
+  let projHTML='';
+  if(_periodeType==='week'){
+    // Hint: switch naar maand voor projected
+    projHTML=`<div class="db-card" style="border-color:#c4b5fd;background:#f5f3ff;text-align:center;padding:18px">
+      <div style="font-size:13px;color:#5b21b6;font-weight:600">🔮 Projected beschikbaar in de <strong>Maand</strong>- en <strong>Jaar</strong>-weergave</div>
+      <button class="btn btn-sm" style="margin-top:8px;background:#7c3aed;color:#fff" onclick="setPeriode('maand')">→ Bekijk maandoverzicht</button>
+    </div>`;
+  }
+  if(_periodeType==='maand'){
+    const jr2=nu.getFullYear(),mn2=nu.getMonth();
+    if(range.mn===mn2&&range.jr===jr2){
+      const dagVdMaand=nu.getDate();
+      const dagenInMaand=new Date(jr2,mn2+1,0).getDate();
+      const dagenRestMnd=dagenInMaand-dagVdMaand;
+      const gemDagMarge=dagVdMaand>0?bruto/dagVdMaand:0;
+      // Projected marge-aandeel van openstaande termijnen deze maand
+      let termijnenMarge=0;
+      DB.verkopen.forEach(vk=>{
+        (vk.termijnen||[]).filter(t=>!t.betaald&&t.vervaldatum).forEach(t=>{
+          const vd=new Date(t.vervaldatum);
+          if(!isNaN(vd)&&vd.getFullYear()===jr2&&vd.getMonth()===mn2&&vd>nu){
+            const vpVk=vk.verkoopprijs||0;
+            const bmVk=vk.brutoMarge||0;
+            if(vpVk>0) termijnenMarge+= bmVk*(t.bedrag/vpVk);
+          }
+        });
+      });
+      const projBruto=bruto+(gemDagMarge*dagenRestMnd)+termijnenMarge;
+      const projBtw=projBruto/1.21*0.21;
+      const projNetto=projBruto-projBtw;
+      const lastenM2=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
+      const projNaLasten=projNetto-lastenM2;
+      const {waarde:GEM_MARGE,bron:gemBron}=getGemMarge();
+      const tekort=Math.max(0,lastenM2-projNetto);
+      const salesToGo=tekort>0?Math.ceil(tekort/GEM_MARGE):0;
+      projHTML=_projectedCard('einde '+MN[mn2],dagVdMaand,dagenInMaand,dagenRestMnd,gemDagMarge,projBruto,projNetto,projNaLasten,lastenM2,salesToGo,GEM_MARGE,gemBron);
+    }
+  }
+  if(_periodeType==='jaar'){
+    const jr2=nu.getFullYear();
+    if(range.jr===jr2){
+      const startJaar=new Date(jr2,0,1);
+      const eindeJaar=new Date(jr2,11,31);
+      const dagVdJaar=Math.floor((nu-startJaar)/86400000)+1;
+      const dagenInJaar=Math.floor((eindeJaar-startJaar)/86400000)+1;
+      const dagenRestJaar=Math.max(0,dagenInJaar-dagVdJaar);
+      const gemDagMarge=dagVdJaar>0?bruto/dagVdJaar:0;
+      let termijnenMarge=0;
+      DB.verkopen.forEach(vk=>{
+        (vk.termijnen||[]).filter(t=>!t.betaald&&t.vervaldatum).forEach(t=>{
+          const vd=new Date(t.vervaldatum);
+          if(!isNaN(vd)&&vd.getFullYear()===jr2&&vd>nu){
+            const vpVk=vk.verkoopprijs||0;const bmVk=vk.brutoMarge||0;
+            if(vpVk>0) termijnenMarge+=bmVk*(t.bedrag/vpVk);
+          }
+        });
+      });
+      const projBruto=bruto+(gemDagMarge*dagenRestJaar)+termijnenMarge;
+      const projBtw=projBruto/1.21*0.21;
+      const projNetto=projBruto-projBtw;
+      const lastenJaar=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0)*12;
+      const projNaLasten=projNetto-lastenJaar;
+      const {waarde:GEM_MARGE,bron:gemBron}=getGemMarge();
+      const tekort=Math.max(0,lastenJaar-projNetto);
+      const salesToGo=tekort>0?Math.ceil(tekort/GEM_MARGE):0;
+      projHTML=_projectedCard('einde '+jr2,dagVdJaar,Math.round(dagenInJaar),dagenRestJaar,gemDagMarge,projBruto,projNetto,projNaLasten,lastenJaar,salesToGo,GEM_MARGE,gemBron);
+    }
+  }
+
+  // ── Waterval ─────────────────────────────────────────────────
+  const stappen=[
+    {lbl:'Omzet ontvangen',   val:ontvangen,           kleur:'var(--bl)',                           vet:false},
+    {lbl:'− Inkoopwaarde',    val:-(ontvangen-bruto),   kleur:'var(--rd)',                           vet:false},
+    {lbl:'= Bruto marge',     val:bruto,               kleur:'var(--or)',                           vet:true },
+    {lbl:'− BTW winstmarge',  val:-btw,                kleur:'var(--rd)',                           vet:false},
+    ...(afstortVerlies>0?[{lbl:'− Afstortverlies',val:-afstortVerlies,kleur:'var(--rd)',vet:false}]:[]),
+    {lbl:'= Netto marge',     val:netto,               kleur:netto>=0?'var(--gn)':'var(--rd)',       vet:true },
+    {lbl:'− Vaste lasten',    val:-lastenP,            kleur:'var(--rd)',                           vet:false},
+    {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true }
+  ];
+  const maxAbs=Math.max(...stappen.map(s=>Math.abs(s.val)),1);
+  const waterval=`<div class="db-card"><div class="db-card-title">💧 Marge-kosten overzicht</div>
+    ${stappen.map(s=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="width:160px;font-size:12px;flex-shrink:0;font-weight:${s.vet?700:400}">${s.lbl}</span>
+      <div style="flex:1;background:#f3f4f6;border-radius:4px;height:18px;overflow:hidden">
+        <div style="height:100%;border-radius:4px;background:${s.kleur};width:${s.val!==0?Math.max((Math.abs(s.val)/maxAbs)*100,2).toFixed(1):0}%;opacity:.85"></div>
+      </div>
+      <span style="width:82px;text-align:right;font-size:13px;font-weight:${s.vet?700:400};color:${s.val>=0?'var(--dk)':'var(--rd)'};flex-shrink:0">${s.val>=0?eur(s.val):'−'+eur(-s.val)}</span>
+    </div>`).join('')}
+  </div>`;
+
+  // ── Inkoop blok ───────────────────────────────────────────────
+  const inkoopBlok=`<div class="db-card" style="border-left:4px solid var(--or)">
+    <div class="db-card-title">📥 Inkoop deze periode</div>
+    <div class="mgrid" style="margin-bottom:0">
+      <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv">${inkopen.length}</div></div>
+      <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv">${eur(inkBed)}</div></div>
+      <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
+      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items</div></div>
+    </div>
+  </div>`;
+
+  const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'📅 Omzet per week (12 weken)':_periodeType==='jaar'?'📅 Omzet per maand — '+range.jr:'📅 Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
+
+  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek+_lsWarning();
+}
+
+function _projectedCard(label,dagNr,totDagen,restDagen,gemDag,projBruto,projNetto,projNaLasten,lasten,salesToGo,GEM_MARGE,gemBron){
+  return`<div class="db-card" style="border-color:#c4b5fd;background:#f5f3ff">
+    <div class="db-card-title" style="border-color:#7c3aed;color:#5b21b6">🔮 Projected — ${label}</div>
+    <div style="font-size:11px;color:#6b7280;margin-bottom:10px">Dag ${dagNr} van ${totDagen} · Gem. ${eur(gemDag)}/dag · ${restDagen} dagen resterend</div>
+    <div class="mgrid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">
+      <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #e9d5ff">
+        <div class="ml" style="color:#7c3aed">Projected bruto marge</div>
+        <div class="mv" style="color:${projBruto>=0?'var(--gn)':'var(--rd)'}">${eur(projBruto)}</div>
+      </div>
+      <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #e9d5ff">
+        <div class="ml" style="color:#7c3aed">Projected netto (na BTW)</div>
+        <div class="mv" style="color:${projNetto>=0?'var(--gn)':'var(--rd)'}">${eur(projNetto)}</div>
+      </div>
+      <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #e9d5ff">
+        <div class="ml" style="color:#7c3aed">Projected netto na lasten</div>
+        <div class="mv" style="color:${projNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(projNaLasten)}</div>
+        <div class="mt" style="color:var(--gr)">${lasten>0?'lasten: '+eur(lasten):''}</div>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e9d5ff;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      ${salesToGo>0
+        ?'<span style="font-size:22px;font-weight:900;color:#7c3aed">'+salesToGo+'</span><span style="font-size:13px;color:#5b21b6;font-weight:600">verkopen nog nodig om quitte te draaien</span>'
+        :'<span style="font-size:18px">✅</span><span style="font-size:13px;color:var(--gn);font-weight:700">Lasten gedekt! Projected winstgevend.</span>'}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;color:#7c3aed">Gem. marge per verkoop:</span>
+      <input type="number" min="1" step="1" value="${GEM_MARGE}"
+        style="width:80px;border:1.5px solid #c4b5fd;border-radius:6px;padding:4px 7px;font-size:13px;font-weight:700;color:#5b21b6;background:#fff;outline:none"
+        onchange="setGemMarge(this.value)">
+      <span style="font-size:11px;color:#9ca3af">o.b.v. ${gemBron}</span>
+    </div>
+  </div>`;
+}
+
+function _staafMaand(range){
+  // Works for both maand and jaar mode
+  if(range.type==='week')return'';
+  const data=[];
+  if(range.type==='jaar'){
+    for(let m=0;m<12;m++){data.push({l:MK[m],o:ontvangenOmzet(range.jr,m),huidig:m===new Date().getMonth()&&range.jr===new Date().getFullYear()});}
+  } else {
+    for(let i=11;i>=0;i--){let mn=range.mn-i,jr=range.jr;while(mn<0){mn+=12;jr--;}data.push({l:MK[mn],o:ontvangenOmzet(jr,mn),huidig:i===0});}
+  }
+  const mx=Math.max(...data.map(d=>d.o),1),bi=data.reduce((b,d,i)=>d.o>data[b].o?i:b,0);
+  return`<div style="font-size:11px;color:var(--gr);margin-bottom:6px">Beste maand: <strong>${data[bi].l}</strong> (${eur(data[bi].o)})</div>`+
+    data.map((d,i)=>`<div class="sb-row"><span class="sb-lbl">${d.l}</span><div class="sb-wrap"><div class="sb-bar ${d.huidig?'sb-or':i===bi&&!d.huidig?'sb-dk':'sb-gy'}" style="width:${d.o>0?Math.max((d.o/mx)*100,2).toFixed(1):0}%">${d.o>300?eur(d.o):''}</div></div></div>`).join('');
+}
+function _staafWeek(range){
+  // Guard: alleen aanroepen in weekmodus
+  if(range.type!=='week')return'';
+  const{wk:hWk,jr:hJr}=range;const data=[];
+  for(let i=11;i>=0;i--){
+    let wk=hWk-i,jr=hJr;
+    // Correcte week-overflow naar vorig jaar
+    while(wk<1){jr--;const dec28=new Date(Date.UTC(jr,11,28));wk=isoWeek(dec28).wk+wk;}
+    const ma=maandagVanWeek(jr,wk);
+    const zo=new Date(ma);zo.setUTCDate(ma.getUTCDate()+6);zo.setUTCHours(23,59,59,999);
+    data.push({l:'W'+wk,o:_ontvangenInRange(ma,zo),huidig:i===0});
+  }
+  const mx=Math.max(...data.map(d=>d.o),1),bi=data.reduce((b,d,i)=>d.o>data[b].o?i:b,0);
+  return`<div style="font-size:11px;color:var(--gr);margin-bottom:6px">Beste week: <strong>${data[bi].l}</strong> (${eur(data[bi].o)})</div>`+
+    data.map((d,i)=>`<div class="sb-row"><span class="sb-lbl" style="width:28px">${d.l}</span><div class="sb-wrap"><div class="sb-bar ${d.huidig?'sb-or':i===bi&&!d.huidig?'sb-dk':'sb-gy'}" style="width:${d.o>0?Math.max((d.o/mx)*100,2).toFixed(1):0}%">${d.o>300?eur(d.o):''}</div></div></div>`).join('');
+}
+
+function _catAnalyse(){
+  const cats={};const CATS=['bank','hoekbank','fauteuil','loveseat','kast','dressoir','overig'];
+  CATS.forEach(c=>cats[c]={dagenArr:[],marge:[],verkopen:[]});
+  DB.verkopen.forEach(v=>{
+    const item=DB.items.find(x=>x.id===v.itemId);if(!item||!cats[item.categorie])return;
+    const c=cats[item.categorie];
+    // Gebruik opgeslagen brutoMarge — altijd aanwezig na migratie
+    c.marge.push(v.brutoMarge||0);
+    c.verkopen.push(v);
+    if(item.datum&&v.datum){const dagen=Math.max(0,Math.floor((new Date(v.datum)-new Date(item.datum))/86400000));c.dagenArr.push(dagen);}
+  });
+  const voorraadCat={};DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd').forEach(i=>{if(!voorraadCat[i.categorie])voorraadCat[i.categorie]=0;voorraadCat[i.categorie]++;});
+  const rijen=Object.entries(cats).map(([cat,d])=>({cat,aantalVk:d.verkopen.length,gemDagen:d.dagenArr.length?Math.round(d.dagenArr.reduce((a,b)=>a+b,0)/d.dagenArr.length):null,gemMarge:d.marge.length?Math.round(d.marge.reduce((a,b)=>a+b,0)/d.marge.length):null,inVoorraad:voorraadCat[cat]||0})).filter(r=>r.aantalVk>0||r.inVoorraad>0).sort((a,b)=>{if(a.gemDagen===null&&b.gemDagen===null)return 0;if(a.gemDagen===null)return 1;if(b.gemDagen===null)return-1;return a.gemDagen-b.gemDagen;});
+  if(!rijen.length)return`<div class="db-card"><div class="db-card-title">📦 Categorie analyse</div><div class="alert alert-info">Nog geen verkoopdata beschikbaar.</div></div>`;
+  const maxDagen=Math.max(...rijen.filter(r=>r.gemDagen!==null).map(r=>r.gemDagen),1);
+  const maxMarge=Math.max(...rijen.filter(r=>r.gemMarge!==null).map(r=>Math.abs(r.gemMarge)),1);
+  const snelste=rijen.find(r=>r.gemDagen!==null);
+  const besteMarge=[...rijen].filter(r=>r.gemMarge!==null).sort((a,b)=>b.gemMarge-a.gemMarge)[0];
+  return`<div class="db-card"><div class="db-card-title">📦 Categorie analyse</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${snelste?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px">🏃 <strong>Snelste verkoper:</strong> ${snelste.cat} (gem. ${snelste.gemDagen} dagen)</div>`:''}
+      ${besteMarge?`<div style="background:var(--orl);border:1px solid #fde8d0;border-radius:8px;padding:10px 14px;font-size:12px">💰 <strong>Beste marge:</strong> ${besteMarge.cat} (gem. ${eur(besteMarge.gemMarge)})</div>`:''}
+    </div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Categorie</th><th>Verkopen</th><th>In voorraad</th><th style="min-width:160px">Gem. dagen in loods</th><th style="min-width:160px">Gem. bruto marge</th></tr></thead>
+    <tbody>${rijen.map(r=>{
+      const db=r.gemDagen!==null?`<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px;overflow:hidden;min-width:60px"><div style="height:100%;border-radius:4px;background:${r.gemDagen<=20?'var(--gn)':r.gemDagen<=45?'var(--or)':'var(--rd)'};width:${Math.max((r.gemDagen/maxDagen)*100,4).toFixed(1)}%"></div></div><span style="font-size:12px;white-space:nowrap;color:${r.gemDagen<=20?'var(--gn)':r.gemDagen<=45?'var(--or)':'var(--rd)'};font-weight:600">${r.gemDagen}d</span></div>`:'<span style="color:var(--gr);font-size:12px">—</span>';
+      const mb=r.gemMarge!==null?`<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px;overflow:hidden;min-width:60px"><div style="height:100%;border-radius:4px;background:${r.gemMarge>=0?'var(--gn)':'var(--rd)'};width:${Math.max((Math.abs(r.gemMarge)/maxMarge)*100,4).toFixed(1)}%"></div></div><span style="font-size:12px;white-space:nowrap;color:${r.gemMarge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(r.gemMarge)}</span></div>`:'<span style="color:var(--gr);font-size:12px">—</span>';
+      return`<tr><td><strong style="text-transform:capitalize">${esc(r.cat)}</strong></td><td>${r.aantalVk}</td><td>${r.inVoorraad>0?`<span class="chip chip-bl">${r.inVoorraad}</span>`:'—'}</td><td>${db}</td><td>${mb}</td></tr>`;
+    }).join('')}</tbody></table></div></div>`;
+}
+
+// ── DATABASE STATUS ──────────────────────────────────────────────
+function _lsWarning(){
+  // Met Supabase is localStorage niet meer de bottleneck
+  return '';
+}
+function verwijderFotos(){}
+
+// ── POPUP ────────────────────────────────────────────────────────
+const BERICHTJES=['Gefeliciteerd pik! Weer dichter bij een miljoen 💰','KASSA! [m] binnengeharkt 🔥','Nijhof Brothers doet het weer! [m] winst 💪','Cha-ching! Die bank is mooi weggewerkt 🛋️','YES! Voorraad min één, bankrekening plus [m] 🚀','Verkocht! Nijhof Brothers op weg naar de top 🏆','Weer een tevreden klant en [m] rijker 😎','BOOM! [m] marge, zo doe je dat 💥','Die ging als een trein! [m] netto winst 🚂','Goed gedaan! [m] dichter bij pensioen 🏖️'];
+function toonPopup(item,vk){el('pb-item').textContent=item.naam;el('pb-prijs').textContent=eur(vk.verkoopprijs);el('pb-marge').textContent='Netto winst: '+eur(vk.nettoNaBtw);el('pb-bericht').textContent=BERICHTJES[Math.floor(Math.random()*BERICHTJES.length)].replace(/\[m\]/g,eur(Math.round(vk.nettoNaBtw)));el('ov').classList.add('on');startConf();}
+function ovKlik(e){if(e.target===el('ov'))sluitOv();}
+function sluitOv(){el('ov').classList.remove('on');stopConf();}
+let _cRAF=null;
+function startConf(){const cv=el('cv');cv.width=window.innerWidth;cv.height=window.innerHeight;const ctx=cv.getContext('2d');const kl=['#E87722','#fff','#1a1a1a','#d06b1a','#FFF4EC'];const ps=Array.from({length:130},()=>({x:Math.random()*cv.width,y:Math.random()*cv.height-cv.height,w:Math.random()*10+4,ht:Math.random()*6+3,kl:kl[Math.floor(Math.random()*kl.length)],vy:Math.random()*3.5+1.5,vx:(Math.random()-.5)*3,r:Math.random()*360,rv:(Math.random()-.5)*7}));if(_cRAF)cancelAnimationFrame(_cRAF);function frame(){ctx.clearRect(0,0,cv.width,cv.height);ps.forEach(p=>{ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r*Math.PI/180);ctx.fillStyle=p.kl;ctx.fillRect(-p.w/2,-p.ht/2,p.w,p.ht);ctx.restore();p.y+=p.vy;p.x+=p.vx;p.r+=p.rv;if(p.y>cv.height){p.y=-10;p.x=Math.random()*cv.width;}});_cRAF=requestAnimationFrame(frame);}frame();}
+function stopConf(){if(_cRAF){cancelAnimationFrame(_cRAF);_cRAF=null;}const cv=el('cv');if(cv)cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
+
+// ── EXPORT / IMPORT ───────────────────────────────────────────────
+function dlBlob(blob,naam){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=naam;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);}
+function exportJSON(){dlBlob(new Blob([JSON.stringify({...DB,geexporteerd:new Date().toISOString()},null,2)],{type:'application/json'}),`nijhof-backup-${vandaag()}.json`);toast('⬇️ Backup gedownload');}
+function importJSON(evt){
+  const f=evt.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{try{const d=JSON.parse(e.target.result);if(!Array.isArray(d.items))throw new Error('"items" array ontbreekt');['items','verkopen','lasten','balansen','wijzigingen'].forEach(k=>{if(!Array.isArray(d[k]))d[k]=[];});DB=d;slaOp();renderAll();toast('⬆️ Data geïmporteerd','#2563eb');}catch(err){toast('⚠️ Importfout: '+err.message,'#dc2626');}};
+  r.readAsText(f);evt.target.value='';
+}
+function aiExport(periode,formaat){
+  const nu=new Date(),jr=nu.getFullYear(),mn=nu.getMonth(),isYTD=periode==='ytd';
+  const df=v=>{const d=new Date(v.datum||v.aangemaaktOp||'');return isNaN(d)?false:isYTD?d.getFullYear()===jr:d.getFullYear()===jr&&d.getMonth()===mn;};
+  const vkSel=DB.verkopen.filter(df),inkSel=DB.items.filter(df);
+  const besch=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
+  const ontvTot=isYTD?jaarOntvangenOmzet(jr):ontvangenOmzet(jr,mn);
+  const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
+  const achtBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald&&new Date(t.vervaldatum)<nu).reduce((b,t)=>b+t.bedrag,a),0);
+  const lastTot=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
+  const pfx=isYTD?`nijhof-ai-${jr}-ytd`:`nijhof-ai-${jr}-${pad(mn+1)}-mtd`;
+  if(formaat==='json'){
+    dlBlob(new Blob([JSON.stringify({meta:{bedrijf:'Nijhof Brothers Furniture',periode:isYTD?`${jr} YTD`:`${MN[mn]} ${jr}`,gegenereerd:new Date().toISOString()},omzet:{geboekt:vkSel.reduce((a,v)=>a+v.verkoopprijs,0),ontvangen:ontvTot,openstaand:openBed,achterstallig:achtBed},marge:{bruto:vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),netto_na_btw:vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0),btw:vkSel.reduce((a,v)=>a+(v.btw||0),0)},inkopen:{aantal:inkSel.length,totaal:inkSel.reduce((a,i)=>a+i.prijs,0)},voorraad:{aantal:besch.length,inkoopwaarde:besch.reduce((a,i)=>a+i.prijs,0),verwachte_vp:besch.reduce((a,i)=>a+(i.verwacht_vp||0),0)},lasten:{maandelijks:lastTot},verkopen_detail:vkSel.map(v=>{const i=DB.items.find(x=>x.id===v.itemId);return{naam:i?.naam,categorie:i?.categorie,inkoop:i?.prijs,verkoop:v.verkoopprijs,marge:v.brutoMarge||0,datum:v.datum,type:v.type};})},null,2)],{type:'application/json'}),pfx+'.json');
+  } else if(formaat==='csv'){
+    let csv='Naam,Categorie,Inkoopprijs,Verkoopprijs,Bruto marge,Datum,Type\n';
+    // Fix: gebruik || 0 voor mogelijk undefined brutoMarge
+    vkSel.forEach(v=>{const i=DB.items.find(x=>x.id===v.itemId);const q=s=>`"${String(s||'').replace(/"/g,'""')}"`;csv+=`${q(i?.naam)},${q(i?.categorie)},${i?.prijs||0},${v.verkoopprijs||0},${v.brutoMarge||0},${q(v.datum)},${q(v.type||'volledig')}\n`;});
+    dlBlob(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}),pfx+'.csv');
+  } else {
+    const brt=vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),ntt=vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0);
+    dlBlob(new Blob([[`NIJHOF BROTHERS FURNITURE — AI ANALYSE EXPORT`,'='.repeat(50),`Periode: ${isYTD?jr+' jaar tot nu':MN[mn]+' '+jr}`,`Gegenereerd: ${fmtDT(nu)}`,'','--- OMZET ---',`Ontvangen: ${eur(ontvTot)}`,`Openstaand: ${eur(openBed)}`,`Achterstallig: ${eur(achtBed)}`,'','--- MARGE ---',`Bruto: ${eur(brt)}`,`Netto na BTW: ${eur(ntt)}`,`Marge %: ${ontvTot>0?Math.round((ntt/ontvTot)*100):0}%`,'','--- INKOPEN ---',`Aantal: ${inkSel.length}`,`Totaal: ${eur(inkSel.reduce((a,i)=>a+i.prijs,0))}`,'','--- VOORRAAD ---',`Items: ${besch.length}`,`Inkoopwaarde: ${eur(besch.reduce((a,i)=>a+i.prijs,0))}`,'','--- VASTE LASTEN ---',`Maandelijks: ${eur(lastTot)}`].join('\n')],{type:'text/plain;charset=utf-8'}),`nijhof-ai-samenvatting-${isYTD?jr+'-ytd':`${jr}-${pad(mn+1)}-mtd`}.txt`);
+  }
+  toast('📤 Export gedownload');
+}
+async function resetAll(){
+  if(!confirm('⚠️ ALLE data verwijderen?\nDit kan niet ongedaan worden gemaakt.'))return;
+  if(!confirm('Weet je het heel zeker? Dit verwijdert ALLES uit de database.'))return;
+  try{
+    await _sb.from('termijnen').delete().neq('id','');
+    await _sb.from('verkopen').delete().neq('id','');
+    await _sb.from('items').delete().neq('id','');
+    await _sb.from('lasten').delete().neq('id','');
+  }catch(e){toast('⚠️ Reset mislukt','#dc2626');return;}
+  DB=LEEG();_importRijen=[];renderAll();toast('Alle data verwijderd','#6b7280');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');}
+// renderAll() wordt aangeroepen door de auth state listener na succesvol inloggen
+</script>
+</body>
+</html>
