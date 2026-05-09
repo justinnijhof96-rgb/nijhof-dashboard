@@ -594,33 +594,35 @@ async function dbSaveInstellingen(){
 let _saveTimer=null;
 function slaOp(){
   if(_saveTimer)clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>_syncNaarSupabase(),500);
+  _saveTimer=setTimeout(()=>_syncNaarSupabase(),300);
   const bi=el('backup-info');if(bi)bi.textContent='Opgeslagen: '+fmtDT(new Date());
 }
 async function _syncNaarSupabase(){
   try{
+    const uid_user=(await _sb.auth.getUser()).data.user?.id;
+    if(!uid_user){console.error('Niet ingelogd');return;}
     // Items: upsert alles
     if(DB.items.length){
-      const uid_user=(await _sb.auth.getUser()).data.user?.id;
       const rows=DB.items.map(i=>({
         id:i.id,naam:i.naam,categorie:i.categorie,stof:i.stof||'',locatie:i.locatie||'',
         prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum,notitie:i.notitie||'',
-        status:i.status,del_reden:i.del_reden,del_toel:i.del_toel,stortkosten:i.stortkosten||0,
-        afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp,bewerkt:i.bewerkt||[],
+        status:i.status,del_reden:i.del_reden||null,del_toel:i.del_toel||null,stortkosten:i.stortkosten||0,
+        afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
         user_id:uid_user
       }));
-      await _sb.from('items').upsert(rows,{onConflict:'id'});
+      const{error}=await _sb.from('items').upsert(rows,{onConflict:'id'});
+      if(error)console.error('Items sync fout:',error);
     }
-    // Verkopen + termijnen
+    // Verkopen
     if(DB.verkopen.length){
-      const uid_user=(await _sb.auth.getUser()).data.user?.id;
       const vkRows=DB.verkopen.map(v=>({
         id:v.id,item_id:v.itemId,verkoopprijs:v.verkoopprijs,verkooplocatie:v.verkooplocatie||'',
         factuur:v.factuur||'',datum:v.datum,type:v.type||'volledig',impregneer:v.impregneer||0,
         bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
-        netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie,user_id:uid_user
+        netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie||new Date().toISOString(),user_id:uid_user
       }));
-      await _sb.from('verkopen').upsert(vkRows,{onConflict:'id'});
+      const{error}=await _sb.from('verkopen').upsert(vkRows,{onConflict:'id'});
+      if(error)console.error('Verkopen sync fout:',error);
       // Termijnen
       const allTerm=[];
       DB.verkopen.forEach(v=>(v.termijnen||[]).forEach(t=>allTerm.push({
@@ -628,21 +630,26 @@ async function _syncNaarSupabase(){
         betaalmethode:t.betaalmethode||'pin',betaald:!!t.betaald,betaald_op:t.betaaldOp||null,
         label:t.label||'',notitie:t.notitie||''
       })));
-      if(allTerm.length)await _sb.from('termijnen').upsert(allTerm,{onConflict:'id'});
+      if(allTerm.length){
+        const{error:e2}=await _sb.from('termijnen').upsert(allTerm,{onConflict:'id'});
+        if(e2)console.error('Termijnen sync fout:',e2);
+      }
     }
     // Lasten
     if(DB.lasten.length){
-      const uid_user=(await _sb.auth.getUser()).data.user?.id;
       const lRows=DB.lasten.map(l=>({
         id:l.id,naam:l.naam,bedrag:l.bedrag,btw_pct:l.btwPct||0,btw_type:l.btwType||'excl',
         betaalmethode:l.betaalmethode||'pin',betaaldatum:l.betaaldatum||null,
         type_kosten:l.typeKosten||'vast',terugkerend:!!l.terugkerend,fluctuerend:!!l.fluctuerend,
-        betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp,
+        betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp||new Date().toISOString(),
         user_id:uid_user
       }));
-      await _sb.from('lasten').upsert(lRows,{onConflict:'id'});
+      const{error}=await _sb.from('lasten').upsert(lRows,{onConflict:'id'});
+      if(error)console.error('Lasten sync fout:',error);
     }
-  }catch(e){console.error('Sync mislukt:',e);}
+    console.log('✓ Sync naar Supabase gelukt');
+  }catch(e){console.error('Sync mislukt:',e);toast('⚠️ Opslaan mislukt — check console','#dc2626');}
+}
 }
 function laadDB(){/* niet meer nodig, data komt van Supabase */}
 
