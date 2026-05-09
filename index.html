@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Nijhof Brothers — BI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
@@ -384,8 +384,8 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 // SUPABASE CONFIG — Vul hier je eigen gegevens in!
 // Ga naar Supabase → Project Settings → API
 // ══════════════════════════════════════════════════════════════
-const SUPABASE_URL  = 'https://JOUW-PROJECT.supabase.co';  // ← Vervang dit
-const SUPABASE_ANON = 'jouw-anon-key-hier';                // ← Vervang dit
+const SUPABASE_URL  = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_4aLGANwJH4i4kdciWat3lA_6qVDptmB';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
