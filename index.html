@@ -423,7 +423,16 @@ const SUPABASE_URL  = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjZG5xdXVsdmtodG90bG5seGl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNzM0OTgsImV4cCI6MjA5Mzg0OTQ5OH0.Zah3P1hC1Z9Km84fplP5WgkB9TjAn7KauWXiHSlxfF0';
 const FOTO_BUCKET   = 'item-fotos';
 
-const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: {
+    persistSession: true,        // bewaar login tussen refreshes
+    autoRefreshToken: true,      // ververs token automatisch voor hij verloopt
+    detectSessionInUrl: false,   // we gebruiken geen magic links/OAuth redirects
+    storage: window.localStorage,
+    storageKey: 'nijhof-auth',   // eigen sleutel - voorkomt conflicten met oude sessies
+    flowType: 'pkce'
+  }
+});
 
 // ── AUTH ─────────────────────────────────────────────────────────
 async function doeLogin(){
@@ -457,14 +466,6 @@ _sb.auth.onAuthStateChange(async(event,session)=>{
   if(session){
     el('login-scherm').style.display='none';
     el('app-container').style.display='block';
-    // Test eerst of de sessie ECHT werkt met een timeout van 8 seconden
-    const werkt=await testSessie();
-    if(!werkt){
-      console.warn('Sessie werkt niet meer, automatisch opnieuw inloggen vereist');
-      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
-      location.reload();
-      return;
-    }
     await laadAllesVanDB();
     renderAll();
   } else {
@@ -472,17 +473,6 @@ _sb.auth.onAuthStateChange(async(event,session)=>{
     el('app-container').style.display='none';
   }
 });
-
-// Test of huidige sessie nog werkt door 1 simpel verzoek met timeout te doen
-async function testSessie(){
-  return new Promise(resolve=>{
-    const timeout=setTimeout(()=>resolve(false),8000); // 8 sec timeout
-    _sb.from('items').select('id').limit(1).then(({error})=>{
-      clearTimeout(timeout);
-      resolve(!error);
-    }).catch(()=>{clearTimeout(timeout);resolve(false);});
-  });
-}
 
 document.addEventListener('DOMContentLoaded',()=>{
   ['login-email','login-ww'].forEach(id=>{
@@ -497,18 +487,13 @@ let DB = LEEG();
 
 // ── LADEN ────────────────────────────────────────────────────────
 async function laadAllesVanDB(){
-  // Helper: voeg timeout toe aan elke query zodat ze nooit eindeloos hangen
-  const metTimeout=(p,naam)=>Promise.race([
-    p,
-    new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: '+naam)),10000))
-  ]);
   try {
     const [itemsRes, verkopenRes, termijnenRes, lastenRes, instRes] = await Promise.all([
-      metTimeout(_sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),'items'),
-      metTimeout(_sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),'verkopen'),
-      metTimeout(_sb.from('termijnen').select('*'),'termijnen'),
-      metTimeout(_sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),'lasten'),
-      metTimeout(_sb.from('instellingen').select('*'),'instellingen')
+      _sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),
+      _sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),
+      _sb.from('termijnen').select('*'),
+      _sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),
+      _sb.from('instellingen').select('*')
     ]);
     DB.items = (itemsRes.data||[]).map(r=>({
       id:r.id, naam:r.naam, categorie:r.categorie, stof:r.stof||'', locatie:r.locatie||'',
@@ -551,13 +536,6 @@ async function laadAllesVanDB(){
     }
   } catch(e) {
     console.error('Laden mislukt:',e);
-    if(String(e.message||'').startsWith('Timeout:')){
-      // Sessie hangt - automatisch herstellen
-      console.warn('Sessie reageert niet, wis tokens en herlaad');
-      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
-      location.reload();
-      return;
-    }
     toast('⚠️ Laden mislukt — controleer je verbinding','#dc2626');
   }
 }
