@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Nijhof Brothers — BI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
@@ -429,9 +429,7 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     autoRefreshToken: true,
     detectSessionInUrl: false,
     storage: window.localStorage,
-    storageKey: 'nijhof-auth',
-    // Schakel Web Locks uit — voorkomt vastlopen bij refresh
-    lock: (name, acquireTimeout, fn) => fn()
+    storageKey: 'nijhof-auth'
   }
 });
 
