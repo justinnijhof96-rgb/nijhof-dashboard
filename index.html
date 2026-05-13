@@ -434,6 +434,66 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// REST HELPER — directe fetch ipv _sb.from() (omzeilt hangende library)
+// ══════════════════════════════════════════════════════════════
+function _getToken(){
+  try{
+    const raw=localStorage.getItem('nijhof-auth');
+    if(!raw)return null;
+    return JSON.parse(raw).access_token||null;
+  }catch(e){return null;}
+}
+function _getUserId(){
+  try{
+    const raw=localStorage.getItem('nijhof-auth');
+    if(!raw)return null;
+    return JSON.parse(raw).user?.id||null;
+  }catch(e){return null;}
+}
+async function _rest(method, path, options={}){
+  const token=_getToken();
+  if(!token)throw new Error('Niet ingelogd');
+  const headers={
+    'apikey':SUPABASE_ANON,
+    'Authorization':'Bearer '+token,
+    'Content-Type':'application/json'
+  };
+  if(options.prefer)headers['Prefer']=options.prefer;
+  const url=SUPABASE_URL+'/rest/v1/'+path;
+  const init={method,headers};
+  if(options.body)init.body=JSON.stringify(options.body);
+  const res=await fetch(url,init);
+  if(!res.ok){
+    const txt=await res.text();
+    throw new Error(`${res.status}: ${txt}`);
+  }
+  const ct=res.headers.get('content-type')||'';
+  if(ct.includes('application/json')){
+    const text=await res.text();
+    return text?JSON.parse(text):null;
+  }
+  return null;
+}
+// Selecteer rijen uit tabel
+async function dbSelect(tabel, qs=''){
+  return await _rest('GET', tabel+'?select=*'+(qs?'&'+qs:''));
+}
+// Upsert (insert of update) rijen
+async function dbUpsert(tabel, rijen){
+  if(!Array.isArray(rijen))rijen=[rijen];
+  if(!rijen.length)return [];
+  return await _rest('POST', tabel, {body:rijen, prefer:'resolution=merge-duplicates,return=representation'});
+}
+// Update specifieke kolommen
+async function dbUpdate(tabel, id, data){
+  return await _rest('PATCH', tabel+'?id=eq.'+encodeURIComponent(id), {body:data, prefer:'return=representation'});
+}
+// Delete op id
+async function dbDelete(tabel, qs){
+  return await _rest('DELETE', tabel+'?'+qs);
+}
+
 // ── AUTH ─────────────────────────────────────────────────────────
 async function doeLogin(){
   const email=val('login-email').trim(),ww=val('login-ww');
@@ -462,23 +522,36 @@ async function doeReset(){
 function toggleWwReset(e){e.preventDefault();const r=el('ww-reset');r.style.display=r.style.display==='none'?'block':'none';}
 function toonLoginErr(msg){const e=el('login-err');e.textContent=msg;e.style.display=msg?'block':'none';}
 
-_sb.auth.onAuthStateChange(async(event,session)=>{
-  if(event==='TOKEN_REFRESHED')return; // voorkom dubbele reload bij token refresh
-  if(session){
-    el('login-scherm').style.display='none';
-    el('app-container').style.display='block';
-    await laadAllesVanDB();
-    renderAll();
-  } else {
-    el('login-scherm').style.display='flex';
-    el('app-container').style.display='none';
-  }
+// Controleer login-status direct uit localStorage (omzeilt hangende auth)
+function _ingelogd(){return !!_getToken();}
+
+async function _startApp(){
+  el('login-scherm').style.display='none';
+  el('app-container').style.display='block';
+  await laadAllesVanDB();
+  renderAll();
+}
+function _toonLogin(){
+  el('login-scherm').style.display='flex';
+  el('app-container').style.display='none';
+}
+
+// onAuthStateChange voor login/logout events (niet voor refresh)
+_sb.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_IN'&&session){_startApp();}
+  else if(event==='SIGNED_OUT'){_toonLogin();}
 });
 
+// Bij pagina-load: check zelf of er een geldige sessie is in localStorage
 document.addEventListener('DOMContentLoaded',()=>{
   ['login-email','login-ww'].forEach(id=>{
     const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')doeLogin();});
   });
+  if(_ingelogd()){
+    _startApp();
+  } else {
+    _toonLogin();
+  }
 });
 
 // ── DATA ─────────────────────────────────────────────────────────
@@ -489,13 +562,14 @@ let DB = LEEG();
 // ── LADEN ────────────────────────────────────────────────────────
 async function laadAllesVanDB(){
   try {
-    const [itemsRes, verkopenRes, termijnenRes, lastenRes, instRes] = await Promise.all([
-      _sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),
-      _sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),
-      _sb.from('termijnen').select('*'),
-      _sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),
-      _sb.from('instellingen').select('*')
+    const [items, verkopen, termijnen, lasten, inst] = await Promise.all([
+      dbSelect('items','order=aangemaakt_op.desc'),
+      dbSelect('verkopen','order=datum_registratie.desc'),
+      dbSelect('termijnen'),
+      dbSelect('lasten','order=aangemaakt_op.desc'),
+      dbSelect('instellingen')
     ]);
+    const itemsRes={data:items}, verkopenRes={data:verkopen}, termijnenRes={data:termijnen}, lastenRes={data:lasten}, instRes={data:inst};
     DB.items = (itemsRes.data||[]).map(r=>({
       id:r.id, naam:r.naam, categorie:r.categorie, stof:r.stof||'', locatie:r.locatie||'',
       prijs:Number(r.prijs)||0, verwacht_vp:Number(r.verwacht_vp)||0, datum:r.datum||'',
@@ -550,7 +624,7 @@ function slaOp(){
 }
 async function _syncNaarSupabase(){
   try{
-    const uid_user=(await _sb.auth.getUser()).data.user?.id;
+    const uid_user=_getUserId();
     if(!uid_user){console.error('Niet ingelogd');return;}
     if(DB.items.length){
       const rows=DB.items.map(i=>({
@@ -561,8 +635,7 @@ async function _syncNaarSupabase(){
         afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
         user_id:uid_user
       }));
-      const{error}=await _sb.from('items').upsert(rows,{onConflict:'id'});
-      if(error)console.error('Items sync fout:',error);
+      try{await dbUpsert('items',rows);}catch(e){console.error('Items sync fout:',e);}
     }
     if(DB.verkopen.length){
       const vkRows=DB.verkopen.map(v=>({
@@ -571,8 +644,7 @@ async function _syncNaarSupabase(){
         bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
         netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie||new Date().toISOString(),user_id:uid_user
       }));
-      const{error}=await _sb.from('verkopen').upsert(vkRows,{onConflict:'id'});
-      if(error)console.error('Verkopen sync fout:',error);
+      try{await dbUpsert('verkopen',vkRows);}catch(e){console.error('Verkopen sync fout:',e);}
       const allTerm=[];
       DB.verkopen.forEach(v=>(v.termijnen||[]).forEach(t=>allTerm.push({
         id:t.id,verkoop_id:v.id,nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum||null,
@@ -580,8 +652,7 @@ async function _syncNaarSupabase(){
         label:t.label||'',notitie:t.notitie||''
       })));
       if(allTerm.length){
-        const{error:e2}=await _sb.from('termijnen').upsert(allTerm,{onConflict:'id'});
-        if(e2)console.error('Termijnen sync fout:',e2);
+        try{await dbUpsert('termijnen',allTerm);}catch(e){console.error('Termijnen sync fout:',e);}
       }
     }
     if(DB.lasten.length){
@@ -592,8 +663,7 @@ async function _syncNaarSupabase(){
         betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp||new Date().toISOString(),
         user_id:uid_user
       }));
-      const{error}=await _sb.from('lasten').upsert(lRows,{onConflict:'id'});
-      if(error)console.error('Lasten sync fout:',error);
+      try{await dbUpsert('lasten',lRows);}catch(e){console.error('Lasten sync fout:',e);}
     }
     console.log('✓ Sync naar Supabase gelukt');
   }catch(e){console.error('Sync mislukt:',e);toast('⚠️ Opslaan mislukt — check console','#dc2626');}
@@ -650,7 +720,7 @@ async function compressFoto(file,maxW=1200,kwaliteit=0.85){
 }
 
 async function uploadFotoNaarStorage(blob,itemId){
-  const uid_user=(await _sb.auth.getUser()).data.user?.id;
+  const uid_user=_getUserId();
   if(!uid_user)throw new Error('Niet ingelogd');
   const fotoPad=`${uid_user}/${itemId}-${Date.now()}.jpg`;
   const{error}=await _sb.storage.from(FOTO_BUCKET).upload(fotoPad,blob,{contentType:'image/jpeg',upsert:false});
@@ -710,7 +780,7 @@ async function uploadFotoVoorItem(itemId){
       if(item){
         if(item.foto_url)await verwijderFotoUitStorage(item.foto_url).catch(()=>{});
         item.foto_url=url;
-        const{error}=await _sb.from('items').update({foto_url:url}).eq('id',itemId);
+        const{error}=await dbUpdate('items',itemId,{foto_url:url}).then(()=>({error:null})).catch(e=>({error:e}));
         if(error)throw error;
         renderV();
         toast('📷 Foto toegevoegd');
@@ -725,7 +795,7 @@ async function verwijderFoto(itemId){
   const item=DB.items.find(x=>x.id===itemId);if(!item||!item.foto_url)return;
   try{
     await verwijderFotoUitStorage(item.foto_url);
-    const{error}=await _sb.from('items').update({foto_url:null}).eq('id',itemId);
+    const{error}=await dbUpdate('items',itemId,{foto_url:null}).then(()=>({error:null})).catch(e=>({error:e}));
     if(error)throw error;
     item.foto_url=null;
     renderV();
@@ -908,7 +978,7 @@ async function bevestigDel(){
   const i=DB.items.find(x=>x.id===_delId);if(!i)return;
   if(_delActie==='verwijderen'){
     if(i.foto_url)await verwijderFotoUitStorage(i.foto_url).catch(()=>{});
-    try{await _sb.from('items').delete().eq('id',_delId);}catch(e){toast('⚠️ Verwijderen mislukt','#dc2626');return;}
+    try{await dbDelete('items','id=eq.'+encodeURIComponent(_delId));}catch(e){toast('⚠️ Verwijderen mislukt','#dc2626');return;}
     DB.items=DB.items.filter(x=>x.id!==_delId);
     renderV();renderDash();sluitModal('m-del');toast('🗑️ Item verwijderd','#6b7280');
   } else {
@@ -991,8 +1061,8 @@ async function ongedaanVerkoop(itemId) {
   }
   const item=DB.items.find(x=>x.id===itemId);if(!item)return;
   try{
-    await _sb.from('termijnen').delete().eq('verkoop_id',vk.id);
-    await _sb.from('verkopen').delete().eq('id',vk.id);
+    await dbDelete('termijnen','verkoop_id=eq.'+encodeURIComponent(vk.id));
+    await dbDelete('verkopen','id=eq.'+encodeURIComponent(vk.id));
   }catch(e){toast('⚠️ Mislukt','#dc2626');return;}
   DB.verkopen=DB.verkopen.filter(v=>v.itemId!==itemId);
   item.status='beschikbaar';
@@ -1285,7 +1355,7 @@ function slaLastOp(){
   else DB.lasten.push(data);
   slaOp();renderLasten();renderDash();sluitModal('m-last');toast(_lastenEditId?'✏️ Last bijgewerkt':'✚ Last toegevoegd');
 }
-async function verwijderLast(id){if(!confirm('Vaste last definitief verwijderen?'))return;try{await _sb.from('lasten').delete().eq('id',id);}catch(e){toast('⚠️ Mislukt','#dc2626');return;}DB.lasten=DB.lasten.filter(x=>x.id!==id);renderLasten();renderDash();toast('🗑️ Last verwijderd','#6b7280');}
+async function verwijderLast(id){if(!confirm('Vaste last definitief verwijderen?'))return;try{await dbDelete('lasten','id=eq.'+encodeURIComponent(id));}catch(e){toast('⚠️ Mislukt','#dc2626');return;}DB.lasten=DB.lasten.filter(x=>x.id!==id);renderLasten();renderDash();toast('🗑️ Last verwijderd','#6b7280');}
 function renderLasten(){
   const actief=DB.lasten.filter(l=>l.actief!==false);
   const tot=actief.reduce((a,l)=>a+l.bedrag,0),bet=actief.filter(l=>l.betaald).reduce((a,l)=>a+l.bedrag,0);
@@ -1358,14 +1428,15 @@ function _bevestigImport(){
 // ── INSTELLINGEN ─────────────────────────────────────────────────
 let _instellingen = { inkoopTarget:3, gemMargeOverride:null };
 async function slaInstellingenOp(){
-  const uid_user=(await _sb.auth.getUser()).data.user?.id;
+  const uid_user=_getUserId();
   if(!uid_user)return;
-  const{error}=await _sb.from('instellingen').upsert({
-    user_id:uid_user,
-    inkoop_target:_instellingen.inkoopTarget,
-    gem_marge_override:_instellingen.gemMargeOverride
-  });
-  if(error)console.error('Instellingen opslaan mislukt:',error);
+  try{
+    await dbUpsert('instellingen',{
+      user_id:uid_user,
+      inkoop_target:_instellingen.inkoopTarget,
+      gem_marge_override:_instellingen.gemMargeOverride
+    });
+  }catch(e){console.error('Instellingen opslaan mislukt:',e);}
 }
 
 function getGemMarge(){
@@ -1790,10 +1861,10 @@ async function resetAll(){
   if(!confirm('⚠️ ALLE data verwijderen?\nDit kan niet ongedaan worden gemaakt.'))return;
   if(!confirm('Weet je het heel zeker? Dit verwijdert ALLES uit de database.'))return;
   try{
-    await _sb.from('termijnen').delete().neq('id','');
-    await _sb.from('verkopen').delete().neq('id','');
-    await _sb.from('items').delete().neq('id','');
-    await _sb.from('lasten').delete().neq('id','');
+    await dbDelete('termijnen','id=neq.0');
+    await dbDelete('verkopen','id=neq.0');
+    await dbDelete('items','id=neq.0');
+    await dbDelete('lasten','id=neq.0');
   }catch(e){toast('⚠️ Reset mislukt','#dc2626');return;}
   DB=LEEG();_importRijen=[];renderAll();toast('Alle data verwijderd','#6b7280');
 }
