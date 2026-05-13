@@ -457,6 +457,14 @@ _sb.auth.onAuthStateChange(async(event,session)=>{
   if(session){
     el('login-scherm').style.display='none';
     el('app-container').style.display='block';
+    // Test eerst of de sessie ECHT werkt met een timeout van 8 seconden
+    const werkt=await testSessie();
+    if(!werkt){
+      console.warn('Sessie werkt niet meer, automatisch opnieuw inloggen vereist');
+      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+      location.reload();
+      return;
+    }
     await laadAllesVanDB();
     renderAll();
   } else {
@@ -464,6 +472,17 @@ _sb.auth.onAuthStateChange(async(event,session)=>{
     el('app-container').style.display='none';
   }
 });
+
+// Test of huidige sessie nog werkt door 1 simpel verzoek met timeout te doen
+async function testSessie(){
+  return new Promise(resolve=>{
+    const timeout=setTimeout(()=>resolve(false),8000); // 8 sec timeout
+    _sb.from('items').select('id').limit(1).then(({error})=>{
+      clearTimeout(timeout);
+      resolve(!error);
+    }).catch(()=>{clearTimeout(timeout);resolve(false);});
+  });
+}
 
 document.addEventListener('DOMContentLoaded',()=>{
   ['login-email','login-ww'].forEach(id=>{
@@ -478,13 +497,18 @@ let DB = LEEG();
 
 // ── LADEN ────────────────────────────────────────────────────────
 async function laadAllesVanDB(){
+  // Helper: voeg timeout toe aan elke query zodat ze nooit eindeloos hangen
+  const metTimeout=(p,naam)=>Promise.race([
+    p,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: '+naam)),10000))
+  ]);
   try {
     const [itemsRes, verkopenRes, termijnenRes, lastenRes, instRes] = await Promise.all([
-      _sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),
-      _sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),
-      _sb.from('termijnen').select('*'),
-      _sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),
-      _sb.from('instellingen').select('*')
+      metTimeout(_sb.from('items').select('*').order('aangemaakt_op',{ascending:false}),'items'),
+      metTimeout(_sb.from('verkopen').select('*').order('datum_registratie',{ascending:false}),'verkopen'),
+      metTimeout(_sb.from('termijnen').select('*'),'termijnen'),
+      metTimeout(_sb.from('lasten').select('*').order('aangemaakt_op',{ascending:false}),'lasten'),
+      metTimeout(_sb.from('instellingen').select('*'),'instellingen')
     ]);
     DB.items = (itemsRes.data||[]).map(r=>({
       id:r.id, naam:r.naam, categorie:r.categorie, stof:r.stof||'', locatie:r.locatie||'',
@@ -525,7 +549,17 @@ async function laadAllesVanDB(){
       _instellingen.inkoopTarget=inst.inkoop_target||3;
       _instellingen.gemMargeOverride=inst.gem_marge_override||null;
     }
-  } catch(e) { console.error('Laden mislukt:',e); toast('⚠️ Laden mislukt — controleer je verbinding','#dc2626'); }
+  } catch(e) {
+    console.error('Laden mislukt:',e);
+    if(String(e.message||'').startsWith('Timeout:')){
+      // Sessie hangt - automatisch herstellen
+      console.warn('Sessie reageert niet, wis tokens en herlaad');
+      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+      location.reload();
+      return;
+    }
+    toast('⚠️ Laden mislukt — controleer je verbinding','#dc2626');
+  }
 }
 
 // ── OPSLAAN (debounced bulk sync) ────────────────────────────────
