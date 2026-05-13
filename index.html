@@ -436,7 +436,10 @@ async function doeLogin(){
 }
 async function doeUitloggen(){
   if(!confirm('Wil je uitloggen?'))return;
-  await _sb.auth.signOut();
+  try{await _sb.auth.signOut();}catch(e){console.warn('Signout fout:',e);}
+  // Forceer altijd: wis localStorage en herlaad
+  Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+  location.reload();
 }
 async function doeReset(){
   const email=val('reset-email').trim();
@@ -450,6 +453,7 @@ function toggleWwReset(e){e.preventDefault();const r=el('ww-reset');r.style.disp
 function toonLoginErr(msg){const e=el('login-err');e.textContent=msg;e.style.display=msg?'block':'none';}
 
 _sb.auth.onAuthStateChange(async(event,session)=>{
+  console.log('Auth event:',event);
   if(session){
     el('login-scherm').style.display='none';
     el('app-container').style.display='block';
@@ -460,6 +464,33 @@ _sb.auth.onAuthStateChange(async(event,session)=>{
     el('app-container').style.display='none';
   }
 });
+
+// Bij pagina-laden: check actief of er een geldige sessie is, anders forceer login
+(async()=>{
+  try{
+    const{data:{session},error}=await _sb.auth.getSession();
+    if(error||!session){
+      // Geen geldige sessie - wis alles en toon login
+      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+      el('login-scherm').style.display='flex';
+      el('app-container').style.display='none';
+      return;
+    }
+    // Probeer sessie te verversen om zeker te zijn dat hij geldig is
+    const{error:refreshErr}=await _sb.auth.refreshSession();
+    if(refreshErr){
+      console.warn('Sessie refresh mislukt, opnieuw inloggen vereist:',refreshErr.message);
+      Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+      el('login-scherm').style.display='flex';
+      el('app-container').style.display='none';
+    }
+  }catch(e){
+    console.error('Init auth fout:',e);
+    Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
+    el('login-scherm').style.display='flex';
+    el('app-container').style.display='none';
+  }
+})();
 
 document.addEventListener('DOMContentLoaded',()=>{
   ['login-email','login-ww'].forEach(id=>{
