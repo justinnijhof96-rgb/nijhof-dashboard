@@ -429,7 +429,9 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     autoRefreshToken: true,
     detectSessionInUrl: false,
     storage: window.localStorage,
-    storageKey: 'nijhof-auth'
+    storageKey: 'nijhof-auth',
+    // Schakel Web Locks uit — voorkomt vastlopen bij refresh
+    lock: (name, acquireTimeout, fn) => fn()
   }
 });
 
