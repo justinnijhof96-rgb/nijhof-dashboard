@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Nijhof Brothers — BI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
@@ -425,12 +425,11 @@ const FOTO_BUCKET   = 'item-fotos';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
-    persistSession: true,        // bewaar login tussen refreshes
-    autoRefreshToken: true,      // ververs token automatisch voor hij verloopt
-    detectSessionInUrl: false,   // we gebruiken geen magic links/OAuth redirects
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
     storage: window.localStorage,
-    storageKey: 'nijhof-auth',   // eigen sleutel - voorkomt conflicten met oude sessies
-    flowType: 'pkce'
+    storageKey: 'nijhof-auth'
   }
 });
 
@@ -446,7 +445,8 @@ async function doeLogin(){
 async function doeUitloggen(){
   if(!confirm('Wil je uitloggen?'))return;
   try{await _sb.auth.signOut();}catch(e){console.warn('Signout fout:',e);}
-  // Forceer altijd: wis localStorage en herlaad
+  // Wis ALLE varianten van opgeslagen sessies (zowel oude sb-* als nieuwe nijhof-auth)
+  localStorage.removeItem('nijhof-auth');
   Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));
   location.reload();
 }
