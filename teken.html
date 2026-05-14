@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract ondertekenen — Nijhof Brothers</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
+body{background:#f3f4f6;min-height:100vh;padding:20px;color:#1a1a1a}
+.wrap{max-width:680px;margin:0 auto}
+.hdr{background:#1E2F3A;border-bottom:4px solid #E87722;border-radius:12px 12px 0 0;padding:24px 28px;color:#fff}
+.hdr h1{color:#E87722;font-size:24px;font-weight:900;letter-spacing:.5px}
+.hdr .sub{font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.7}
+.card{background:#fff;border-radius:0 0 12px 12px;padding:24px 28px;box-shadow:0 4px 20px rgba(0,0,0,.06);margin-bottom:20px}
+.card.standalone{border-radius:12px}
+h2{font-size:18px;margin-bottom:12px;color:#1E2F3A}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0;background:#f9fafb;border-radius:8px;padding:14px;border:1px solid #e5e7eb}
+.info-item .lbl{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.info-item .val{font-size:14px;color:#1a1a1a;font-weight:600;margin-top:2px;word-break:break-word}
+.totaal{background:#FFF4EC;border-left:4px solid #E87722;padding:14px 18px;border-radius:6px;margin:16px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.totaal .lbl{font-size:13px;color:#6b7280;font-weight:600}
+.totaal .val{font-size:24px;font-weight:800;color:#E87722}
+.term-tbl{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+.term-tbl th{text-align:left;padding:8px 10px;background:#f9fafb;color:#6b7280;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:.3px}
+.term-tbl td{padding:8px 10px;border-bottom:1px solid #f3f4f6}
+.pdf-btn{display:inline-block;background:#1E2F3A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;margin:6px 0}
+.pdf-btn:hover{background:#0f1820}
+.sign-box{background:#FFF4EC;border:2px solid #E87722;border-radius:10px;padding:20px;margin-top:20px}
+.sign-box h3{color:#E87722;font-size:16px;margin-bottom:12px}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:5px}
+.fg input{width:100%;border:1.5px solid #d6c5ae;border-radius:8px;padding:12px 14px;font-size:15px;outline:none;background:#fff}
+.fg input:focus{border-color:#E87722;box-shadow:0 0 0 3px rgba(232,119,34,.15)}
+.akkoord{display:flex;align-items:flex-start;gap:10px;padding:12px;background:#fff;border-radius:8px;border:1.5px solid #d6c5ae;margin-bottom:14px;cursor:pointer}
+.akkoord input{margin-top:2px;cursor:pointer;flex-shrink:0;width:18px;height:18px;accent-color:#E87722}
+.akkoord span{font-size:13px;line-height:1.5}
+.btn-teken{width:100%;background:#E87722;color:#fff;border:none;padding:16px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.15s}
+.btn-teken:hover{background:#d06b1a}
+.btn-teken:disabled{opacity:.5;cursor:not-allowed}
+.alert{padding:14px 18px;border-radius:8px;margin-bottom:14px;font-size:14px}
+.alert-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+.alert-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8}
+.loading{text-align:center;padding:40px;color:#6b7280}
+.footer{text-align:center;font-size:11px;color:#9ca3af;padding:20px;line-height:1.6}
+.footer a{color:#E87722;text-decoration:none}
+.done{text-align:center;padding:30px 20px}
+.done .check{font-size:64px;color:#15803d;margin-bottom:14px}
+.done h2{color:#15803d;font-size:22px;margin-bottom:8px}
+.done p{color:#444;font-size:14px;line-height:1.6}
+@media(max-width:520px){
+  .info-grid{grid-template-columns:1fr}
+  .hdr{padding:20px 22px}
+  .card{padding:20px 22px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>NIJHOF BROTHERS</h1>
+    <div class="sub">FURNITURE</div>
+  </div>
+
+  <div class="card" id="content">
+    <div class="loading">⏳ Contract laden...</div>
+  </div>
+
+  <div class="footer">
+    Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn<br>
+    KvK 98613783 · BTW NL868569215B01<br>
+    Vragen? Mail <a href="mailto:invoice@nijhofbrothers.nl">invoice@nijhofbrothers.nl</a> · <a href="https://wa.me/31555690039">WhatsApp +31 55 569 0039</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjZG5xdXVsdmtodG90bG5seGl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNzM0OTgsImV4cCI6MjA5Mzg0OTQ5OH0.Zah3P1hC1Z9Km84fplP5WgkB9TjAn7KauWXiHSlxfF0';
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function eur(v){return '€'+Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');}
+function fmtD(d){if(!d)return'';const dt=new Date(d);if(isNaN(dt))return'';return dt.toLocaleDateString('nl-NL');}
+
+const params = new URLSearchParams(window.location.search);
+const TOKEN = params.get('token');
+
+if(!TOKEN){
+  document.getElementById('content').innerHTML = '<div class="alert alert-err">⚠️ Geen geldige link. Vraag een nieuwe link aan via invoice@nijhofbrothers.nl</div>';
+} else {
+  laadContract();
+}
+
+async function laadContract(){
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/teken-contract?token=${encodeURIComponent(TOKEN)}`, {
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON, 'apikey': SUPABASE_ANON }
+    });
+    const data = await res.json();
+    if(!res.ok){
+      throw new Error(data.error || 'Contract niet gevonden');
+    }
+    toonContract(data);
+  } catch(e){
+    document.getElementById('content').innerHTML = `<div class="alert alert-err">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
+function toonContract(c){
+  // Al ondertekend?
+  if(c.ondertekend){
+    document.getElementById('content').innerHTML = `
+      <div class="done">
+        <div class="check">✅</div>
+        <h2>Contract is al ondertekend</h2>
+        <p>Ondertekend op ${esc(fmtD(c.ondertekend_op))} door ${esc(c.ondertekend_naam)}.</p>
+        <p style="margin-top:16px">Je kunt het contract opnieuw bekijken via de bijlage in je email.</p>
+        ${c.pdf_url ? `<p style="margin-top:14px"><a class="pdf-btn" href="${esc(c.pdf_url)}" target="_blank">📄 Contract bekijken (PDF)</a></p>` : ''}
+      </div>`;
+    return;
+  }
+
+  // Termijnen tabel
+  const termHtml = c.termijnen && c.termijnen.length > 0
+    ? `<table class="term-tbl">
+        <thead><tr><th>Termijn</th><th>Bedrag</th><th>Vervaldatum</th></tr></thead>
+        <tbody>${c.termijnen.map(t => `
+          <tr>
+            <td>${esc(t.label || 'Termijn '+t.nr)}</td>
+            <td>${eur(t.bedrag)}</td>
+            <td>${esc(fmtD(t.vervaldatum))}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`
+    : '';
+
+  document.getElementById('content').innerHTML = `
+    <h2>📝 Koopovereenkomst ondertekenen</h2>
+    <p style="font-size:14px;color:#444;margin-bottom:18px">
+      Hoi ${esc(c.klant_naam)}, hieronder vind je de samenvatting van het contract. Lees het rustig door, bekijk de PDF voor de volledige tekst, en teken onderaan.
+    </p>
+
+    <div class="info-grid">
+      <div class="info-item"><div class="lbl">Contractnummer</div><div class="val">${esc(c.contractnummer)}</div></div>
+      <div class="info-item"><div class="lbl">Datum</div><div class="val">${esc(fmtD(c.aangemaakt_op))}</div></div>
+      <div class="info-item"><div class="lbl">Klant</div><div class="val">${esc(c.klant_naam)}</div></div>
+      <div class="info-item"><div class="lbl">Product</div><div class="val">${esc(c.product_naam)}</div></div>
+    </div>
+
+    <div class="totaal">
+      <span class="lbl">Totaalbedrag</span>
+      <span class="val">${eur(c.totaalbedrag)}</span>
+    </div>
+
+    ${termHtml ? `<h3 style="font-size:14px;color:#1E2F3A;margin:18px 0 6px">📅 Betalingsschema</h3>${termHtml}` : ''}
+
+    ${c.pdf_url ? `<p style="margin:18px 0"><a class="pdf-btn" href="${esc(c.pdf_url)}" target="_blank">📄 Volledig contract bekijken (PDF)</a></p>` : ''}
+
+    <div class="alert alert-info" style="margin-top:14px">
+      <strong>Belangrijk:</strong> het product blijft eigendom van Nijhof Brothers Furniture tot de volledige koopprijs is betaald (eigendomsvoorbehoud). Bij niet-tijdige betaling kan het product worden teruggehaald.
+    </div>
+
+    <div class="sign-box">
+      <h3>✍️ Ondertekenen</h3>
+      <div class="fg">
+        <label>Je volledige naam (zoals op identiteitsbewijs)</label>
+        <input type="text" id="teken-naam" placeholder="Voornaam Achternaam" value="${esc(c.klant_naam)}">
+      </div>
+      <label class="akkoord">
+        <input type="checkbox" id="teken-akkoord">
+        <span>Ik heb het contract gelezen en ga akkoord met de voorwaarden, inclusief het eigendomsvoorbehoud en betalingsschema.</span>
+      </label>
+      <button class="btn-teken" id="teken-btn" onclick="onderteken()">✍️ Contract ondertekenen</button>
+      <div id="teken-msg" style="margin-top:12px"></div>
+    </div>
+  `;
+}
+
+async function onderteken(){
+  const naam = document.getElementById('teken-naam').value.trim();
+  const akkoord = document.getElementById('teken-akkoord').checked;
+  const msg = document.getElementById('teken-msg');
+  const btn = document.getElementById('teken-btn');
+
+  if(!naam){
+    msg.innerHTML = '<div class="alert alert-err">⚠️ Vul je naam in</div>';
+    return;
+  }
+  if(!akkoord){
+    msg.innerHTML = '<div class="alert alert-err">⚠️ Vink de akkoord-checkbox aan</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Bezig met ondertekenen...';
+  msg.innerHTML = '';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/teken-contract`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + SUPABASE_ANON,
+        'apikey': SUPABASE_ANON,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ token: TOKEN, naam, akkoord: true })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.success){
+      throw new Error(data.error || 'Ondertekening mislukt');
+    }
+    document.getElementById('content').innerHTML = `
+      <div class="done">
+        <div class="check">✅</div>
+        <h2>Contract succesvol ondertekend</h2>
+        <p>Bedankt ${esc(naam)}! Je ondertekening is geregistreerd.</p>
+        <p style="margin-top:10px">Je krijgt binnenkort een bevestiging per email. Heb je vragen, mail <a href="mailto:invoice@nijhofbrothers.nl">invoice@nijhofbrothers.nl</a>.</p>
+      </div>`;
+  } catch(e){
+    btn.disabled = false;
+    btn.textContent = '✍️ Contract ondertekenen';
+    msg.innerHTML = `<div class="alert alert-err">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+</script>
+</body>
+</html>
