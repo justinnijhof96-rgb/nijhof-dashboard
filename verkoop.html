@@ -808,13 +808,10 @@ function _genTermijnen(n){
   const per=n>0?(totaal/n):0;
   const rows=$('s3-trm-rows');
   const vandaag=new Date();
-  // Bewaar bestaande termijn-data als die er is
-  const oude=STATE.termijnen||[];
   rows.innerHTML='';
   for(let i=0;i<n;i++){
-    const ond=oude[i]||{};
-    const datum=ond.vervaldatum||(new Date(vandaag.getFullYear(),vandaag.getMonth()+i,vandaag.getDate())).toISOString().slice(0,10);
-    const bed=ond.bedrag!=null?ond.bedrag:per;
+    const datum=(new Date(vandaag.getFullYear(),vandaag.getMonth()+i,vandaag.getDate())).toISOString().slice(0,10);
+    const bed=per;
     const div=document.createElement('div');
     div.style.cssText='padding:10px;border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;background:#fafafa';
     div.innerHTML=`
@@ -824,19 +821,12 @@ function _genTermijnen(n){
         <input type="date" id="trm-dat-${i}" value="${datum}" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="updateS3()">
       </div>
       <div style="display:flex;gap:5px;margin-top:6px">
-        <button class="btn-seg trm-bet" data-i="${i}" data-bet="pin" onclick="kiesTrmBet(${i},'pin')" style="min-height:38px;font-size:12px;padding:7px 4px">💳 Pin</button>
+        <button class="btn-seg trm-bet on" data-i="${i}" data-bet="pin" onclick="kiesTrmBet(${i},'pin')" style="min-height:38px;font-size:12px;padding:7px 4px">💳 Pin</button>
         <button class="btn-seg trm-bet" data-i="${i}" data-bet="contant" onclick="kiesTrmBet(${i},'contant')" style="min-height:38px;font-size:12px;padding:7px 4px">💶 Cash</button>
         <button class="btn-seg trm-bet" data-i="${i}" data-bet="bank" onclick="kiesTrmBet(${i},'bank')" style="min-height:38px;font-size:12px;padding:7px 4px">🏦 Bank</button>
       </div>
     `;
     rows.appendChild(div);
-    // Bestaande betaalmethode highlight
-    const huidigBet=ond.betaalmethode||'pin';
-    setTimeout(()=>{
-      rows.querySelectorAll(`.trm-bet[data-i="${i}"]`).forEach(b=>{
-        b.classList.toggle('on', b.dataset.bet===huidigBet);
-      });
-    },0);
   }
 }
 
