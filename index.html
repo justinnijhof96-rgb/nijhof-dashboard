@@ -198,6 +198,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <a href="#s-lasten">💸 Lasten</a>
     <a href="#s-debiteuren">📋 Debiteuren</a>
     <a href="#s-facturen">🧾 Facturen</a>
+    <a href="#s-contracten">📝 Contracten</a>
     <a href="#s-dash">📊 Dashboard</a>
     <a href="#s-export">📤 Export</a>
   </div>
@@ -323,6 +324,24 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     </div>
     <div id="fac-stats" style="margin-bottom:14px"></div>
     <div id="fac-lijst"></div>
+  </div>
+</div>
+
+<!-- CONTRACTEN -->
+<div class="sec" id="s-contracten">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📝 Contracten</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="ct-zoek" placeholder="🔍 Zoek op contractnummer, klant, product..." oninput="renderContracten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
+      <select id="ct-status" onchange="renderContracten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="">Alle statussen</option>
+        <option value="ondertekend">Ondertekend</option>
+        <option value="wachtend">Wacht op tekening</option>
+      </select>
+      <button class="btn btn-gy btn-sm" onclick="laadContractenUitDB()">↻ Verversen</button>
+    </div>
+    <div id="ct-stats" style="margin-bottom:14px"></div>
+    <div id="ct-lijst"></div>
   </div>
 </div>
 
@@ -1210,6 +1229,13 @@ function renderVkForm(){
       <span style="font-size:11px;color:var(--gr)">(verplicht klant naam + email)</span>
     </div>
 
+    <!-- CONTRACT CHECKBOX (alleen relevant bij termijn/aanbetaling) -->
+    <div id="vk-contract-sect" style="margin:10px 0 0;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:none;flex-wrap:wrap;gap:10px;align-items:center">
+      <label class="sw"><input type="checkbox" id="vk-maak-contract" checked><span class="sw-s"></span></label>
+      <span style="font-size:13px;font-weight:600;color:var(--bl)">📝 Contract opstellen (click-to-sign)</span>
+      <span style="font-size:11px;color:var(--gr)">aanbevolen bij termijnen + eigendomsvoorbehoud</span>
+    </div>
+
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-or" onclick="bevestigVk()">✓ Bevestig verkoop</button>
       <button class="btn btn-gy" onclick="sluitModal('m-vk')">Annuleer</button>
@@ -1220,6 +1246,11 @@ function toggleTermijnen(){
   el('vk-vol-sect').style.display=type==='volledig'?'':'none';
   el('vk-term-sect').style.display=type==='termijn'?'':'none';
   el('vk-aanbet-sect').style.display=type==='aanbetaling'?'':'none';
+  // Contract-sectie alleen tonen bij termijn of aanbetaling
+  const contractSect=el('vk-contract-sect');
+  if(contractSect){
+    contractSect.style.display=(type==='termijn'||type==='aanbetaling')?'flex':'none';
+  }
   if(type==='termijn')genTermijnen();
   updateVkPrev();
 }
@@ -1371,11 +1402,12 @@ async function bevestigVk(){
   // ── FACTUUR FLOW (als klantgegevens ingevuld) ──
   if(klantNaam && klantEmail){
     const klantData={naam:klantNaam,email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
-    // Klant opslaan + ID terugkrijgen, dan factuur opslaan (klant_id linkje)
+    const wilContract=(type==='termijn'||type==='aanbetaling') && chk('vk-maak-contract');
     _voltooiFactuurFlow({
       klantData,
       pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,btwMethode,btw,termijnen,klant:klantData,type},
-      wilEmailen
+      wilEmailen,
+      wilContract
     }).catch(e=>{
       console.error('Factuur flow mislukt:',e);
       toast('⚠️ Verkoop opgeslagen, maar factuur-flow mislukt — check console','#dc2626');
@@ -1383,8 +1415,8 @@ async function bevestigVk(){
   }
 }
 
-// ── COMPLETE FACTUUR FLOW: klant + PDF storage + factuur DB + email ──
-async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen}){
+// ── COMPLETE FACTUUR FLOW: klant + PDF storage + factuur DB + email + optioneel contract ──
+async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen,wilContract}){
   // 1. Klant opslaan en ID terugkrijgen
   const klantId=await _slaKlantOp(klantData);
 
@@ -1396,10 +1428,9 @@ async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen}){
 
   // 3. PDF uploaden naar Storage
   toast('💾 Factuur opslaan...','#2563eb');
-  let pdfUrl=null,pdfPad=null;
+  let pdfPad=null;
   try{
     const r=await _uploadFactuurPDF(pdfBlob,pdfData.factuurnr);
-    pdfUrl=r.signedUrl;
     pdfPad=r.pad;
   }catch(e){
     console.error('PDF upload fout:',e);
@@ -1407,8 +1438,10 @@ async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen}){
   }
 
   // 4. Factuur-record opslaan in DB
+  let factuurId=null;
   try{
-    await _slaFactuurOpInDB({pdfData,klantId,pdfUrl:pdfPad,wilEmailen});
+    const rows=await _slaFactuurOpInDB({pdfData,klantId,pdfUrl:pdfPad,wilEmailen});
+    if(rows&&rows.length)factuurId=rows[0].id;
   }catch(e){
     console.error('Factuur DB opslaan fout:',e);
   }
@@ -1424,7 +1457,16 @@ async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen}){
   } else {
     toast('💾 Factuur opgeslagen (geen email verstuurd)','#15803d');
   }
-  // 6. Facturen-lijst verversen zodat nieuwe factuur meteen zichtbaar is
+
+  // 6. Optioneel contract opstellen + versturen
+  if(wilContract){
+    _voltooiContractFlow({pdfData,klantId,factuurId}).catch(e=>{
+      console.error('Contract flow fout:',e);
+      toast('⚠️ Contract flow mislukt: '+e.message,'#dc2626');
+    });
+  }
+
+  // 7. Facturen-lijst verversen
   laadFacturenUitDB().catch(()=>{});
 }
 
@@ -1629,7 +1671,7 @@ function _maakFactuurPDF(data){
   // Footer
   doc.setTextColor(156,163,175);doc.setFontSize(8);doc.setFont('helvetica','normal');
   doc.text('Bedankt voor je aankoop bij Nijhof Brothers Furniture.',105,270,{align:'center'});
-  doc.text('Vragen? Mail naar invoice@nijhofbrothers.nl of bel +31 6 52691719',105,275,{align:'center'});
+  doc.text('Vragen? Mail invoice@nijhofbrothers.nl of WhatsApp +31 55 569 0039',105,275,{align:'center'});
   doc.text('www.nijhofbrothers.nl',105,280,{align:'center'});
 
   return doc;
@@ -1674,6 +1716,292 @@ async function _verstuurFactuurEmail(data){
   } else {
     console.error('Email fout:',json);
     toast('⚠️ Email mislukt: '+(json.error||'onbekend'),'#dc2626');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// CONTRACT FLOW
+// ════════════════════════════════════════════════════════════════
+
+// Genereer uniek ondertekenings-token (klant-link)
+function _genContractToken(){
+  return 'sig-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+}
+
+// Contract nummer: NB-CT-YYYYMMDD-N (oplopend per dag)
+function _volgendContractnr(){
+  const d=new Date();
+  const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  // Tellen via _contractenCache (geladen bij dashboard load); fallback: nu maar 1
+  let aantal=1;
+  if(Array.isArray(_contractenCache)){
+    aantal=_contractenCache.filter(c=>c.contractnummer&&c.contractnummer.startsWith(`NB-CT-${datStr}-`)).length+1;
+  }
+  return `NB-CT-${datStr}-${aantal}`;
+}
+
+// ── CONTRACT PDF GENEREREN ────────────────────────────────────────
+function _maakContractPDF(data){
+  const{item,contractnr,verkoopDatum,verkoopprijs,termijnen,klant,type,factuurnr,ondertekendData}=data;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header NB huisstijl
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('KOOPOVEREENKOMST',15,52);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');
+  doc.setTextColor(107,114,128);
+  doc.text(`Contractnr: ${contractnr}`,15,59);
+  doc.text(`Datum: ${new Date(verkoopDatum).toLocaleDateString('nl-NL')}`,15,64);
+  if(factuurnr){doc.text(`Factuurnr: ${factuurnr}`,15,69);}
+
+  // Partijen
+  let y=80;
+  doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Tussen:',15,y);y+=6;
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  doc.text('Nijhof Brothers Furniture, gevestigd te Apeldoorn (Dovenetel 9, 7322 DM)',15,y);y+=5;
+  doc.text('KvK 98613783, hierna: "verkoper",',15,y);y+=8;
+  doc.setFont('helvetica','bold');doc.text('en:',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`${klant.naam}${klant.adres?', '+klant.adres:''}${klant.postcode||klant.plaats?', '+(klant.postcode||'')+' '+(klant.plaats||''):''}`,15,y);y+=5;
+  if(klant.email){doc.text(`Email: ${klant.email}`,15,y);y+=5;}
+  if(klant.telefoon){doc.text(`Telefoon: ${klant.telefoon}`,15,y);y+=5;}
+  doc.text('hierna: "koper".',15,y);y+=10;
+
+  // Artikel 1 - Object
+  doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const omschr=`${item.naam}${item.stof?' ('+item.stof+')':''}${item.artikelnummer?' — '+item.artikelnummer:''}`;
+  const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
+  lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 2 - Koopprijs
+  doc.setFont('helvetica','bold');doc.text('Artikel 2 — Koopprijs',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`De koopprijs bedraagt € ${verkoopprijs.toFixed(2).replace('.',',')} (incl. BTW conform margeregeling).`,15,y);y+=8;
+
+  // Artikel 3 - Betaling
+  doc.setFont('helvetica','bold');doc.text('Artikel 3 — Betaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  if(type==='aanbetaling'){
+    doc.text('Betaling vindt plaats in 2 termijnen:',15,y);y+=5;
+  } else {
+    doc.text(`Betaling vindt plaats in ${termijnen.length} termijnen:`,15,y);y+=5;
+  }
+  termijnen.forEach(t=>{
+    const lbl=t.label||`Termijn ${t.nr}`;
+    const datStr=new Date(t.vervaldatum).toLocaleDateString('nl-NL');
+    doc.text(`  • ${lbl}: € ${t.bedrag.toFixed(2).replace('.',',')} — vervaldatum ${datStr}`,15,y);y+=5;
+  });
+  y+=3;
+
+  // Artikel 4 - Eigendomsvoorbehoud
+  doc.setFont('helvetica','bold');doc.text('Artikel 4 — Eigendomsvoorbehoud',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a4=doc.splitTextToSize('Het verkochte blijft eigendom van verkoper totdat de volledige koopprijs door koper is voldaan. Tot dat moment is het koper niet toegestaan het verkochte te vervreemden, te bezwaren of aan derden over te dragen.',180);
+  a4.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 5 - Wanbetaling
+  doc.setFont('helvetica','bold');doc.text('Artikel 5 — Wanbetaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a5=doc.splitTextToSize('Bij niet-tijdige betaling van een termijn is koper zonder nadere ingebrekestelling in verzuim. Verkoper is alsdan gerechtigd het verkochte terug te nemen, onverminderd zijn recht op vergoeding van geleden schade en redelijke incassokosten conform de Wet incassokosten.',180);
+  a5.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 6 - Levering & risico
+  doc.setFont('helvetica','bold');doc.text('Artikel 6 — Levering en risico',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a6=doc.splitTextToSize('Het risico van het verkochte gaat over op koper op het moment van feitelijke aflevering. Koper dient het verkochte bij aflevering te controleren op zichtbare gebreken; klachten dienen binnen 7 dagen schriftelijk te worden gemeld.',180);
+  a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=8;
+
+  // Nieuwe pagina als nodig
+  if(y>240){doc.addPage();y=20;}
+
+  // Ondertekening
+  doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text('Ondertekening',15,y);y+=8;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+
+  // Verkoper (al getekend)
+  doc.text('Verkoper:',15,y);
+  doc.text('Koper:',110,y);y+=5;
+  doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  doc.text('Justin & Jon Nijhof',15,y);
+  if(ondertekendData&&ondertekendData.naam){
+    doc.text(ondertekendData.naam,110,y);
+  } else {
+    doc.text('[ondertekening via online akkoord]',110,y);
+  }
+  y+=4;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
+  doc.text(`Datum: ${new Date(verkoopDatum).toLocaleDateString('nl-NL')}`,15,y);
+  if(ondertekendData&&ondertekendData.datum){
+    doc.text(`Ondertekend: ${new Date(ondertekendData.datum).toLocaleDateString('nl-NL')}`,110,y);y+=4;
+    doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);doc.setFontSize(8);
+    doc.text(`IP: ${ondertekendData.ip||'—'}  ·  Token: ${ondertekendData.token||'—'}`,110,y);
+  } else {
+    doc.text('Datum: ____________',110,y);y+=4;
+    doc.setFont('helvetica','italic');doc.setTextColor(232,119,34);doc.setFontSize(8);
+    doc.text('Nog niet ondertekend',110,y);
+  }
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','normal');
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,285,{align:'center'});
+  doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,289,{align:'center'});
+
+  return doc;
+}
+
+// ── CONTRACT UPLOADEN ─────────────────────────────────────────────
+async function _uploadContractPDF(pdfBlob,contractnr){
+  const uid_user=_getUserId();
+  const org_id=_getOrgId();
+  if(!uid_user||!org_id)throw new Error('Niet ingelogd');
+  const pad=`${org_id}/${contractnr}.pdf`;
+  const{error}=await _sb.storage.from('contracten-pdf').upload(pad,pdfBlob,{
+    contentType:'application/pdf',upsert:true
+  });
+  if(error)throw error;
+  return{pad};
+}
+
+async function _getContractSignedUrl(pdfPad){
+  if(!pdfPad)return null;
+  const{data,error}=await _sb.storage.from('contracten-pdf').createSignedUrl(pdfPad,86400);
+  if(error){console.error('Signed URL fout:',error);return null;}
+  return data?.signedUrl||null;
+}
+
+// ── CONTRACT-RECORD OPSLAAN IN DB ─────────────────────────────────
+async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToken}){
+  const uid_user=_getUserId();
+  const org_id=_getOrgId();
+  if(!uid_user||!org_id)return null;
+  const{item,contractnr,verkoopId,verkoopprijs,termijnen,klant}=data;
+  const termSnap=termijnen.map(t=>({
+    nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum,
+    label:t.label,betaald:!!t.betaald
+  }));
+  const record={
+    id:uid(),
+    user_id:uid_user,
+    org_id:org_id,
+    contractnummer:contractnr,
+    verkoop_id:verkoopId,
+    klant_id:klantId||null,
+    factuur_id:factuurId||null,
+    klant_naam:klant.naam,
+    klant_email:klant.email||null,
+    product_naam:item.naam,
+    totaalbedrag:verkoopprijs,
+    termijnen_json:termSnap,
+    ondertekend:false,
+    ondertekend_op:null,
+    ondertekend_naam:null,
+    ondertekend_ip:null,
+    ondertekend_token:ondertekendToken,
+    status:'verzonden',
+    pdf_url:pdfPad,
+    pdf_url_blanco:pdfPad,
+    aangemaakt_op:new Date().toISOString()
+  };
+  try{
+    const rows=await dbUpsert('contracten',[record]);
+    return rows&&rows.length?rows[0].id:null;
+  }catch(e){
+    console.error('Contract DB opslaan fout:',e);
+    throw e;
+  }
+}
+
+// ── CONTRACT EMAIL VERSTUREN ──────────────────────────────────────
+async function _verstuurContractEmail({data,pdfBase64,ondertekendToken}){
+  const{item,contractnr,verkoopprijs,klant}=data;
+  // Klant-link voor click-to-sign — open op zelfde Vercel deploy, route /teken.html
+  const tekenUrl=`${window.location.origin}/teken.html?token=${encodeURIComponent(ondertekendToken)}`;
+  // Gebruik bestaande factuur-edge function maar met aangepast bericht; nee — beter eigen edge function.
+  // Voor nu: gebruik factuur-edge function met aangepaste subject (komt allebei aan)
+  const url=SUPABASE_URL+'/functions/v1/verstuur-contract';
+  const token=_getToken();
+  const res=await fetch(url,{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+(token||SUPABASE_ANON),'Content-Type':'application/json'},
+    body:JSON.stringify({
+      klantEmail:klant.email,
+      klantNaam:klant.naam,
+      contractnummer:contractnr,
+      totaalBedrag:verkoopprijs,
+      productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+      tekenUrl,
+      pdfBase64,
+      pdfBestandsnaam:`contract-${contractnr}.pdf`
+    })
+  });
+  const json=await res.json();
+  if(!res.ok||!json.success){
+    console.error('Contract email fout:',json);
+    throw new Error(json.error||'Contract email mislukt');
+  }
+  return json;
+}
+
+// ── COMPLETE CONTRACT FLOW ────────────────────────────────────────
+async function _voltooiContractFlow({pdfData,klantId,factuurId}){
+  const contractnr=_volgendContractnr();
+  const ondertekendToken=_genContractToken();
+  const contractData={...pdfData,contractnr,factuurnr:pdfData.factuurnr};
+  toast('📝 Contract opstellen...','#2563eb');
+  // 1. PDF maken (blanco, nog niet getekend)
+  const doc=_maakContractPDF(contractData);
+  const pdfBlob=doc.output('blob');
+  const dataUri=doc.output('datauristring');
+  const pdfBase64=dataUri.split(',')[1];
+  // 2. Upload PDF
+  let pdfPad=null;
+  try{
+    const r=await _uploadContractPDF(pdfBlob,contractnr);
+    pdfPad=r.pad;
+  }catch(e){
+    console.error('Contract PDF upload fout:',e);
+    toast('⚠️ Contract opslaan mislukt: '+e.message,'#dc2626');
+    return;
+  }
+  // 3. DB opslaan
+  await _slaContractOpInDB({data:contractData,klantId,factuurId,pdfPad,ondertekendToken}).catch(e=>{
+    console.error('Contract DB fout:',e);
+  });
+  // 4. Email versturen
+  try{
+    await _verstuurContractEmail({data:contractData,pdfBase64,ondertekendToken});
+    toast('✅ Contract verstuurd naar klant','#15803d');
+  }catch(e){
+    toast('⚠️ Contract opgeslagen maar email mislukt: '+e.message,'#dc2626');
+  }
+  // 5. Refresh lijst
+  laadContractenUitDB().catch(()=>{});
+}
+
+let _contractenCache=[];
+async function laadContractenUitDB(){
+  try{
+    const rows=await dbSelect('contracten','order=aangemaakt_op.desc');
+    _contractenCache=rows||[];
+    renderContracten();
+  }catch(e){
+    console.error('Contracten laden mislukt:',e);
   }
 }
 
@@ -2443,7 +2771,124 @@ async function verstuurFactuurOpnieuw(factuurId){
   }
 }
 
-function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();}
+// ── CONTRACTEN UI ─────────────────────────────────────────────────
+function renderContracten(){
+  const lijst=el('ct-lijst'),stats=el('ct-stats');
+  if(!lijst)return;
+  const zoek=val('ct-zoek').toLowerCase().trim();
+  const statusFlt=val('ct-status');
+  let cts=_contractenCache.slice();
+  if(statusFlt==='ondertekend')cts=cts.filter(c=>c.ondertekend);
+  else if(statusFlt==='wachtend')cts=cts.filter(c=>!c.ondertekend);
+  if(zoek)cts=cts.filter(c=>
+    (c.contractnummer||'').toLowerCase().includes(zoek)||
+    (c.klant_naam||'').toLowerCase().includes(zoek)||
+    (c.klant_email||'').toLowerCase().includes(zoek)||
+    (c.product_naam||'').toLowerCase().includes(zoek)
+  );
+  const totBedrag=_contractenCache.reduce((a,c)=>a+(Number(c.totaalbedrag)||0),0);
+  const aantalGet=_contractenCache.filter(c=>c.ondertekend).length;
+  const aantalWacht=_contractenCache.length-aantalGet;
+  stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+    <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 Totaal: ${_contractenCache.length} contracten</span>
+    <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">✅ Ondertekend: ${aantalGet}</span>
+    <span style="background:#fff7ed;color:#c2410c;padding:6px 12px;border-radius:20px;font-weight:600">⏳ Wacht op tekening: ${aantalWacht}</span>
+    <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">💰 Waarde: ${eur(totBedrag)}</span>
+  </div>`;
+  if(!cts.length){
+    lijst.innerHTML='<div class="alert alert-info">ℹ️ Nog geen contracten — bij een verkoop met termijnen/aanbetaling kun je een contract laten opstellen.</div>';
+    return;
+  }
+  lijst.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Contractnr.</th><th>Klant</th><th>Product</th><th>Bedrag</th><th>Status</th><th>Acties</th></tr></thead>
+    <tbody>${cts.map(c=>{
+      const status=c.ondertekend
+        ?`<span class="chip chip-gn">✅ Ondertekend</span><br><span style="font-size:10px;color:var(--gr)">${fmtD(c.ondertekend_op)}</span>`
+        :`<span class="chip chip-or">⏳ Wacht op klant</span>`;
+      const klant=`<strong>${esc(c.klant_naam||'?')}</strong>${c.klant_email?`<br><span style="font-size:11px;color:var(--gr)">${esc(c.klant_email)}</span>`:''}`;
+      const product=esc(c.product_naam||'—');
+      const cid=esc(c.id);
+      const tekenUrl=c.ondertekend_token?`${window.location.origin}/teken.html?token=${encodeURIComponent(c.ondertekend_token)}`:'';
+      const acties=`
+        <button class="btn btn-gy btn-xs" onclick="bekijkContractPDF('${cid}')" title="Bekijk contract PDF">👁️</button>
+        ${!c.ondertekend&&c.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurContractOpnieuw('${cid}')" title="Opnieuw mailen">📤</button>`:''}
+        ${!c.ondertekend&&tekenUrl?`<button class="btn btn-bl btn-xs" onclick="kopieerTekenLink('${esc(tekenUrl)}')" title="Kopieer klant-link">🔗</button>`:''}`;
+      return `<tr>
+        <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(c.contractnummer)}</span></td>
+        <td>${klant}</td>
+        <td>${product}</td>
+        <td><strong>${eur(c.totaalbedrag||0)}</strong></td>
+        <td>${status}</td>
+        <td style="white-space:nowrap">${acties}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function bekijkContractPDF(contractId){
+  const c=_contractenCache.find(x=>x.id===contractId);
+  if(!c){toast('Contract niet gevonden','#dc2626');return;}
+  if(!c.pdf_url){toast('Geen PDF beschikbaar','#dc2626');return;}
+  toast('🔗 Link genereren...','#2563eb');
+  const signedUrl=await _getContractSignedUrl(c.pdf_url);
+  if(!signedUrl){toast('PDF link genereren mislukt','#dc2626');return;}
+  window.open(signedUrl,'_blank');
+}
+
+async function verstuurContractOpnieuw(contractId){
+  const c=_contractenCache.find(x=>x.id===contractId);
+  if(!c){toast('Contract niet gevonden','#dc2626');return;}
+  if(!c.klant_email){toast('Geen email-adres bekend','#dc2626');return;}
+  if(!c.pdf_url){toast('Geen opgeslagen PDF','#dc2626');return;}
+  if(!confirm(`Contract ${c.contractnummer} opnieuw mailen naar ${c.klant_email}?`))return;
+  toast('📤 Contract ophalen en versturen...','#2563eb');
+  try{
+    const{data:blob,error}=await _sb.storage.from('contracten-pdf').download(c.pdf_url);
+    if(error)throw error;
+    const reader=new FileReader();
+    const pdfBase64=await new Promise((resolve,reject)=>{
+      reader.onload=()=>resolve(reader.result.split(',')[1]);
+      reader.onerror=()=>reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const tekenUrl=`${window.location.origin}/teken.html?token=${encodeURIComponent(c.ondertekend_token)}`;
+    const url=SUPABASE_URL+'/functions/v1/verstuur-contract';
+    const token=_getToken();
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+(token||SUPABASE_ANON),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        klantEmail:c.klant_email,
+        klantNaam:c.klant_naam,
+        contractnummer:c.contractnummer,
+        totaalBedrag:Number(c.totaalbedrag),
+        productNaam:c.product_naam,
+        tekenUrl,
+        pdfBase64,
+        pdfBestandsnaam:`contract-${c.contractnummer}.pdf`
+      })
+    });
+    const json=await res.json();
+    if(res.ok&&json.success){
+      toast(`✅ Contract opnieuw verstuurd`,'#15803d');
+      laadContractenUitDB();
+    } else {
+      throw new Error(json.error||'onbekend');
+    }
+  }catch(e){
+    console.error('Opnieuw versturen contract:',e);
+    toast('⚠️ Mislukt: '+e.message,'#dc2626');
+  }
+}
+
+function kopieerTekenLink(url){
+  navigator.clipboard.writeText(url).then(()=>{
+    toast('🔗 Klant-link gekopieerd','#15803d');
+  }).catch(()=>{
+    prompt('Kopieer deze link voor de klant:',url);
+  });
+}
+
+function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();}
 </script>
 </body>
 </html>
