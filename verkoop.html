@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1E2F3A">
 <title>NB Verkoop</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-tap-highlight-color:transparent}
 :root{
@@ -344,7 +345,18 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
     <div class="view" id="stap-4">
       <h1>Even checken</h1>
       <h2>Stap 4 van 4 — controleer en bevestig</h2>
-      <div class="empty">⏳ Stap 4 wordt later toegevoegd</div>
+      <div id="s4-preview"></div>
+      <div id="s4-status"></div>
+    </div>
+
+    <!-- SUCCES SCREEN -->
+    <div class="view" id="stap-klaar">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:80px;margin-bottom:20px">🎉</div>
+        <h1 style="font-size:26px;color:var(--gn);margin-bottom:10px">Verkoop afgerond!</h1>
+        <div id="klaar-info" style="font-size:14px;color:var(--gr);line-height:1.7;margin:18px 0"></div>
+        <button class="btn btn-or" style="width:100%;margin-top:20px" onclick="nieuweVerkoop()">+ Nieuwe verkoop</button>
+      </div>
     </div>
   </main>
 
@@ -446,6 +458,7 @@ function _updateNextEnabled(){
 function _onStapEnter(n){
   if(n===2) renderS2();
   else if(n===3) renderS3();
+  else if(n===4) renderS4();
 }
 
 function volgendeStap(){
@@ -914,7 +927,405 @@ function updateS3(){
   _updateNextEnabled();
 }
 
-// ── INIT ──────────────────────────────────────────────────────────
+// ── STAP 4 — PREVIEW + AFRONDEN ───────────────────────────────────
+function renderS4(){
+  const i=STATE.gekozen;
+  if(!i){$('s4-preview').innerHTML='';return;}
+  const servTot=(STATE.services||[]).reduce((a,s)=>a+s.bedrag,0);
+  const factTot=STATE.prijs+servTot;
+  const bruto=STATE.prijs-(i.prijs||0);
+  const fotoHTML = i.foto_url
+    ? `<img src="${esc(i.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:8px">`
+    : '<div style="width:60px;height:60px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:24px">📦</div>';
+
+  let typeOmschr='';
+  if(STATE.type==='volledig')typeOmschr=`Volledige betaling (${STATE._bet?.vol||'pin'})`;
+  else if(STATE.type==='aanbetaling')typeOmschr='Aanbetaling + rest bij levering';
+  else if(STATE.type==='termijn')typeOmschr=`${STATE.termijnen.length} termijnen`;
+
+  const klantRijen= STATE.klant.naam ? `
+    <div class="prev-rij"><span>Naam</span><span style="font-weight:600">${esc(STATE.klant.naam)}</span></div>
+    ${STATE.klant.email?`<div class="prev-rij"><span>Email</span><span>${esc(STATE.klant.email)}</span></div>`:''}
+    ${STATE.klant.tel?`<div class="prev-rij"><span>Telefoon</span><span>${esc(STATE.klant.tel)}</span></div>`:''}
+    ${STATE.klant.adres?`<div class="prev-rij"><span>Adres</span><span>${esc(STATE.klant.adres)}</span></div>`:''}
+    ${(STATE.klant.pc||STATE.klant.plts)?`<div class="prev-rij"><span>Postcode/Plaats</span><span>${esc(STATE.klant.pc)} ${esc(STATE.klant.plts)}</span></div>`:''}
+  ` : '<div class="empty" style="padding:20px">Geen klantgegevens</div>';
+
+  const servRijen=(STATE.services||[]).map(s=>
+    `<div class="prev-rij" style="color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
+  ).join('');
+
+  const termRijen=STATE.termijnen.length>1 ? STATE.termijnen.map(t=>{
+    const datum=new Date(t.vervaldatum).toLocaleDateString('nl-NL');
+    const bet=t.betaald?' <span style="color:var(--gn);font-size:11px">✓</span>':'';
+    return `<div class="prev-rij"><span>${esc(t.label||'Termijn '+t.nr)} <span style="color:var(--gr);font-size:11px">${datum} · ${t.betaalmethode}</span>${bet}</span><span>${eur(t.bedrag)}</span></div>`;
+  }).join('') : '';
+
+  $('s4-preview').innerHTML=`
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">📦 Product</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        ${fotoHTML}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:var(--nav)">${esc(i.naam)}</div>
+          <div style="font-size:12px;color:var(--gr);margin-top:2px">${i.artikelnummer?esc(i.artikelnummer):''}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💰 Prijs</div>
+      <div class="prev-rij"><span>Verkoopprijs</span><span>${eur(STATE.prijs)}</span></div>
+      ${servRijen}
+      <div class="prev-rij" style="color:var(--gr);font-size:12px"><span>BTW-methode</span><span>${STATE.btwMethode==='marge'?'Margeregeling':'21% standaard'}</span></div>
+      <div class="prev-rij" style="color:var(--gr);font-size:12px"><span>Op factuur</span><span>${STATE.extrasVis==='samen'?'Samen op 1 regel':'Uitgesplitst'}</span></div>
+      <div class="prev-rij tot"><span>Klant betaalt</span><span>${eur(factTot)}</span></div>
+      <div style="font-size:12px;color:var(--gr);margin-top:6px">Bruto marge: <strong style="color:${bruto>=0?'var(--gn)':'var(--rd)'}">${eur(bruto)}</strong></div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">👤 Klant</div>
+      ${klantRijen}
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💳 Betaling</div>
+      <div class="prev-rij"><span>Type</span><span style="font-weight:600">${esc(typeOmschr)}</span></div>
+      ${termRijen}
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">📨 Acties</div>
+      ${STATE.wilEmailen?`<div class="prev-rij" style="color:var(--gn)"><span>📧 Factuur emailen</span><span>✓</span></div>`:`<div class="prev-rij" style="color:var(--gr)"><span>📧 Factuur emailen</span><span>uit</span></div>`}
+      ${STATE.wilContract?`<div class="prev-rij" style="color:var(--gn)"><span>📝 Contract opstellen</span><span>✓</span></div>`:''}
+    </div>
+  `;
+}
+
+// ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
+function _maakFactuurPDFmobiel(data){
+  const{item,factuurnr,verkoopDatum,verkoopprijs,services,extrasVis,factuurTotaal,btwMethode,btw,termijnen,klant,type}=data;
+  const _services=services||[];
+  const _zichtbaar=extrasVis==='uitgesplitst';
+  const _totaal=factuurTotaal;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);
+  doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // FACTUUR titel + nummer
+  doc.setTextColor(30,47,58);doc.setFontSize(28);doc.setFont('helvetica','bold');
+  doc.text('FACTUUR',15,55);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');
+  doc.setTextColor(107,114,128);doc.text('Nummer:',130,50);
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');doc.text(factuurnr,195,50,{align:'right'});
+  doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);doc.text('Datum:',130,57);
+  doc.setTextColor(30,47,58);doc.text(new Date(verkoopDatum).toLocaleDateString('nl-NL'),195,57,{align:'right'});
+
+  // Klant
+  doc.setFontSize(9);doc.setTextColor(107,114,128);doc.text('FACTUUR AAN',15,72);
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text(klant.naam,15,79);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  let kY=85;
+  if(klant.adres){doc.text(klant.adres,15,kY);kY+=5;}
+  if(klant.pc||klant.plts){doc.text(`${klant.pc||''} ${klant.plts||''}`.trim(),15,kY);kY+=5;}
+  if(klant.email){doc.text(klant.email,15,kY);kY+=5;}
+
+  // Tabel header
+  const tabelY=110;
+  doc.setFillColor(243,244,246);doc.rect(15,tabelY,180,8,'F');
+  doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  doc.text('OMSCHRIJVING',18,tabelY+5.5);
+  doc.text('BEDRAG',192,tabelY+5.5,{align:'right'});
+
+  // Regels
+  let rY=tabelY+15;
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','normal');doc.setFontSize(10);
+
+  if(_zichtbaar && _services.length>0){
+    const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    doc.text(omschr,18,rY);
+    doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
+    rY+=7;
+    _services.forEach(s=>{
+      doc.text(s.naam,18,rY);
+      doc.text('€ '+s.bedrag.toFixed(2).replace('.',','),192,rY,{align:'right'});
+      rY+=7;
+    });
+  } else {
+    let omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    if(_services.length>0){
+      const servNamen=_services.map(s=>s.naam.toLowerCase()).join(', ');
+      omschr+=`  (incl. ${servNamen})`;
+    }
+    const splitOmschr=doc.splitTextToSize(omschr,140);
+    splitOmschr.forEach((l,idx)=>{doc.text(l,18,rY+idx*5);});
+    doc.text('€ '+_totaal.toFixed(2).replace('.',','),192,rY,{align:'right'});
+    rY+=Math.max(7,splitOmschr.length*5+2);
+  }
+
+  doc.setDrawColor(229,231,235);doc.line(15,rY+3,195,rY+3);
+  rY+=10;
+
+  // BTW melding
+  doc.setFontSize(8);doc.setTextColor(107,114,128);doc.setFont('helvetica','italic');
+  if(btwMethode==='marge'){
+    doc.text('Margeregeling van toepassing op grond van art. 28b Wet OB',15,rY);
+  } else {
+    doc.text(`BTW 21% inbegrepen in totaalbedrag (€ ${btw.toFixed(2).replace('.',',')})`,15,rY);
+  }
+  rY+=8;
+
+  // Totaal
+  doc.setFillColor(232,119,34);doc.rect(120,rY,75,14,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('TOTAAL',124,rY+9);
+  doc.setFontSize(14);doc.text('€ '+_totaal.toFixed(2).replace('.',','),192,rY+9,{align:'right'});
+  rY+=22;
+
+  // Termijnschema
+  if((type==='termijn'||type==='aanbetaling') && termijnen.length>1){
+    doc.setTextColor(30,47,58);doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.text('Betalingsschema',15,rY);rY+=6;
+    doc.setFontSize(9);doc.setFont('helvetica','normal');
+    termijnen.forEach(t=>{
+      const lbl=t.label||`Termijn ${t.nr}`;
+      const status=t.betaald?'✓ betaald':'openstaand';
+      const datStr=new Date(t.vervaldatum).toLocaleDateString('nl-NL');
+      doc.setTextColor(30,47,58);
+      doc.text(`• ${lbl}`,18,rY);
+      doc.text(`€ ${t.bedrag.toFixed(2).replace('.',',')}`,140,rY,{align:'right'});
+      doc.text(datStr,170,rY,{align:'right'});
+      doc.setTextColor(t.betaald?22:107,t.betaald?128:114,t.betaald?61:128);
+      doc.text(status,193,rY,{align:'right'});
+      rY+=5;
+    });
+  }
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('Bedankt voor je aankoop bij Nijhof Brothers Furniture.',105,270,{align:'center'});
+  doc.text('Vragen? Mail invoice@nijhofbrothers.nl of WhatsApp +31 55 569 0039',105,275,{align:'center'});
+  doc.text('www.nijhofbrothers.nl',105,280,{align:'center'});
+
+  return doc;
+}
+
+// ── REST helpers ──────────────────────────────────────────────────
+async function _restPost(path,data){
+  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
+    method:'POST',
+    headers:{..._authHeaders(),'Prefer':'return=representation'},
+    body:JSON.stringify(data)
+  });
+  if(!r.ok)throw new Error('POST '+r.status+': '+await r.text());
+  return await r.json();
+}
+
+async function _restPatch(path,data){
+  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
+    method:'PATCH',
+    headers:{..._authHeaders(),'Prefer':'return=representation'},
+    body:JSON.stringify(data)
+  });
+  if(!r.ok)throw new Error('PATCH '+r.status+': '+await r.text());
+  return await r.json();
+}
+
+function _genId(){
+  return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+}
+
+function _volgendeFactuurnr(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  // Tijdstempel mee voor uniqueness (er staat geen unique meer dus extra niet nodig maar netter)
+  const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
+  return `NBF-${datStr}-${hh}${mm}${ss}`;
+}
+
+function _volgendContractnr(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
+  return `NB-CT-${datStr}-${hh}${mm}${ss}`;
+}
+
+function _genToken(){
+  return 'sig-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+}
+
+// ── AFRONDEN — HOOFDFLOW ──────────────────────────────────────────
+async function afronden(){
+  const btn=$('btn-next');
+  btn.disabled=true;
+  $('s4-status').innerHTML='<div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">⏳ Verkoop wordt verwerkt...</div>';
+
+  try {
+    const item=STATE.gekozen;
+    const verkoopId=_genId();
+    const factuurnr=_volgendeFactuurnr();
+    const verkoopDatum=new Date().toISOString().slice(0,10);
+    const servTot=STATE.services.reduce((a,s)=>a+s.bedrag,0);
+    const factuurTotaal=STATE.prijs+servTot;
+    const bruto=STATE.prijs-(item.prijs||0);
+    const netto=bruto+servTot;
+    const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:(STATE.prijs-(item.prijs||0))/1.21*0.21;
+
+    // 1. Verkoop in DB
+    const verkoopData={
+      id:verkoopId,user_id:STATE.user.id,org_id:STATE.org_id,
+      item_id:item.id,verkoopprijs:STATE.prijs,
+      verkooplocatie:'verkoop-app',
+      factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
+      termijnen:STATE.termijnen,
+      impregneer:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
+      bruto_marge:bruto,netto_marge:netto,btw:btw,netto_na_btw:netto-btw,
+      datum_registratie:new Date().toISOString()
+    };
+    await _restPost('verkopen',verkoopData);
+
+    // 2. Item status → verkocht
+    await _restPatch(`items?id=eq.${encodeURIComponent(item.id)}`,{status:'verkocht'});
+
+    // 3. Als klant ingevuld: klant opslaan + factuur PDF + email
+    let factuurId=null,contractId=null;
+    if(STATE.klant.naam && STATE.klant.email){
+      // Klant opslaan
+      const klantId=_genId();
+      try{
+        await _restPost('klanten',{
+          id:klantId,user_id:STATE.user.id,org_id:STATE.org_id,
+          naam:STATE.klant.naam,email:STATE.klant.email,
+          telefoon:STATE.klant.tel||null,adres:STATE.klant.adres||null,
+          postcode:STATE.klant.pc||null,plaats:STATE.klant.plts||null,
+          land:'NL',aangemaakt_op:new Date().toISOString()
+        });
+      }catch(e){console.warn('Klant opslaan:',e);}
+
+      // Factuur PDF maken
+      const pdfData={
+        item,factuurnr,verkoopDatum,verkoopprijs:STATE.prijs,
+        services:STATE.services,extrasVis:STATE.extrasVis,factuurTotaal,
+        btwMethode:STATE.btwMethode,btw,termijnen:STATE.termijnen,
+        klant:{naam:STATE.klant.naam,email:STATE.klant.email,tel:STATE.klant.tel,adres:STATE.klant.adres,pc:STATE.klant.pc,plts:STATE.klant.plts},
+        type:STATE.type
+      };
+      const doc=_maakFactuurPDFmobiel(pdfData);
+      const pdfBlob=doc.output('blob');
+      const pdfBase64=doc.output('datauristring').split(',')[1];
+
+      // Upload naar storage
+      const pdfPad=`${STATE.org_id}/${factuurnr}.pdf`;
+      try{
+        const upRes=await fetch(`${SUPABASE_URL}/storage/v1/object/facturen-pdf/${pdfPad}?upsert=true`,{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/pdf','x-upsert':'true'},
+          body:pdfBlob
+        });
+        if(!upRes.ok)console.warn('PDF upload:',await upRes.text());
+      }catch(e){console.warn('PDF upload:',e);}
+
+      // Factuur DB
+      factuurId=_genId();
+      try{
+        await _restPost('facturen',{
+          id:factuurId,user_id:STATE.user.id,org_id:STATE.org_id,
+          factuurnummer:factuurnr,verkoop_id:verkoopId,klant_id:klantId,
+          klant_naam:STATE.klant.naam,klant_email:STATE.klant.email,
+          klant_telefoon:STATE.klant.tel||null,klant_adres:STATE.klant.adres||null,
+          klant_postcode:STATE.klant.pc||null,klant_plaats:STATE.klant.plts||null,
+          product_naam:item.naam,product_omschr:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+          item_id:item.id,product_bedrag:STATE.prijs,
+          impregneer_bedrag:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
+          bezorging_bedrag:STATE.services.filter(s=>s.naam==='Bezorging').reduce((a,s)=>a+s.bedrag,0),
+          extras_zichtbaar:STATE.extrasVis==='uitgesplitst',
+          btw_methode:STATE.btwMethode,btw_percentage:STATE.btwMethode==='standaard'?21:0,
+          btw_bedrag:btw,subtotaal:STATE.prijs,totaal:factuurTotaal,
+          betaalwijze:STATE.type,factuurdatum:verkoopDatum,
+          status:STATE.wilEmailen?'verzonden':'aangemaakt',
+          termijnen_snapshot:STATE.termijnen,pdf_url:pdfPad,
+          aangemaakt_op:new Date().toISOString()
+        });
+      }catch(e){console.warn('Factuur DB:',e);}
+
+      // Email versturen
+      if(STATE.wilEmailen){
+        try{
+          const termijnSchema=(STATE.type==='termijn'||STATE.type==='aanbetaling')&&STATE.termijnen.length>1
+            ?STATE.termijnen.map(t=>({label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:new Date(t.vervaldatum).toLocaleDateString('nl-NL')}))
+            :null;
+          await fetch(SUPABASE_URL+'/functions/v1/verstuur-factuur',{
+            method:'POST',
+            headers:{'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+            body:JSON.stringify({
+              klantEmail:STATE.klant.email,klantNaam:STATE.klant.naam,
+              factuurnummer:factuurnr,totaalBedrag:factuurTotaal,
+              productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+              pdfBase64,pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
+              termijnSchema,extraAdressen:[],testMode:false
+            })
+          });
+        }catch(e){console.warn('Email:',e);}
+      }
+
+      // Contract — kort gehouden, geen PDF maar wel record + email triggeren is een v2
+      // Voor nu: contract niet vanuit verkoop-app. Toon waarschuwing.
+      if(STATE.wilContract){
+        $('s4-status').innerHTML += '<div class="alert" style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c">⚠️ Contract opstellen via verkoop-app komt nog. Gebruik dashboard voor contract.</div>';
+      }
+    }
+
+    // SUCCES
+    $('klaar-info').innerHTML=`
+      <div style="margin-bottom:8px"><strong>${esc(item.naam)}</strong> verkocht</div>
+      <div>Factuurnr: <span style="font-family:ui-monospace,monospace">${esc(factuurnr)}</span></div>
+      <div style="margin-top:6px">Totaal: <strong>${eur(factuurTotaal)}</strong></div>
+      ${STATE.wilEmailen?'<div style="margin-top:10px;color:var(--gn)">📧 Factuur verstuurd naar klant</div>':''}
+    `;
+    document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='none');
+    toonScherm('screen-app');
+    $('stap-4').classList.remove('show');
+    $('stap-klaar').classList.add('show');
+
+  } catch(e){
+    console.error('Afronden fout:',e);
+    $('s4-status').innerHTML=`<div class="alert alert-err">⚠️ ${esc(e.message)}</div>`;
+    btn.disabled=false;
+  }
+}
+
+function nieuweVerkoop(){
+  // Reset alles
+  STATE.gekozen=null;
+  STATE.prijs=0;
+  STATE.services=[];
+  STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
+  STATE.type='volledig';
+  STATE.termijnen=[];
+  STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
+  // UI reset
+  document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
+  $('stap-klaar').classList.remove('show');
+  toonStap(1);
+  laadVoorraad();
+}
+
+
 async function naApp(){
   toonScherm('screen-app');
   await laadOrgId();
