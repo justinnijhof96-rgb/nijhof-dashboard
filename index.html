@@ -197,6 +197,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <a href="#s-voorraad">📦 Voorraad</a>
     <a href="#s-lasten">💸 Lasten</a>
     <a href="#s-debiteuren">📋 Debiteuren</a>
+    <a href="#s-facturen">🧾 Facturen</a>
     <a href="#s-dash">📊 Dashboard</a>
     <a href="#s-export">📤 Export</a>
   </div>
@@ -304,6 +305,24 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     </div>
     <div id="deb-stats" style="margin-bottom:12px"></div>
     <div id="deb-lijst"></div>
+  </div>
+</div>
+
+<!-- FACTUREN -->
+<div class="sec" id="s-facturen">
+  <div class="sec-hdr" onclick="tog(this)"><h2>🧾 Facturen</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="fac-zoek" placeholder="🔍 Zoek op factuurnummer, klant, product..." oninput="renderFacturen()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
+      <select id="fac-status" onchange="renderFacturen()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="">Alle statussen</option>
+        <option value="verzonden">Verzonden</option>
+        <option value="aangemaakt">Aangemaakt (geen mail)</option>
+      </select>
+      <button class="btn btn-gy btn-sm" onclick="laadFacturenUitDB()">↻ Verversen</button>
+    </div>
+    <div id="fac-stats" style="margin-bottom:14px"></div>
+    <div id="fac-lijst"></div>
   </div>
 </div>
 
@@ -1349,20 +1368,139 @@ async function bevestigVk(){
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
 
-  // ── FACTUUR FLOW (als email gevraagd OF klantgegevens ingevuld) ──
+  // ── FACTUUR FLOW (als klantgegevens ingevuld) ──
   if(klantNaam && klantEmail){
     const klantData={naam:klantNaam,email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
-    // Sla klant op in DB
-    _slaKlantOp(klantData).catch(e=>console.error('Klant opslaan mislukt:',e));
-    // Maak PDF
-    const pdfData={item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,btwMethode,btw,termijnen,klant:klantData,type};
-    // Email als gevraagd
-    if(wilEmailen){
-      _verstuurFactuurEmail(pdfData).catch(e=>{
-        console.error('Factuur emailen mislukt:',e);
-        toast('⚠️ Verkoop opgeslagen, maar email mislukt — check console','#dc2626');
-      });
+    // Klant opslaan + ID terugkrijgen, dan factuur opslaan (klant_id linkje)
+    _voltooiFactuurFlow({
+      klantData,
+      pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,btwMethode,btw,termijnen,klant:klantData,type},
+      wilEmailen
+    }).catch(e=>{
+      console.error('Factuur flow mislukt:',e);
+      toast('⚠️ Verkoop opgeslagen, maar factuur-flow mislukt — check console','#dc2626');
+    });
+  }
+}
+
+// ── COMPLETE FACTUUR FLOW: klant + PDF storage + factuur DB + email ──
+async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen}){
+  // 1. Klant opslaan en ID terugkrijgen
+  const klantId=await _slaKlantOp(klantData);
+
+  // 2. PDF maken (1x, hergebruiken voor storage + email)
+  const doc=_maakFactuurPDF(pdfData);
+  const pdfBlob=doc.output('blob');
+  const dataUri=doc.output('datauristring');
+  const pdfBase64=dataUri.split(',')[1];
+
+  // 3. PDF uploaden naar Storage
+  toast('💾 Factuur opslaan...','#2563eb');
+  let pdfUrl=null,pdfPad=null;
+  try{
+    const r=await _uploadFactuurPDF(pdfBlob,pdfData.factuurnr);
+    pdfUrl=r.signedUrl;
+    pdfPad=r.pad;
+  }catch(e){
+    console.error('PDF upload fout:',e);
+    toast('⚠️ PDF opslaan mislukt — email gaat wel door','#c2410c');
+  }
+
+  // 4. Factuur-record opslaan in DB
+  try{
+    await _slaFactuurOpInDB({pdfData,klantId,pdfUrl:pdfPad,wilEmailen});
+  }catch(e){
+    console.error('Factuur DB opslaan fout:',e);
+  }
+
+  // 5. Optioneel emailen
+  if(wilEmailen){
+    try{
+      await _verstuurFactuurEmail({...pdfData,pdfBase64});
+    }catch(e){
+      console.error('Email fout:',e);
+      toast('⚠️ Email mislukt: '+e.message,'#dc2626');
     }
+  } else {
+    toast('💾 Factuur opgeslagen (geen email verstuurd)','#15803d');
+  }
+  // 6. Facturen-lijst verversen zodat nieuwe factuur meteen zichtbaar is
+  laadFacturenUitDB().catch(()=>{});
+}
+
+// ── PDF UPLOADEN NAAR STORAGE ─────────────────────────────────────
+async function _uploadFactuurPDF(pdfBlob,factuurnummer){
+  const uid_user=_getUserId();
+  const org_id=_getOrgId();
+  if(!uid_user||!org_id)throw new Error('Niet ingelogd');
+  const pad=`${org_id}/${factuurnummer}.pdf`;
+  const{error}=await _sb.storage.from('facturen-pdf').upload(pad,pdfBlob,{
+    contentType:'application/pdf',
+    upsert:true // overschrijven mag (bij her-versturen)
+  });
+  if(error)throw error;
+  // Signed URL voor 24 uur
+  const{data,error:urlErr}=await _sb.storage.from('facturen-pdf').createSignedUrl(pad,86400);
+  if(urlErr)console.warn('Signed URL fout:',urlErr);
+  return{pad,signedUrl:data?.signedUrl||null};
+}
+
+// ── SIGNED URL ophalen voor bestaande factuur ─────────────────────
+async function _getFactuurSignedUrl(pdfPad){
+  if(!pdfPad)return null;
+  const{data,error}=await _sb.storage.from('facturen-pdf').createSignedUrl(pdfPad,86400);
+  if(error){console.error('Signed URL fout:',error);return null;}
+  return data?.signedUrl||null;
+}
+
+// ── FACTUUR-RECORD OPSLAAN IN DB ──────────────────────────────────
+async function _slaFactuurOpInDB({pdfData,klantId,pdfUrl,wilEmailen}){
+  const uid_user=_getUserId();
+  const org_id=_getOrgId();
+  if(!uid_user||!org_id)return null;
+  const{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs,impregneer,btwMethode,btw,termijnen,klant,type}=pdfData;
+  // Termijnen snapshot in jsonb voor de factuur-historie
+  const termijnenSnapshot=termijnen.map(t=>({
+    nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum,
+    label:t.label,betaald:!!t.betaald,betaaldOp:t.betaaldOp||null
+  }));
+  const factuurRecord={
+    id:uid(),
+    user_id:uid_user,
+    org_id:org_id,
+    factuurnummer:factuurnr,
+    verkoop_id:verkoopId,
+    klant_id:klantId||null,
+    klant_naam:klant.naam,
+    klant_email:klant.email||null,
+    klant_telefoon:klant.telefoon||null,
+    klant_adres:klant.adres||null,
+    klant_postcode:klant.postcode||null,
+    klant_plaats:klant.plaats||null,
+    product_naam:item.naam,
+    product_omschr:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+    item_id:item.id,
+    product_bedrag:verkoopprijs,
+    impregneer_bedrag:impregneer||0,
+    bezorging_bedrag:0,
+    extras_zichtbaar:false,
+    btw_methode:btwMethode,
+    btw_percentage:btwMethode==='standaard'?21:0,
+    btw_bedrag:btw||0,
+    subtotaal:verkoopprijs,
+    totaal:verkoopprijs,
+    betaalwijze:type,
+    factuurdatum:verkoopDatum,
+    status:wilEmailen?'verzonden':'aangemaakt',
+    termijnen_snapshot:termijnenSnapshot,
+    pdf_url:pdfUrl||null,
+    aangemaakt_op:new Date().toISOString()
+  };
+  try{
+    return await dbUpsert('facturen',[factuurRecord]);
+  }catch(e){
+    console.error('Factuur DB opslaan fout:',e);
+    throw e;
   }
 }
 
@@ -1501,10 +1639,13 @@ function _maakFactuurPDF(data){
 async function _verstuurFactuurEmail(data){
   const{item,factuurnr,verkoopprijs,termijnen,klant,type}=data;
   toast('📤 Factuur emailen...','#2563eb');
-  // PDF maken
-  const doc=_maakFactuurPDF(data);
-  const dataUri=doc.output('datauristring');
-  const pdfBase64=dataUri.split(',')[1];
+  // PDF: gebruik bestaande base64 als meegegeven, anders zelf maken
+  let pdfBase64=data.pdfBase64;
+  if(!pdfBase64){
+    const doc=_maakFactuurPDF(data);
+    const dataUri=doc.output('datauristring');
+    pdfBase64=dataUri.split(',')[1];
+  }
   // Termijnschema voor in email (alleen bij termijn/aanbetaling)
   const termijnSchema=(type==='termijn'||type==='aanbetaling')&&termijnen.length>1
     ?termijnen.map(t=>({label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:new Date(t.vervaldatum).toLocaleDateString('nl-NL')}))
@@ -2170,7 +2311,139 @@ async function resetAll(){
   DB=LEEG();_importRijen=[];renderAll();toast('Alle data verwijderd','#6b7280');
 }
 
-function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');}
+// ── FACTUREN UI ───────────────────────────────────────────────────
+let _facturenCache=[];
+
+async function laadFacturenUitDB(){
+  const lijst=el('fac-lijst');if(!lijst)return;
+  lijst.innerHTML='<div style="text-align:center;padding:20px;color:var(--gr)">⏳ Laden...</div>';
+  try{
+    const rows=await dbSelect('facturen','order=factuurdatum.desc');
+    _facturenCache=rows||[];
+    renderFacturen();
+  }catch(e){
+    console.error('Facturen laden mislukt:',e);
+    lijst.innerHTML='<div class="alert alert-err">⚠️ Facturen laden mislukt: '+esc(e.message)+'</div>';
+  }
+}
+
+function renderFacturen(){
+  const lijst=el('fac-lijst'),stats=el('fac-stats');
+  if(!lijst)return;
+  const zoek=val('fac-zoek').toLowerCase().trim();
+  const statusFlt=val('fac-status');
+  let facs=_facturenCache.slice();
+  if(statusFlt)facs=facs.filter(f=>f.status===statusFlt);
+  if(zoek)facs=facs.filter(f=>
+    (f.factuurnummer||'').toLowerCase().includes(zoek)||
+    (f.klant_naam||'').toLowerCase().includes(zoek)||
+    (f.klant_email||'').toLowerCase().includes(zoek)||
+    (f.product_naam||'').toLowerCase().includes(zoek)
+  );
+  // Stats
+  const totBedrag=_facturenCache.reduce((a,f)=>a+(Number(f.totaal)||0),0);
+  const aantalVerz=_facturenCache.filter(f=>f.status==='verzonden').length;
+  stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+    <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 Totaal: ${_facturenCache.length} facturen</span>
+    <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">📤 Verzonden: ${aantalVerz}</span>
+    <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">💰 Totaalwaarde: ${eur(totBedrag)}</span>
+  </div>`;
+  if(!facs.length){
+    lijst.innerHTML='<div class="alert alert-info">ℹ️ Nog geen facturen — registreer een verkoop met klantgegevens om je eerste factuur te maken.</div>';
+    return;
+  }
+  lijst.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Factuurnr.</th><th>Datum</th><th>Klant</th><th>Product</th><th>Bedrag</th><th>Status</th><th>Acties</th></tr></thead>
+    <tbody>${facs.map(f=>{
+      const status=f.status==='verzonden'
+        ?'<span class="chip chip-gn">📤 Verzonden</span>'
+        :'<span class="chip chip-or">💾 Opgeslagen</span>';
+      const datum=fmtD(f.factuurdatum);
+      const klant=`<strong>${esc(f.klant_naam||'?')}</strong>${f.klant_email?`<br><span style="font-size:11px;color:var(--gr)">${esc(f.klant_email)}</span>`:''}`;
+      const product=esc(f.product_omschr||f.product_naam||'—');
+      const fid=esc(f.id);
+      const acties=`
+        <button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${fid}')" title="Bekijk PDF">👁️</button>
+        ${f.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${fid}')" title="Opnieuw versturen">📤</button>`:''}`;
+      return `<tr>
+        <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(f.factuurnummer)}</span></td>
+        <td>${datum}</td>
+        <td>${klant}</td>
+        <td>${product}</td>
+        <td><strong>${eur(f.totaal||0)}</strong></td>
+        <td>${status}</td>
+        <td style="white-space:nowrap">${acties}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function bekijkFactuurPDF(factuurId){
+  const f=_facturenCache.find(x=>x.id===factuurId);
+  if(!f){toast('Factuur niet gevonden','#dc2626');return;}
+  if(!f.pdf_url){toast('Geen PDF beschikbaar voor deze factuur','#dc2626');return;}
+  toast('🔗 Link genereren...','#2563eb');
+  const signedUrl=await _getFactuurSignedUrl(f.pdf_url);
+  if(!signedUrl){toast('PDF link genereren mislukt','#dc2626');return;}
+  window.open(signedUrl,'_blank');
+}
+
+async function verstuurFactuurOpnieuw(factuurId){
+  const f=_facturenCache.find(x=>x.id===factuurId);
+  if(!f){toast('Factuur niet gevonden','#dc2626');return;}
+  if(!f.klant_email){toast('Geen email-adres bekend voor deze klant','#dc2626');return;}
+  if(!f.pdf_url){toast('Geen opgeslagen PDF gevonden','#dc2626');return;}
+  if(!confirm(`Factuur ${f.factuurnummer} opnieuw versturen naar ${f.klant_email}?`))return;
+  toast('📤 PDF ophalen en versturen...','#2563eb');
+  try{
+    // PDF downloaden uit Storage
+    const{data:blob,error}=await _sb.storage.from('facturen-pdf').download(f.pdf_url);
+    if(error)throw error;
+    // Naar base64 converteren
+    const reader=new FileReader();
+    const pdfBase64=await new Promise((resolve,reject)=>{
+      reader.onload=()=>resolve(reader.result.split(',')[1]);
+      reader.onerror=()=>reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    // Termijnschema reconstrueren uit snapshot
+    const termSnap=f.termijnen_snapshot||[];
+    const termijnSchema=termSnap.length>1
+      ?termSnap.map(t=>({label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:new Date(t.vervaldatum).toLocaleDateString('nl-NL')}))
+      :null;
+    // Edge function aanroepen
+    const url=SUPABASE_URL+'/functions/v1/verstuur-factuur';
+    const token=_getToken();
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+(token||SUPABASE_ANON),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        klantEmail:f.klant_email,
+        klantNaam:f.klant_naam,
+        factuurnummer:f.factuurnummer,
+        totaalBedrag:Number(f.totaal),
+        productNaam:f.product_omschr||f.product_naam,
+        pdfBase64,
+        pdfBestandsnaam:`factuur-${f.factuurnummer}.pdf`,
+        termijnSchema,
+        testMode:false
+      })
+    });
+    const json=await res.json();
+    if(res.ok&&json.success){
+      // Update status in DB naar 'verzonden'
+      await dbUpdate('facturen',factuurId,{status:'verzonden'}).catch(()=>{});
+      toast(`✅ Factuur opnieuw verstuurd naar ${json.verstuurd_naar.length} adres(sen)`,'#15803d');
+      laadFacturenUitDB();
+    } else {
+      throw new Error(json.error||'onbekend');
+    }
+  }catch(e){
+    console.error('Opnieuw versturen fout:',e);
+    toast('⚠️ Versturen mislukt: '+e.message,'#dc2626');
+  }
+}
+
+function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();}
 </script>
 </body>
 </html>
