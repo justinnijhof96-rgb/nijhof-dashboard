@@ -803,6 +803,25 @@ function trmAantal(delta){
   updateS3();
 }
 
+function _herverdeelTermijnen(geraaktIdx){
+  const n=parseInt($('s3-trm-n').textContent)||3;
+  const totaal=_factuurTotaal();
+  // Bedrag van geraakte termijn (de input die zojuist is gewijzigd)
+  const geraaktBed=parseFloat($('trm-bed-'+geraaktIdx)?.value)||0;
+  // Som van overige geraakte termijnen (eerder al door gebruiker gewijzigd) — voor v1: simpel
+  // We verdelen rest evenredig over de overige termijnen
+  const rest=Math.max(0, totaal-geraaktBed);
+  const overigen=n-1;
+  if(overigen<=0)return;
+  const perRest=rest/overigen;
+  for(let i=0;i<n;i++){
+    if(i===geraaktIdx)continue;
+    const inp=$('trm-bed-'+i);
+    if(inp)inp.value=perRest.toFixed(2);
+  }
+  updateS3();
+}
+
 function _genTermijnen(n){
   const totaal=_factuurTotaal();
   const per=n>0?(totaal/n):0;
@@ -817,7 +836,7 @@ function _genTermijnen(n){
     div.innerHTML=`
       <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:6px">TERMIJN ${i+1}</div>
       <div style="display:flex;gap:6px">
-        <input type="number" id="trm-bed-${i}" inputmode="decimal" min="0" step="0.01" value="${bed.toFixed(2)}" placeholder="€" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="updateS3()">
+        <input type="number" id="trm-bed-${i}" inputmode="decimal" min="0" step="0.01" value="${bed.toFixed(2)}" placeholder="€" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="_herverdeelTermijnen(${i})">
         <input type="date" id="trm-dat-${i}" value="${datum}" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="updateS3()">
       </div>
       <div style="display:flex;gap:5px;margin-top:6px">
