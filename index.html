@@ -10,6 +10,7 @@
 <title>Nijhof Brothers — BI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
@@ -1094,6 +1095,36 @@ function renderVkForm(){
       <div class="fg"><label>Factuurnummer</label><input id="vk-fac" value="${esc(volgendeFactuur())}"></div>
       <div class="fg"><label>Verkoopdatum</label><input type="date" id="vk-dat" value="${vandaag()}"></div>
     </div>
+
+    <!-- KLANT SECTIE (uitklapbaar) -->
+    <div style="margin-top:12px;border:1px solid var(--bd);border-radius:8px;overflow:hidden">
+      <div onclick="toggleKlantSect()" style="padding:10px 14px;background:#f9fafb;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
+        <span style="font-size:13px;font-weight:700;color:var(--dk)">👤 Klantgegevens <span style="color:var(--gr);font-weight:400;font-size:11px">(optioneel — verplicht als je factuur stuurt)</span></span>
+        <span id="vk-klant-arr" style="font-size:12px;color:var(--gr);transition:.3s">▼</span>
+      </div>
+      <div id="vk-klant-body" style="padding:12px 14px;display:none">
+        <div class="grid2" style="gap:8px;margin-bottom:8px">
+          <div class="fg"><label>Naam</label><input id="vk-kn-naam" placeholder="Voornaam Achternaam"></div>
+          <div class="fg"><label>Email</label><input type="email" id="vk-kn-email" placeholder="naam@voorbeeld.nl"></div>
+        </div>
+        <div class="grid2" style="gap:8px;margin-bottom:8px">
+          <div class="fg"><label>Telefoon</label><input id="vk-kn-tel" placeholder="06-12345678"></div>
+          <div class="fg"><label>Adres</label><input id="vk-kn-adr" placeholder="Straat + huisnr"></div>
+        </div>
+        <div class="grid2" style="gap:8px">
+          <div class="fg"><label>Postcode</label><input id="vk-kn-pc" placeholder="1234 AB"></div>
+          <div class="fg"><label>Plaats</label><input id="vk-kn-plts" placeholder="Apeldoorn"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BTW SECTIE -->
+    <div style="margin-top:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#f9fafb;border:1px solid var(--bd);border-radius:8px">
+      <span style="font-size:12px;font-weight:700;color:var(--gr)">🧾 BTW:</span>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-btw" value="marge" checked> Margeregeling (geen BTW op factuur)</label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-btw" value="standaard"> Standaard 21%</label>
+    </div>
+
     <div style="margin:10px 0">
       <label style="font-size:12px;font-weight:600;color:var(--gr)">Betalingstype</label>
       <div style="display:flex;gap:14px;margin-top:5px;flex-wrap:wrap">
@@ -1152,6 +1183,14 @@ function renderVkForm(){
       <input type="number" id="vk-imp-p" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
     </div>
     <div id="vk-prev"></div>
+
+    <!-- FACTUUR EMAIL CHECKBOX -->
+    <div style="margin:14px 0 0;padding:12px 14px;background:#FFF4EC;border:1px solid #fde8d0;border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label class="sw"><input type="checkbox" id="vk-email-fac" checked><span class="sw-s"></span></label>
+      <span style="font-size:13px;font-weight:600;color:var(--or)">📧 Factuur emailen naar klant</span>
+      <span style="font-size:11px;color:var(--gr)">(verplicht klant naam + email)</span>
+    </div>
+
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-or" onclick="bevestigVk()">✓ Bevestig verkoop</button>
       <button class="btn btn-gy" onclick="sluitModal('m-vk')">Annuleer</button>
@@ -1206,17 +1245,49 @@ function updateVkPrev(){
   </div>${sw}`;
 }
 function volgendeFactuur(){
-  const jr=new Date().getFullYear();
-  const nrs=DB.verkopen.map(v=>{const m=v.factuur&&v.factuur.match(/NJB-\d{4}-(\d+)/);return m?parseInt(m[1],10):0;});
-  return`NJB-${jr}-${String((nrs.length?Math.max(...nrs):0)+1).padStart(3,'0')}`;
+  // Nieuwe format: NBF-YYYYMMDD-N (oplopend per dag)
+  const d=new Date();
+  const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  const prefix=`NBF-${datStr}-`;
+  // Tel hoeveel NBF-{vandaag}- nummers bestaan
+  const todayNrs=DB.verkopen
+    .map(v=>v.factuur&&v.factuur.match(new RegExp(`^NBF-${datStr}-(\\d+)$`)))
+    .filter(m=>m)
+    .map(m=>parseInt(m[1],10));
+  const nextN=todayNrs.length?Math.max(...todayNrs)+1:1;
+  return prefix+nextN;
 }
-function bevestigVk(){
+async function bevestigVk(){
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;if(!item)return;
   const vpStr=val('vk-vp').trim(),vp=parseFloat(vpStr);
   if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
   const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
   const imp=chk('vk-imp')?fval('vk-imp-p'):0;
-  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  const btwMethode=(document.querySelector('input[name="vk-btw"]:checked')||{}).value||'marge';
+  // BTW berekening: bij marge = btw over winstmarge (niet op factuur), bij standaard 21% over verkoopprijs
+  const bruto=vp-item.prijs,netto=bruto+imp;
+  const btw=btwMethode==='standaard'?vp/1.21*0.21:(vp-item.prijs)/1.21*0.21;
+  const nNaBtw=netto-btw;
+
+  // Klantgegevens uit form
+  const klantNaam=val('vk-kn-naam').trim();
+  const klantEmail=val('vk-kn-email').trim();
+  const klantTel=val('vk-kn-tel').trim();
+  const klantAdr=val('vk-kn-adr').trim();
+  const klantPc=val('vk-kn-pc').trim();
+  const klantPlts=val('vk-kn-plts').trim();
+  const wilEmailen=chk('vk-email-fac');
+
+  // Als emailen aan staat, klant naam + email verplicht
+  if(wilEmailen && (!klantNaam || !klantEmail)){
+    toast('⚠️ Voor email zijn klantnaam + email verplicht (of zet email-checkbox uit)','#dc2626');
+    return;
+  }
+  if(wilEmailen && !klantEmail.includes('@')){
+    toast('⚠️ Klant emailadres ziet er niet goed uit','#dc2626');
+    return;
+  }
+
   let termijnen=[];
   if(type==='aanbetaling'){
     const abed=fval('vk-abed');
@@ -1240,10 +1311,208 @@ function bevestigVk(){
     const bet=(document.querySelector('input[name="vk-bet"]:checked')||{}).value||'pin';
     termijnen=[{id:uid(),nr:1,bedrag:vp,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
   }
-  DB.verkopen.push({id:uid(),itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),factuur:val('vk-fac')||volgendeFactuur(),datum:val('vk-dat')||vandaag(),type,termijnen,impregneer:imp,brutoMarge:bruto,nettoMarge:netto,btw,nettoNaBtw:nNaBtw,datum_registratie:new Date().toISOString()});
+  const verkoopId=uid();
+  const factuurnr=val('vk-fac')||volgendeFactuur();
+  const verkoopDatum=val('vk-dat')||vandaag();
+  DB.verkopen.push({id:verkoopId,itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),factuur:factuurnr,datum:verkoopDatum,type,termijnen,impregneer:imp,brutoMarge:bruto,nettoMarge:netto,btw,nettoNaBtw:nNaBtw,datum_registratie:new Date().toISOString()});
   item.status='verkocht';
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
+
+  // ── FACTUUR FLOW (als email gevraagd OF klantgegevens ingevuld) ──
+  if(klantNaam && klantEmail){
+    const klantData={naam:klantNaam,email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
+    // Sla klant op in DB
+    _slaKlantOp(klantData).catch(e=>console.error('Klant opslaan mislukt:',e));
+    // Maak PDF
+    const pdfData={item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,btwMethode,btw,termijnen,klant:klantData,type};
+    // Email als gevraagd
+    if(wilEmailen){
+      _verstuurFactuurEmail(pdfData).catch(e=>{
+        console.error('Factuur emailen mislukt:',e);
+        toast('⚠️ Verkoop opgeslagen, maar email mislukt — check console','#dc2626');
+      });
+    }
+  }
+}
+
+// ── KLANT OPSLAAN ─────────────────────────────────────────────────
+async function _slaKlantOp(klant){
+  const uid_user=_getUserId();
+  const org_id=_getOrgId();
+  if(!uid_user||!org_id)return null;
+  try{
+    const rows=await dbUpsert('klanten',[{
+      id:uid(),
+      user_id:uid_user,
+      org_id:org_id,
+      naam:klant.naam,
+      email:klant.email||null,
+      telefoon:klant.telefoon||null,
+      adres:klant.adres||null,
+      postcode:klant.postcode||null,
+      plaats:klant.plaats||null,
+      land:'NL',
+      aangemaakt_op:new Date().toISOString()
+    }]);
+    return rows&&rows.length?rows[0].id:null;
+  }catch(e){console.error('Klant opslaan fout:',e);return null;}
+}
+
+// ── FACTUUR PDF GENEREREN ─────────────────────────────────────────
+function _maakFactuurPDF(data){
+  const{item,factuurnr,verkoopDatum,verkoopprijs,impregneer,btwMethode,btw,termijnen,klant,type}=data;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header NB huisstijl
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  // Bedrijfsgegevens rechts
+  doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // FACTUUR titel + nummer
+  doc.setTextColor(30,47,58);doc.setFontSize(28);doc.setFont('helvetica','bold');
+  doc.text('FACTUUR',15,55);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');
+  doc.setTextColor(107,114,128);doc.text('Nummer:',130,50);
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');doc.text(factuurnr,195,50,{align:'right'});
+  doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);doc.text('Datum:',130,57);
+  doc.setTextColor(30,47,58);doc.text(new Date(verkoopDatum).toLocaleDateString('nl-NL'),195,57,{align:'right'});
+
+  // Klant
+  doc.setFontSize(9);doc.setTextColor(107,114,128);doc.text('FACTUUR AAN',15,72);
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text(klant.naam,15,79);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  let kY=85;
+  if(klant.adres){doc.text(klant.adres,15,kY);kY+=5;}
+  if(klant.postcode||klant.plaats){doc.text(`${klant.postcode||''} ${klant.plaats||''}`.trim(),15,kY);kY+=5;}
+  if(klant.email){doc.text(klant.email,15,kY);kY+=5;}
+
+  // Tabel
+  const tabelY=110;
+  doc.setFillColor(243,244,246);doc.rect(15,tabelY,180,8,'F');
+  doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  doc.text('OMSCHRIJVING',18,tabelY+5.5);
+  doc.text('BEDRAG',192,tabelY+5.5,{align:'right'});
+
+  // Regels
+  let rY=tabelY+15;
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','normal');doc.setFontSize(10);
+  // Hoofdregel: product
+  const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+  doc.text(omschr,18,rY);
+  doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
+  rY+=7;
+  // Impregneer regel
+  if(impregneer>0){
+    doc.text('Impregneerbehandeling',18,rY);
+    doc.text('inbegrepen',192,rY,{align:'right'});
+    rY+=7;
+  }
+
+  doc.setDrawColor(229,231,235);doc.line(15,rY+3,195,rY+3);
+  rY+=10;
+
+  // BTW melding
+  doc.setFontSize(8);doc.setTextColor(107,114,128);doc.setFont('helvetica','italic');
+  if(btwMethode==='marge'){
+    doc.text('Margeregeling van toepassing op grond van art. 28b Wet OB',15,rY);
+  } else {
+    doc.text(`BTW 21% inbegrepen in totaalbedrag (€ ${btw.toFixed(2).replace('.',',')})`,15,rY);
+  }
+  rY+=8;
+
+  // Totaal
+  doc.setFillColor(232,119,34);doc.rect(120,rY,75,14,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('TOTAAL',124,rY+9);
+  doc.setFontSize(14);doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY+9,{align:'right'});
+  rY+=22;
+
+  // Termijnschema (alleen bij termijn of aanbetaling)
+  if((type==='termijn'||type==='aanbetaling') && termijnen.length>1){
+    doc.setTextColor(30,47,58);doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.text('Betalingsschema',15,rY);rY+=6;
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+    termijnen.forEach(t=>{
+      const lbl=t.label||`Termijn ${t.nr}`;
+      const status=t.betaald?'✓ betaald':'openstaand';
+      const datStr=new Date(t.vervaldatum).toLocaleDateString('nl-NL');
+      doc.setTextColor(30,47,58);
+      doc.text(`• ${lbl}`,18,rY);
+      doc.text(`€ ${t.bedrag.toFixed(2).replace('.',',')}`,140,rY,{align:'right'});
+      doc.text(datStr,170,rY,{align:'right'});
+      doc.setTextColor(t.betaald?22:107,t.betaald?128:114,t.betaald?61:128);
+      doc.text(status,193,rY,{align:'right'});
+      rY+=5;
+    });
+  }
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('Bedankt voor je aankoop bij Nijhof Brothers Furniture.',105,270,{align:'center'});
+  doc.text('Vragen? Mail naar invoice@nijhofbrothers.nl of bel +31 6 52691719',105,275,{align:'center'});
+  doc.text('www.nijhofbrothers.nl',105,280,{align:'center'});
+
+  return doc;
+}
+
+// ── FACTUUR EMAILEN ───────────────────────────────────────────────
+async function _verstuurFactuurEmail(data){
+  const{item,factuurnr,verkoopprijs,termijnen,klant,type}=data;
+  toast('📤 Factuur emailen...','#2563eb');
+  // PDF maken
+  const doc=_maakFactuurPDF(data);
+  const dataUri=doc.output('datauristring');
+  const pdfBase64=dataUri.split(',')[1];
+  // Termijnschema voor in email (alleen bij termijn/aanbetaling)
+  const termijnSchema=(type==='termijn'||type==='aanbetaling')&&termijnen.length>1
+    ?termijnen.map(t=>({label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:new Date(t.vervaldatum).toLocaleDateString('nl-NL')}))
+    :null;
+  // Edge function aanroepen
+  const url=SUPABASE_URL+'/functions/v1/verstuur-factuur';
+  const token=_getToken();
+  const res=await fetch(url,{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+(token||SUPABASE_ANON),'Content-Type':'application/json'},
+    body:JSON.stringify({
+      klantEmail:klant.email,
+      klantNaam:klant.naam,
+      factuurnummer:factuurnr,
+      totaalBedrag:verkoopprijs,
+      productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+      pdfBase64,
+      pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
+      termijnSchema,
+      testMode:false
+    })
+  });
+  const json=await res.json();
+  if(res.ok&&json.success){
+    toast(`✅ Factuur verstuurd naar ${json.verstuurd_naar.length} adres(sen)`,'#15803d');
+  } else {
+    console.error('Email fout:',json);
+    toast('⚠️ Email mislukt: '+(json.error||'onbekend'),'#dc2626');
+  }
+}
+
+// ── KLANT-SECTIE TOGGLE ───────────────────────────────────────────
+function toggleKlantSect(){
+  const b=el('vk-klant-body'),a=el('vk-klant-arr');
+  if(!b||!a)return;
+  const open=b.style.display!=='none';
+  b.style.display=open?'none':'';
+  a.style.transform=open?'rotate(0deg)':'rotate(180deg)';
 }
 
 let _betaalVkId=null,_betaalTermId=null;
