@@ -220,8 +220,124 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
     <!-- STAP 3: KLANT + BETALING -->
     <div class="view" id="stap-3">
       <h1>Klant & betaling</h1>
-      <h2>Stap 3 van 4</h2>
-      <div class="empty">⏳ Stap 3 wordt later toegevoegd</div>
+      <h2>Stap 3 van 4 — wie betaalt wat en hoe</h2>
+
+      <!-- KLANT-SECTIE -->
+      <div class="card">
+        <div onclick="togKlant()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+          <div style="font-weight:700;color:var(--nav);font-size:15px">👤 Klantgegevens</div>
+          <span id="kl-arr" style="transition:.2s;color:var(--gr)">▼</span>
+        </div>
+        <div id="kl-body" style="margin-top:14px">
+          <div class="fg">
+            <label>Naam</label>
+            <input type="text" id="s3-kn-naam" autocomplete="name" oninput="updateS3()">
+          </div>
+          <div class="fg">
+            <label>Email</label>
+            <input type="email" id="s3-kn-email" autocomplete="email" inputmode="email" oninput="updateS3()">
+          </div>
+          <div class="fg">
+            <label>Telefoon</label>
+            <input type="tel" id="s3-kn-tel" autocomplete="tel" inputmode="tel" oninput="updateS3()">
+          </div>
+          <div class="fg">
+            <label>Adres</label>
+            <input type="text" id="s3-kn-adr" autocomplete="street-address" oninput="updateS3()">
+          </div>
+          <div style="display:flex;gap:8px">
+            <div class="fg" style="flex:0 0 100px">
+              <label>Postcode</label>
+              <input type="text" id="s3-kn-pc" autocomplete="postal-code" oninput="updateS3()">
+            </div>
+            <div class="fg" style="flex:1">
+              <label>Plaats</label>
+              <input type="text" id="s3-kn-plts" autocomplete="address-level2" oninput="updateS3()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BETAALTYPE -->
+      <div class="card">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:10px;color:var(--nav)">Betaaltype</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-seg" id="seg-vol" onclick="kiesType('volledig')">Volledig</button>
+          <button class="btn-seg" id="seg-aan" onclick="kiesType('aanbetaling')">Aanbetaling</button>
+          <button class="btn-seg" id="seg-trm" onclick="kiesType('termijn')">Termijnen</button>
+        </div>
+      </div>
+
+      <!-- VOLLEDIG SECTIE -->
+      <div class="card" id="s3-vol-sect" style="display:none">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:10px;color:var(--nav)">Betaalmethode</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-seg" data-bet="pin" onclick="kiesBet('pin','vol')">💳 Pin</button>
+          <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','vol')">💶 Cash</button>
+          <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','vol')">🏦 Bank</button>
+          <button class="btn-seg" data-bet="marktplaats" onclick="kiesBet('marktplaats','vol')">🟧 MP</button>
+        </div>
+      </div>
+
+      <!-- AANBETALING SECTIE -->
+      <div class="card" id="s3-aan-sect" style="display:none">
+        <div class="fg">
+          <label>Aanbetaling (€)</label>
+          <input type="number" id="s3-aan-bed" inputmode="decimal" min="0" step="0.01" placeholder="0,00" oninput="updateS3()">
+        </div>
+        <div class="fg">
+          <label>Datum aanbetaling</label>
+          <input type="date" id="s3-aan-dat" oninput="updateS3()">
+        </div>
+        <div class="fg">
+          <label>Verwachte leverdatum</label>
+          <input type="date" id="s3-aan-rdat" oninput="updateS3()">
+        </div>
+        <div class="fg" style="margin-bottom:8px">
+          <label>Aanbetaling — betaalmethode</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-seg" data-bet="pin" onclick="kiesBet('pin','aan')">💳 Pin</button>
+            <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','aan')">💶 Cash</button>
+            <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','aan')">🏦 Bank</button>
+          </div>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label>Restbetaling — betaalmethode</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-seg" data-bet="pin" onclick="kiesBet('pin','rest')">💳 Pin</button>
+            <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','rest')">💶 Cash</button>
+            <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','rest')">🏦 Bank</button>
+          </div>
+        </div>
+        <div id="s3-aan-info" style="margin-top:12px;padding:10px;background:var(--orl);border-radius:8px;font-size:13px;color:var(--nav)"></div>
+      </div>
+
+      <!-- TERMIJN SECTIE -->
+      <div class="card" id="s3-trm-sect" style="display:none">
+        <div class="fg">
+          <label>Aantal termijnen</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="btn-seg" style="flex:0 0 50px;min-height:48px;font-size:20px" onclick="trmAantal(-1)">−</button>
+            <div id="s3-trm-n" style="flex:1;text-align:center;font-size:22px;font-weight:700;color:var(--or)">3</div>
+            <button class="btn-seg" style="flex:0 0 50px;min-height:48px;font-size:20px" onclick="trmAantal(1)">+</button>
+          </div>
+        </div>
+        <div id="s3-trm-rows"></div>
+      </div>
+
+      <!-- EMAIL + CONTRACT TOGGLES -->
+      <div class="card">
+        <div class="svc-row">
+          <label class="sw"><input type="checkbox" id="s3-mail" checked onchange="updateS3()"><span class="sw-s"></span></label>
+          <span class="svc-naam">📧 Factuur emailen naar klant</span>
+        </div>
+        <div class="svc-row" id="s3-ct-row" style="display:none">
+          <label class="sw"><input type="checkbox" id="s3-ct" checked onchange="updateS3()"><span class="sw-s"></span></label>
+          <span class="svc-naam">📝 Contract opstellen</span>
+        </div>
+      </div>
+
+      <div id="s3-warn"></div>
     </div>
 
     <!-- STAP 4: BEVESTIGEN -->
@@ -311,11 +427,25 @@ function _updateNextEnabled(){
   if(STATE.stap===1){
     btn.disabled = !STATE.gekozen;
   } else if(STATE.stap===2){
-    // Stap 2: kan verder als verkoopprijs > 0
     btn.disabled = !(STATE.prijs>0);
+  } else if(STATE.stap===3){
+    // Klant verplicht als emailen aan, of als termijn/aanbetaling
+    const wilMail=STATE.wilEmailen;
+    const isTrmAan=STATE.type==='termijn'||STATE.type==='aanbetaling';
+    const klantOK = STATE.klant.naam.length>0 && STATE.klant.email.includes('@');
+    if(wilMail || isTrmAan){
+      btn.disabled = !klantOK;
+    } else {
+      btn.disabled = false; // alleen volledige betaling zonder mail mag zonder klant
+    }
   } else {
-    btn.disabled = false; // stap 3/4 nog niet ingevuld
+    btn.disabled = false;
   }
+}
+
+function _onStapEnter(n){
+  if(n===2) renderS2();
+  else if(n===3) renderS3();
 }
 
 function volgendeStap(){
@@ -324,10 +454,6 @@ function volgendeStap(){
 }
 function vorigeStap(){
   if(STATE.stap>1) toonStap(STATE.stap-1);
-}
-
-function _onStapEnter(n){
-  if(n===2) renderS2();
 }
 
 function herstart(){
@@ -588,6 +714,194 @@ function updateS2(){
     <div class="prev-rij" style="font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
     ${servTot>0?`<div class="prev-rij tot"><span>📋 Klant betaalt</span><span>${eur(factTot)}</span></div>`:''}
   `;
+  _updateNextEnabled();
+}
+
+// ── STAP 3 ────────────────────────────────────────────────────────
+function _factuurTotaal(){
+  const servTot=(STATE.services||[]).reduce((a,s)=>a+s.bedrag,0);
+  return STATE.prijs+servTot;
+}
+
+function renderS3(){
+  // Klant velden vooraf invullen
+  $('s3-kn-naam').value=STATE.klant.naam||'';
+  $('s3-kn-email').value=STATE.klant.email||'';
+  $('s3-kn-tel').value=STATE.klant.tel||'';
+  $('s3-kn-adr').value=STATE.klant.adres||'';
+  $('s3-kn-pc').value=STATE.klant.pc||'';
+  $('s3-kn-plts').value=STATE.klant.plts||'';
+  // Type kiezen (oranje segment)
+  kiesType(STATE.type||'volledig',true);
+  // Betaalmethode highlights herstellen
+  if(!STATE._bet){STATE._bet={vol:'pin',aan:'pin',rest:'pin'};}
+  _highlightBet('vol');
+  _highlightBet('aan');
+  _highlightBet('rest');
+  // Termijnen ren
+  if(STATE.type==='termijn'){
+    const n=STATE.termijnen?.length||3;
+    $('s3-trm-n').textContent=n;
+    _genTermijnen(n);
+  }
+  // Aanbetaling defaults
+  const vandaag=new Date().toISOString().slice(0,10);
+  if(!$('s3-aan-dat').value)$('s3-aan-dat').value=vandaag;
+  updateS3();
+}
+
+function togKlant(){
+  const b=$('kl-body'),a=$('kl-arr');
+  const open=b.style.display!=='none';
+  b.style.display=open?'none':'';
+  a.style.transform=open?'rotate(-90deg)':'rotate(0)';
+}
+
+function kiesType(t,silent){
+  STATE.type=t;
+  $('seg-vol').classList.toggle('on',t==='volledig');
+  $('seg-aan').classList.toggle('on',t==='aanbetaling');
+  $('seg-trm').classList.toggle('on',t==='termijn');
+  $('s3-vol-sect').style.display=t==='volledig'?'':'none';
+  $('s3-aan-sect').style.display=t==='aanbetaling'?'':'none';
+  $('s3-trm-sect').style.display=t==='termijn'?'':'none';
+  // Contract toggle alleen bij termijn/aanbetaling
+  $('s3-ct-row').style.display=(t==='termijn'||t==='aanbetaling')?'':'none';
+  if(t==='termijn' && !$('s3-trm-rows').children.length){
+    _genTermijnen(3);
+  }
+  if(!silent)updateS3();
+}
+
+function kiesBet(bet,scope){
+  if(!STATE._bet)STATE._bet={};
+  STATE._bet[scope]=bet;
+  _highlightBet(scope);
+  updateS3();
+}
+
+function _highlightBet(scope){
+  const sect= scope==='vol'?$('s3-vol-sect') : scope==='aan'?$('s3-aan-sect') : scope==='rest'?$('s3-aan-sect') : null;
+  if(!sect)return;
+  const huidig=STATE._bet?.[scope]||'pin';
+  // Klik op alle .btn-seg in juiste sectie + bij rest: laatste rij
+  const sels= scope==='rest'
+    ? sect.querySelectorAll('.fg:last-child .btn-seg')
+    : scope==='aan'
+      ? sect.querySelectorAll('.fg:nth-last-child(2) .btn-seg')
+      : sect.querySelectorAll('.btn-seg');
+  sels.forEach(b=>{
+    b.classList.toggle('on', b.dataset.bet===huidig);
+  });
+}
+
+function trmAantal(delta){
+  let n=parseInt($('s3-trm-n').textContent)||3;
+  n=Math.max(2,Math.min(12,n+delta));
+  $('s3-trm-n').textContent=n;
+  _genTermijnen(n);
+  updateS3();
+}
+
+function _genTermijnen(n){
+  const totaal=_factuurTotaal();
+  const per=n>0?(totaal/n):0;
+  const rows=$('s3-trm-rows');
+  const vandaag=new Date();
+  // Bewaar bestaande termijn-data als die er is
+  const oude=STATE.termijnen||[];
+  rows.innerHTML='';
+  for(let i=0;i<n;i++){
+    const ond=oude[i]||{};
+    const datum=ond.vervaldatum||(new Date(vandaag.getFullYear(),vandaag.getMonth()+i,vandaag.getDate())).toISOString().slice(0,10);
+    const bed=ond.bedrag!=null?ond.bedrag:per;
+    const div=document.createElement('div');
+    div.style.cssText='padding:10px;border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;background:#fafafa';
+    div.innerHTML=`
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:6px">TERMIJN ${i+1}</div>
+      <div style="display:flex;gap:6px">
+        <input type="number" id="trm-bed-${i}" inputmode="decimal" min="0" step="0.01" value="${bed.toFixed(2)}" placeholder="€" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="updateS3()">
+        <input type="date" id="trm-dat-${i}" value="${datum}" style="flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none" oninput="updateS3()">
+      </div>
+      <div style="display:flex;gap:5px;margin-top:6px">
+        <button class="btn-seg trm-bet" data-i="${i}" data-bet="pin" onclick="kiesTrmBet(${i},'pin')" style="min-height:38px;font-size:12px;padding:7px 4px">💳 Pin</button>
+        <button class="btn-seg trm-bet" data-i="${i}" data-bet="contant" onclick="kiesTrmBet(${i},'contant')" style="min-height:38px;font-size:12px;padding:7px 4px">💶 Cash</button>
+        <button class="btn-seg trm-bet" data-i="${i}" data-bet="bank" onclick="kiesTrmBet(${i},'bank')" style="min-height:38px;font-size:12px;padding:7px 4px">🏦 Bank</button>
+      </div>
+    `;
+    rows.appendChild(div);
+    // Bestaande betaalmethode highlight
+    const huidigBet=ond.betaalmethode||'pin';
+    setTimeout(()=>{
+      rows.querySelectorAll(`.trm-bet[data-i="${i}"]`).forEach(b=>{
+        b.classList.toggle('on', b.dataset.bet===huidigBet);
+      });
+    },0);
+  }
+}
+
+function kiesTrmBet(idx,bet){
+  document.querySelectorAll(`.trm-bet[data-i="${idx}"]`).forEach(b=>{
+    b.classList.toggle('on', b.dataset.bet===bet);
+  });
+  updateS3();
+}
+
+function _huidigeTermijnen(){
+  const n=parseInt($('s3-trm-n').textContent)||3;
+  const lijst=[];
+  for(let i=0;i<n;i++){
+    const bed=parseFloat($('trm-bed-'+i)?.value)||0;
+    const dat=$('trm-dat-'+i)?.value||new Date().toISOString().slice(0,10);
+    const betEl=document.querySelector(`.trm-bet.on[data-i="${i}"]`);
+    const bet=betEl?betEl.dataset.bet:'pin';
+    lijst.push({nr:i+1,bedrag:bed,vervaldatum:dat,betaalmethode:bet,betaald:false,label:`Termijn ${i+1}`});
+  }
+  return lijst;
+}
+
+function updateS3(){
+  // Klant uit form
+  STATE.klant.naam=$('s3-kn-naam').value.trim();
+  STATE.klant.email=$('s3-kn-email').value.trim();
+  STATE.klant.tel=$('s3-kn-tel').value.trim();
+  STATE.klant.adres=$('s3-kn-adr').value.trim();
+  STATE.klant.pc=$('s3-kn-pc').value.trim();
+  STATE.klant.plts=$('s3-kn-plts').value.trim();
+  STATE.wilEmailen=$('s3-mail').checked;
+  STATE.wilContract=$('s3-ct').checked && (STATE.type==='termijn'||STATE.type==='aanbetaling');
+
+  // Termijnen bouwen op basis van type
+  const factTot=_factuurTotaal();
+  if(STATE.type==='volledig'){
+    STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:new Date().toISOString().slice(0,10),betaalmethode:STATE._bet?.vol||'pin',betaald:true,label:'Volledig betaald'}];
+  } else if(STATE.type==='aanbetaling'){
+    const abed=parseFloat($('s3-aan-bed').value)||0;
+    const adat=$('s3-aan-dat').value||new Date().toISOString().slice(0,10);
+    const rdat=$('s3-aan-rdat').value||'';
+    const rbed=Math.max(0,factTot-abed);
+    STATE.termijnen=[
+      {nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:STATE._bet?.aan||'pin',betaald:true,label:'Aanbetaling'}
+    ];
+    if(rbed>0){
+      STATE.termijnen.push({nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:STATE._bet?.rest||'pin',betaald:false,label:'Restbetaling bij levering'});
+    }
+    // Info onder aanbetaling
+    $('s3-aan-info').innerHTML=`
+      <strong>Aanbetaling:</strong> ${eur(abed)}<br>
+      <strong>Rest bij levering:</strong> ${eur(rbed)}<br>
+      <strong>Factuurtotaal:</strong> ${eur(factTot)}
+    `;
+  } else if(STATE.type==='termijn'){
+    STATE.termijnen=_huidigeTermijnen();
+    // Check som
+    const som=STATE.termijnen.reduce((a,t)=>a+t.bedrag,0);
+    if(Math.abs(som-factTot)>0.02){
+      $('s3-warn').innerHTML=`<div class="alert" style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c">⚠️ Som termijnen (${eur(som)}) ≠ factuurtotaal (${eur(factTot)})</div>`;
+    } else {
+      $('s3-warn').innerHTML='';
+    }
+  }
   _updateNextEnabled();
 }
 
