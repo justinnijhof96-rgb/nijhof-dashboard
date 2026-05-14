@@ -78,6 +78,32 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 .empty{text-align:center;padding:40px 20px;color:var(--gr);font-size:14px}
 .alert{padding:12px 14px;border-radius:10px;margin-bottom:12px;font-size:13px}
 .alert-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+
+/* SEGMENTED BUTTONS */
+.btn-seg{flex:1;border:1.5px solid var(--bd);background:#fff;color:var(--nav);padding:13px 8px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;min-height:48px}
+.btn-seg.on{background:var(--or);color:#fff;border-color:var(--or)}
+.btn-seg:active{transform:scale(.97)}
+
+/* SWITCH */
+.sw{position:relative;display:inline-block;width:44px;height:26px;flex-shrink:0;cursor:pointer}
+.sw input{opacity:0;width:0;height:0}
+.sw-s{position:absolute;top:0;left:0;right:0;bottom:0;background:#cbd5e1;border-radius:26px;transition:.2s}
+.sw-s:before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw input:checked+.sw-s{background:var(--or)}
+.sw input:checked+.sw-s:before{transform:translateX(18px)}
+
+/* SERVICE ROW */
+.svc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6}
+.svc-row:last-child{border-bottom:none}
+.svc-row .svc-naam{flex:1;font-size:14px;font-weight:600;color:var(--nav);min-width:0}
+.svc-row input[type="number"]{width:90px;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none;-webkit-appearance:none;appearance:none}
+.svc-row input[type="text"]{flex:1;min-width:0;border:1.5px solid var(--bd);border-radius:8px;padding:9px 10px;font-size:14px;outline:none}
+.btn-x{width:34px;height:34px;border:none;background:#fee2e2;color:#b91c1c;border-radius:8px;font-size:14px;cursor:pointer;flex-shrink:0}
+
+/* PREVIEW */
+.prev-rij{display:flex;justify-content:space-between;padding:7px 0;font-size:14px;border-bottom:1px solid #e5e7eb}
+.prev-rij:last-child{border-bottom:none}
+.prev-rij.tot{font-weight:800;color:var(--or);font-size:16px;border-top:2px solid var(--or);margin-top:6px;padding-top:10px}
 </style>
 </head>
 <body>
@@ -134,10 +160,61 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
     <div class="view" id="stap-2">
       <h1>Prijs & services</h1>
       <h2>Stap 2 van 4 — verkoopprijs en eventuele extra's</h2>
+
+      <!-- Gekozen item -->
+      <div class="card" id="s2-item-card"></div>
+
+      <!-- Verkoopprijs -->
       <div class="card">
-        <div id="gekozen-item"></div>
+        <div class="fg" style="margin-bottom:0">
+          <label>Verkoopprijs (€)</label>
+          <input type="number" id="s2-vp" inputmode="decimal" min="0" step="0.01" placeholder="0,00" oninput="updateS2()">
+        </div>
       </div>
-      <div class="empty">⏳ Stap 2 wordt later toegevoegd</div>
+
+      <!-- BTW methode -->
+      <div class="card">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:10px;color:var(--nav)">BTW-methode</label>
+        <div style="display:flex;gap:8px">
+          <button class="btn-seg" id="seg-marge" onclick="kiesBTW('marge')">Margeregeling</button>
+          <button class="btn-seg" id="seg-standaard" onclick="kiesBTW('standaard')">21% standaard</button>
+        </div>
+      </div>
+
+      <!-- Extra services -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💼 Extra services (optioneel)</div>
+
+        <!-- Impregneer -->
+        <div class="svc-row">
+          <label class="sw"><input type="checkbox" id="s2-imp" onchange="updateS2()"><span class="sw-s"></span></label>
+          <span class="svc-naam">💧 Impregneer</span>
+          <input type="number" id="s2-imp-p" inputmode="decimal" min="0" step="0.01" placeholder="€" oninput="updateS2()">
+        </div>
+
+        <!-- Bezorging -->
+        <div class="svc-row">
+          <label class="sw"><input type="checkbox" id="s2-bez" onchange="updateS2()"><span class="sw-s"></span></label>
+          <span class="svc-naam">🚚 Bezorging</span>
+          <input type="number" id="s2-bez-p" inputmode="decimal" min="0" step="0.01" placeholder="€" oninput="updateS2()">
+        </div>
+
+        <!-- Dynamische services -->
+        <div id="s2-extra-rows"></div>
+        <button class="btn btn-gy" style="width:100%;min-height:44px;font-size:14px;margin-top:8px" onclick="voegService()">+ Service toevoegen</button>
+
+        <!-- Zichtbaarheid radio -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
+          <div style="font-size:11px;color:var(--gr);margin-bottom:8px">Op factuur tonen:</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-seg" id="seg-samen" onclick="kiesVis('samen')">Samen op 1 regel</button>
+            <button class="btn-seg" id="seg-uitgesplitst" onclick="kiesVis('uitgesplitst')">Uitgesplitst</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live marge preview -->
+      <div class="card" id="s2-preview" style="background:#f9fafb"></div>
     </div>
 
     <!-- STAP 3: KLANT + BETALING -->
@@ -224,18 +301,20 @@ function toonStap(n){
   $('stap-'+n).classList.add('show');
   $('btn-prev').style.display = n>1 ? '' : 'none';
   $('btn-next').textContent = n===4 ? '✓ Verkoop afronden' : 'Volgende →';
+  _onStapEnter(n);
   _updateNextEnabled();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function _updateNextEnabled(){
   const btn=$('btn-next');
-  // Stap 1: kan verder als item gekozen
-  // Stap 2/3/4: later
   if(STATE.stap===1){
     btn.disabled = !STATE.gekozen;
+  } else if(STATE.stap===2){
+    // Stap 2: kan verder als verkoopprijs > 0
+    btn.disabled = !(STATE.prijs>0);
   } else {
-    btn.disabled = false; // tijdelijk, voor skelet
+    btn.disabled = false; // stap 3/4 nog niet ingevuld
   }
 }
 
@@ -245,6 +324,10 @@ function volgendeStap(){
 }
 function vorigeStap(){
   if(STATE.stap>1) toonStap(STATE.stap-1);
+}
+
+function _onStapEnter(n){
+  if(n===2) renderS2();
 }
 
 function herstart(){
@@ -393,6 +476,119 @@ function kiesItem(id){
   renderItems();
   _updateNextEnabled();
   toast('✓ '+item.naam);
+}
+
+// ── STAP 2 ────────────────────────────────────────────────────────
+function renderS2(){
+  // Gekozen item card
+  const i=STATE.gekozen;
+  if(!i)return;
+  const fotoHTML = i.foto_url
+    ? `<img src="${esc(i.foto_url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px">`
+    : '<div style="width:50px;height:50px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>';
+  $('s2-item-card').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px">
+      ${fotoHTML}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</div>
+        <div style="font-size:12px;color:var(--gr);margin-top:2px">
+          ${i.artikelnummer?`<span style="background:var(--orl);color:var(--or);padding:2px 7px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace;font-size:11px">${esc(i.artikelnummer)}</span> · `:''}
+          Inkoop: ${eur(i.prijs||0)}
+        </div>
+      </div>
+    </div>`;
+  // Velden vooraf invullen vanuit STATE
+  if(STATE.prijs>0) $('s2-vp').value=STATE.prijs;
+  // BTW segments
+  kiesBTW(STATE.btwMethode,true);
+  kiesVis(STATE.extrasVis,true);
+  updateS2();
+}
+
+function kiesBTW(methode,silent){
+  STATE.btwMethode=methode;
+  $('seg-marge').classList.toggle('on',methode==='marge');
+  $('seg-standaard').classList.toggle('on',methode==='standaard');
+  if(!silent)updateS2();
+}
+
+function kiesVis(vis,silent){
+  STATE.extrasVis=vis;
+  $('seg-samen').classList.toggle('on',vis==='samen');
+  $('seg-uitgesplitst').classList.toggle('on',vis==='uitgesplitst');
+  if(!silent)updateS2();
+}
+
+let _svcSeq=0;
+function voegService(){
+  const idx=++_svcSeq;
+  const rows=$('s2-extra-rows');
+  if(!rows)return;
+  const div=document.createElement('div');
+  div.className='svc-row';
+  div.id='svc-row-'+idx;
+  div.innerHTML=`
+    <input type="text" id="svc-naam-${idx}" placeholder="Naam (bijv. Montage)" oninput="updateS2()">
+    <input type="number" id="svc-bed-${idx}" inputmode="decimal" min="0" step="0.01" placeholder="€" oninput="updateS2()">
+    <button class="btn-x" onclick="wisService(${idx})">✕</button>
+  `;
+  rows.appendChild(div);
+  $('svc-naam-'+idx).focus();
+}
+
+function wisService(idx){
+  $('svc-row-'+idx)?.remove();
+  updateS2();
+}
+
+function _huidigeServices(){
+  const lijst=[];
+  if($('s2-imp').checked){
+    const b=parseFloat($('s2-imp-p').value)||0;
+    if(b>0)lijst.push({naam:'Impregneerbehandeling',bedrag:b});
+  }
+  if($('s2-bez').checked){
+    const b=parseFloat($('s2-bez-p').value)||0;
+    if(b>0)lijst.push({naam:'Bezorging',bedrag:b});
+  }
+  document.querySelectorAll('[id^="svc-naam-"]').forEach(naamInp=>{
+    const idx=naamInp.id.replace('svc-naam-','');
+    const naam=(naamInp.value||'').trim();
+    const bed=parseFloat($('svc-bed-'+idx)?.value)||0;
+    if(naam && bed>0) lijst.push({naam,bedrag:bed});
+  });
+  return lijst;
+}
+
+function updateS2(){
+  const item=STATE.gekozen;
+  const vp=parseFloat($('s2-vp').value)||0;
+  STATE.prijs=vp;
+  const services=_huidigeServices();
+  STATE.services=services;
+  const servTot=services.reduce((a,s)=>a+s.bedrag,0);
+  const factTot=vp+servTot;
+  const bruto=vp-(item?.prijs||0);
+  const netto=bruto+servTot;
+  const btw=STATE.btwMethode==='standaard'?factTot/1.21*0.21:(vp-(item?.prijs||0))/1.21*0.21;
+  const nNaBtw=netto-btw;
+
+  const warn=vp>0&&vp<(item?.prijs||0)?'<div class="alert alert-err" style="margin-bottom:10px">⚠️ Verkoopprijs lager dan inkoop!</div>':'';
+  const servRijen=services.map(s=>
+    `<div class="prev-rij" style="color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
+  ).join('');
+  $('s2-preview').innerHTML=warn+`
+    <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px">💰 Marge-overzicht</div>
+    <div class="prev-rij"><span>Verkoopprijs</span><span>${eur(vp)}</span></div>
+    <div class="prev-rij"><span>Inkoop</span><span>−${eur(item?.prijs||0)}</span></div>
+    <div class="prev-rij" style="color:${bruto>=0?'var(--gn)':'var(--rd)'}"><span>Bruto marge</span><span>${eur(bruto)}</span></div>
+    ${servRijen}
+    <div class="prev-rij"><span>Netto marge</span><span>${eur(netto)}</span></div>
+    <div class="prev-rij" style="color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
+    <div class="prev-rij" style="font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
+    ${servTot>0?`<div class="prev-rij tot"><span>📋 Klant betaalt</span><span>${eur(factTot)}</span></div>`:''}
+  `;
+  _updateNextEnabled();
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
