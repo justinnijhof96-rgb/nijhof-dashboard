@@ -1240,11 +1240,42 @@ function renderVkForm(){
         </div>
       </div>
     </div>
-    <div style="margin:10px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <label class="sw"><input type="checkbox" id="vk-imp" onchange="updateVkPrev()"><span class="sw-s"></span></label>
-      <span style="font-size:13px;font-weight:600">💧 Impregneerbehandeling</span>
-      <input type="number" id="vk-imp-p" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+    <!-- EXTRA SERVICES SECTIE -->
+    <div style="margin:10px 0;padding:12px;background:#f9fafb;border:1px solid var(--bd);border-radius:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💼 Extra services (optioneel)</div>
+
+      <!-- Impregneer -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <label class="sw"><input type="checkbox" id="vk-imp" onchange="updateVkPrev()"><span class="sw-s"></span></label>
+        <span style="font-size:13px;font-weight:600;min-width:170px">💧 Impregneerbehandeling</span>
+        <input type="number" id="vk-imp-p" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+      </div>
+
+      <!-- Bezorging -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <label class="sw"><input type="checkbox" id="vk-bez" onchange="updateVkPrev()"><span class="sw-s"></span></label>
+        <span style="font-size:13px;font-weight:600;min-width:170px">🚚 Bezorging</span>
+        <input type="number" id="vk-bez-p" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+      </div>
+
+      <!-- Overige services dynamisch -->
+      <div id="vk-extra-rows" style="margin-top:6px"></div>
+      <button class="btn btn-gy btn-xs" type="button" onclick="voegExtraService()" style="margin-top:6px">+ Service toevoegen</button>
+
+      <!-- Zichtbaarheid radio -->
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bd)">
+        <div style="font-size:11px;color:var(--gr);margin-bottom:6px">Op factuur tonen:</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px">
+            <input type="radio" name="vk-extras-vis" value="samen" checked> Samen op 1 regel
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px">
+            <input type="radio" name="vk-extras-vis" value="uitgesplitst"> Uitgesplitst
+          </label>
+        </div>
+      </div>
     </div>
+
     <div id="vk-prev"></div>
 
     <!-- FACTUUR EMAIL CHECKBOX -->
@@ -1313,6 +1344,44 @@ function _herverdeelTermijnen(gewijzigdIdx){
     if(inp)inp.value=perAndere.toFixed(2);
   }
 }
+// Helper: lees alle extra services uit DOM (impregneer + bezorging + dynamisch)
+function _extraServices(){
+  const lijst=[];
+  if(chk('vk-imp') && fval('vk-imp-p')>0) lijst.push({naam:'Impregneerbehandeling',bedrag:fval('vk-imp-p')});
+  if(chk('vk-bez') && fval('vk-bez-p')>0) lijst.push({naam:'Bezorging',bedrag:fval('vk-bez-p')});
+  // Dynamische rows
+  document.querySelectorAll('[id^="vk-ex-naam-"]').forEach(naamInp=>{
+    const idx=naamInp.id.replace('vk-ex-naam-','');
+    const naam=(naamInp.value||'').trim();
+    const bedragInp=el('vk-ex-bed-'+idx);
+    const bedrag=bedragInp?parseFloat(bedragInp.value)||0:0;
+    if(naam && bedrag>0) lijst.push({naam,bedrag});
+  });
+  return lijst;
+}
+
+let _extraSeq=0;
+function voegExtraService(){
+  const idx=++_extraSeq;
+  const rows=el('vk-extra-rows');
+  if(!rows)return;
+  const div=document.createElement('div');
+  div.id='vk-ex-row-'+idx;
+  div.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px';
+  div.innerHTML=`
+    <input type="text" id="vk-ex-naam-${idx}" placeholder="Naam service (bijv. Montage)" style="flex:1;min-width:140px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+    <input type="number" id="vk-ex-bed-${idx}" placeholder="€" min="0" step="0.01" style="width:90px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" oninput="updateVkPrev()">
+    <button class="btn btn-rd btn-xs" type="button" onclick="wisExtraService(${idx})">✕</button>
+  `;
+  rows.appendChild(div);
+}
+
+function wisExtraService(idx){
+  const r=el('vk-ex-row-'+idx);
+  if(r)r.remove();
+  updateVkPrev();
+}
+
 function updateVkPrev(){
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
   const prevEl=el('vk-prev');if(!item||!prevEl)return;
@@ -1330,8 +1399,13 @@ function updateVkPrev(){
       }
     }
   }
-  const vp=fval('vk-vp'),imp=chk('vk-imp')?fval('vk-imp-p'):0;
-  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  const vp=fval('vk-vp');
+  const services=_extraServices();
+  const servicesTot=services.reduce((a,s)=>a+s.bedrag,0);
+  const bruto=vp-item.prijs;
+  const netto=bruto+servicesTot;
+  const btw=(vp-item.prijs)/1.21*0.21;
+  const nNaBtw=netto-btw;
   const warn=vp>0&&vp<item.prijs?'<div class="alert alert-err" style="margin-bottom:8px">⚠️ Verkoopprijs lager dan inkoopprijs!</div>':'';
   const catVk=DB.verkopen.filter(v=>{const vi=DB.items.find(x=>x.id===v.itemId);return vi&&vi.categorie===item.categorie;});
   let sw='';
@@ -1339,14 +1413,19 @@ function updateVkPrev(){
     const gm=catVk.reduce((a,v)=>{const vi=DB.items.find(x=>x.id===v.itemId);return a+(vi?v.verkoopprijs-vi.prijs:0);},0)/catVk.length;
     sw=`<div style="padding:6px 10px;border-radius:6px;font-size:12px;margin-top:6px;background:${bruto>=gm?'#f0fdf4':'#fff7ed'};color:${bruto>=gm?'#15803d':'#c2410c'}">${bruto>=gm?'✓':'↓'} Gem. marge ${esc(item.categorie)}: ${eur(gm)} — jouw marge: ${eur(bruto)}</div>`;
   }
+  const servRows=services.map(s=>
+    `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
+  ).join('');
+  const totaalFactuur=vp+servicesTot;
   prevEl.innerHTML=warn+`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd)">
-    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Verkoopprijs</span><span>${eur(vp)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Verkoopprijs product</span><span>${eur(vp)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Inkoopprijs</span><span>−${eur(item.prijs)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:${bruto>=0?'var(--gn)':'var(--rd)'}"><span>Bruto marge</span><span>${eur(bruto)}</span></div>
-    ${imp>0?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--gn)"><span>+ Impregneer</span><span>+${eur(imp)}</span></div>`:''}
+    ${servRows}
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Netto marge</span><span>${eur(netto)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
+    ${servicesTot>0?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;margin-top:5px;padding-top:5px;border-top:2px solid var(--or);font-weight:700;color:var(--or)"><span>📋 Factuurtotaal (klant betaalt)</span><span>${eur(totaalFactuur)}</span></div>`:''}
   </div>${sw}`;
 }
 function volgendeFactuur(){
@@ -1367,11 +1446,18 @@ async function bevestigVk(){
   const vpStr=val('vk-vp').trim(),vp=parseFloat(vpStr);
   if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
   const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
-  const imp=chk('vk-imp')?fval('vk-imp-p'):0;
+  const services=_extraServices();
+  const servicesTot=services.reduce((a,s)=>a+s.bedrag,0);
+  const extrasZichtbaar=((document.querySelector('input[name="vk-extras-vis"]:checked')||{}).value||'samen')==='uitgesplitst';
+  // Factuurtotaal = product + services. Dit is wat klant betaalt.
+  const factuurTotaal=vp+servicesTot;
+  // Impregneer-veld voor backwards compat met dashboard (oude veld)
+  const imp=services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0);
   const btwMethode=(document.querySelector('input[name="vk-btw"]:checked')||{}).value||'marge';
-  // BTW berekening: bij marge = btw over winstmarge (niet op factuur), bij standaard 21% over verkoopprijs
-  const bruto=vp-item.prijs,netto=bruto+imp;
-  const btw=btwMethode==='standaard'?vp/1.21*0.21:(vp-item.prijs)/1.21*0.21;
+  // BTW: bij marge = over winstmarge, bij standaard 21% = over factuurtotaal
+  const bruto=vp-item.prijs;
+  const netto=bruto+servicesTot;
+  const btw=btwMethode==='standaard'?factuurTotaal/1.21*0.21:(vp-item.prijs)/1.21*0.21;
   const nNaBtw=netto-btw;
 
   // Klantgegevens uit form
@@ -1397,12 +1483,12 @@ async function bevestigVk(){
   if(type==='aanbetaling'){
     const abed=fval('vk-abed');
     if(abed<=0){toast('Vul een aanbetalingsbedrag in','#dc2626');return;}
-    if(abed>vp){toast('Aanbetaling kan niet hoger zijn dan verkoopprijs','#dc2626');return;}
+    if(abed>factuurTotaal){toast('Aanbetaling kan niet hoger zijn dan factuurtotaal','#dc2626');return;}
     const rdat=val('vk-rdat');if(!rdat){toast('Vul een verwachte leverdatum in','#dc2626');return;}
     const adat=val('vk-adat')||vandaag();
     const abet=(document.querySelector('input[name="vk-abet"]:checked')||{}).value||'pin';
     const rbet=(document.querySelector('input[name="vk-rbet"]:checked')||{}).value||'pin';
-    const rbed=Math.max(0,vp-abed);
+    const rbed=Math.max(0,factuurTotaal-abed);
     termijnen=[
       {id:uid(),nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:abet,betaald:true,betaaldOp:adat,label:'Aanbetaling'},
       ...(rbed>0?[{id:uid(),nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:rbet,betaald:false,betaaldOp:null,label:'Restbetaling bij levering'}]:[])
@@ -1411,10 +1497,10 @@ async function bevestigVk(){
     const n=Math.max(1,parseInt(val('vk-nterm'))||3);
     for(let t=0;t<n;t++) termijnen.push({id:uid(),nr:t+1,bedrag:fval('t-bed-'+t),vervaldatum:val('t-dat-'+t)||vandaag(),betaalmethode:val('t-bet-'+t)||'pin',betaald:chk('t-ok-'+t),betaaldOp:chk('t-ok-'+t)?vandaag():null,label:`Termijn ${t+1}`});
     const som=termijnen.reduce((a,t)=>a+t.bedrag,0);
-    if(Math.abs(som-vp)>0.02)toast(`⚠️ Som termijnen (${eur(som)}) wijkt af van verkoopprijs (${eur(vp)})`,'#c2410c');
+    if(Math.abs(som-factuurTotaal)>0.02)toast(`⚠️ Som termijnen (${eur(som)}) wijkt af van factuurtotaal (${eur(factuurTotaal)})`,'#c2410c');
   } else {
     const bet=(document.querySelector('input[name="vk-bet"]:checked')||{}).value||'pin';
-    termijnen=[{id:uid(),nr:1,bedrag:vp,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
+    termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
   }
   const verkoopId=uid();
   const factuurnr=val('vk-fac')||volgendeFactuur();
@@ -1430,7 +1516,7 @@ async function bevestigVk(){
     const wilContract=(type==='termijn'||type==='aanbetaling') && chk('vk-maak-contract');
     _voltooiFactuurFlow({
       klantData,
-      pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,btwMethode,btw,termijnen,klant:klantData,type},
+      pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant:klantData,type},
       wilEmailen,
       wilContract
     }).catch(e=>{
@@ -1596,7 +1682,12 @@ async function _slaKlantOp(klant){
 
 // ── FACTUUR PDF GENEREREN ─────────────────────────────────────────
 function _maakFactuurPDF(data){
-  const{item,factuurnr,verkoopDatum,verkoopprijs,impregneer,btwMethode,btw,termijnen,klant,type}=data;
+  const{item,factuurnr,verkoopDatum,verkoopprijs,impregneer,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant,type}=data;
+  // Backwards compat: oude pdfData zonder services
+  const _services=Array.isArray(services)?services:(impregneer>0?[{naam:'Impregneerbehandeling',bedrag:impregneer}]:[]);
+  const _servicesTot=_services.reduce((a,s)=>a+s.bedrag,0);
+  const _totaal=factuurTotaal||(verkoopprijs+_servicesTot);
+  const _zichtbaar=!!extrasZichtbaar;
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
 
@@ -1633,7 +1724,7 @@ function _maakFactuurPDF(data){
   if(klant.postcode||klant.plaats){doc.text(`${klant.postcode||''} ${klant.plaats||''}`.trim(),15,kY);kY+=5;}
   if(klant.email){doc.text(klant.email,15,kY);kY+=5;}
 
-  // Tabel
+  // Tabel header
   const tabelY=110;
   doc.setFillColor(243,244,246);doc.rect(15,tabelY,180,8,'F');
   doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
@@ -1643,16 +1734,33 @@ function _maakFactuurPDF(data){
   // Regels
   let rY=tabelY+15;
   doc.setTextColor(30,47,58);doc.setFont('helvetica','normal');doc.setFontSize(10);
-  // Hoofdregel: product
-  const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
-  doc.text(omschr,18,rY);
-  doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
-  rY+=7;
-  // Impregneer regel
-  if(impregneer>0){
-    doc.text('Impregneerbehandeling',18,rY);
-    doc.text('inbegrepen',192,rY,{align:'right'});
+
+  if(_zichtbaar && _services.length>0){
+    // UITGESPLITST: elke regel apart
+    const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    doc.text(omschr,18,rY);
+    doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
     rY+=7;
+    _services.forEach(s=>{
+      doc.text(s.naam,18,rY);
+      doc.text('€ '+s.bedrag.toFixed(2).replace('.',','),192,rY,{align:'right'});
+      rY+=7;
+    });
+  } else {
+    // SAMEN: 1 regel met optioneel toelichting tussen haakjes
+    let omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    if(_services.length>0){
+      // Compacte service-namen tussen haakjes
+      const servNamen=_services.map(s=>s.naam.toLowerCase()).join(', ');
+      omschr+=`  (incl. ${servNamen})`;
+    }
+    // Splitsen als te lang
+    const splitOmschr=doc.splitTextToSize(omschr,140);
+    splitOmschr.forEach((l,idx)=>{
+      doc.text(l,18,rY+idx*5);
+    });
+    doc.text('€ '+_totaal.toFixed(2).replace('.',','),192,rY,{align:'right'});
+    rY+=Math.max(7,splitOmschr.length*5+2);
   }
 
   doc.setDrawColor(229,231,235);doc.line(15,rY+3,195,rY+3);
@@ -1671,7 +1779,7 @@ function _maakFactuurPDF(data){
   doc.setFillColor(232,119,34);doc.rect(120,rY,75,14,'F');
   doc.setTextColor(255,255,255);doc.setFontSize(11);doc.setFont('helvetica','bold');
   doc.text('TOTAAL',124,rY+9);
-  doc.setFontSize(14);doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY+9,{align:'right'});
+  doc.setFontSize(14);doc.text('€ '+_totaal.toFixed(2).replace('.',','),192,rY+9,{align:'right'});
   rY+=22;
 
   // Termijnschema (alleen bij termijn of aanbetaling)
