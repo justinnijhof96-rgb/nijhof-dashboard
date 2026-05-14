@@ -1186,18 +1186,40 @@ async function afronden(){
     const netto=bruto+servTot;
     const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:(STATE.prijs-(item.prijs||0))/1.21*0.21;
 
-    // 1. Verkoop in DB
+    // 1. Verkoop in DB (geen termijnen veld — dat is aparte tabel)
     const verkoopData={
       id:verkoopId,user_id:STATE.user.id,org_id:STATE.org_id,
       item_id:item.id,verkoopprijs:STATE.prijs,
       verkooplocatie:'verkoop-app',
       factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
-      termijnen:STATE.termijnen,
       impregneer:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
       bruto_marge:bruto,netto_marge:netto,btw:btw,netto_na_btw:netto-btw,
       datum_registratie:new Date().toISOString()
     };
     await _restPost('verkopen',verkoopData);
+
+    // 1b. Termijnen aparte INSERTs in termijnen tabel
+    if(STATE.termijnen && STATE.termijnen.length>0){
+      const termijnRijen=STATE.termijnen.map(t=>({
+        id:_genId(),
+        verkoop_id:verkoopId,
+        org_id:STATE.org_id,
+        nr:t.nr,
+        bedrag:t.bedrag,
+        vervaldatum:t.vervaldatum,
+        betaalmethode:t.betaalmethode||'pin',
+        betaald:!!t.betaald,
+        betaald_op:t.betaald?(t.betaaldOp||verkoopDatum):null,
+        label:t.label||`Termijn ${t.nr}`,
+        notitie:null
+      }));
+      try{
+        await _restPost('termijnen',termijnRijen);
+      }catch(e){
+        console.warn('Termijnen opslaan mislukt:',e);
+        // niet kritisch, verkoop staat al wel
+      }
+    }
 
     // 2. Item status → verkocht
     await _restPatch(`items?id=eq.${encodeURIComponent(item.id)}`,{status:'verkocht'});
