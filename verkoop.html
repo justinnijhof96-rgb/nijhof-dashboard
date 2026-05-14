@@ -421,7 +421,7 @@ async function laadOrgId(){
 
 async function laadVoorraad(){
   try{
-    const rows=await _restGet('items?status=eq.voorraad&order=aangemaakt_op.desc');
+    const rows=await _restGet('items?status=eq.beschikbaar&order=aangemaakt_op.desc');
     STATE.items=rows||[];
     renderItems();
   }catch(e){
