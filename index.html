@@ -201,6 +201,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <a href="#s-contracten">📝 Contracten</a>
     <a href="#s-dash">📊 Dashboard</a>
     <a href="#s-export">📤 Export</a>
+    <a href="#s-instellingen">⚙️ Instellingen</a>
   </div>
   <span id="klok"></span>
   <button class="btn btn-gy btn-xs" onclick="doeUitloggen()" title="Uitloggen">🚪</button>
@@ -395,6 +396,30 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     </div>
   </div>
 </div>
+
+<!-- INSTELLINGEN -->
+<div class="sec" id="s-instellingen">
+  <div class="sec-hdr" onclick="tog(this)"><h2>⚙️ Instellingen</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div class="db-card">
+      <div class="db-card-title">📧 Email-instellingen</div>
+      <div class="fg" style="margin-bottom:10px">
+        <label>Boekhouder email (optioneel)</label>
+        <input type="email" id="inst-boekhoud-email" placeholder="boekhouder@kantoor.nl">
+        <div style="font-size:11px;color:var(--gr);margin-top:4px">
+          Als ingevuld: krijgt automatisch CC van elke factuur die je verstuurt. Leeg laten = geen 3e ontvanger.
+        </div>
+      </div>
+      <button class="btn btn-or btn-sm" onclick="slaInstellingenOrgOp()">💾 Opslaan</button>
+    </div>
+
+    <div class="db-card" style="background:#f9fafb">
+      <div class="db-card-title">ℹ️ Organisatie info</div>
+      <div id="inst-org-info" style="font-size:13px;color:var(--gr);line-height:1.8"></div>
+    </div>
+  </div>
+</div>
+
 </main>
 
 <div id="toast"></div>
@@ -1707,6 +1732,7 @@ async function _verstuurFactuurEmail(data){
       pdfBase64,
       pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
       termijnSchema,
+      extraAdressen:_orgInstellingen.boekhoudEmail?[_orgInstellingen.boekhoudEmail]:[],
       testMode:false
     })
   });
@@ -2205,6 +2231,8 @@ function _bevestigImport(){
 }
 
 let _instellingen = { inkoopTarget:3, gemMargeOverride:null };
+let _orgInstellingen = { boekhoudEmail:null, naam:'' };
+
 async function slaInstellingenOp(){
   const uid_user=_getUserId();
   const org_id=_getOrgId();
@@ -2217,6 +2245,56 @@ async function slaInstellingenOp(){
       gem_marge_override:_instellingen.gemMargeOverride
     });
   }catch(e){console.error('Instellingen opslaan mislukt:',e);}
+}
+
+// ── ORG-INSTELLINGEN (boekhoud_email + org info) ──────────────────
+async function laadOrgInstellingen(){
+  const org_id=_getOrgId();
+  if(!org_id)return;
+  try{
+    const rows=await dbSelect('organisaties','id=eq.'+encodeURIComponent(org_id));
+    if(rows && rows.length>0){
+      _orgInstellingen.boekhoudEmail=rows[0].boekhoud_email||null;
+      _orgInstellingen.naam=rows[0].naam||'';
+    }
+    renderOrgInstellingen();
+  }catch(e){console.error('Org instellingen laden mislukt:',e);}
+}
+
+function renderOrgInstellingen(){
+  const inp=el('inst-boekhoud-email');
+  if(inp)inp.value=_orgInstellingen.boekhoudEmail||'';
+  const info=el('inst-org-info');
+  if(info){
+    info.innerHTML=`
+      <strong>Organisatie:</strong> ${esc(_orgInstellingen.naam||'—')}<br>
+      <strong>Org ID:</strong> <span style="font-family:ui-monospace,monospace;font-size:11px">${esc(_getOrgId()||'—')}</span><br>
+      <strong>Ingelogd als:</strong> ${esc(_getUserId()||'—')}
+    `;
+  }
+}
+
+async function slaInstellingenOrgOp(){
+  const org_id=_getOrgId();
+  if(!org_id){toast('⚠️ Org niet geladen','#dc2626');return;}
+  const emailRaw=val('inst-boekhoud-email').trim();
+  // Validatie: leeg toegestaan, anders moet 'ie een @ bevatten
+  if(emailRaw && !emailRaw.includes('@')){
+    toast('⚠️ Email-adres ziet er niet goed uit','#dc2626');
+    return;
+  }
+  const nieuweWaarde=emailRaw||null;
+  try{
+    await _rest('PATCH','organisaties?id=eq.'+encodeURIComponent(org_id),{
+      body:{boekhoud_email:nieuweWaarde},
+      prefer:'return=representation'
+    });
+    _orgInstellingen.boekhoudEmail=nieuweWaarde;
+    toast(nieuweWaarde?'✅ Boekhouder-email opgeslagen':'✅ Boekhouder-email verwijderd');
+  }catch(e){
+    console.error('Org instellingen opslaan fout:',e);
+    toast('⚠️ Opslaan mislukt: '+e.message,'#dc2626');
+  }
 }
 
 function getGemMarge(){
@@ -2759,6 +2837,7 @@ async function verstuurFactuurOpnieuw(factuurId){
         pdfBase64,
         pdfBestandsnaam:`factuur-${f.factuurnummer}.pdf`,
         termijnSchema,
+        extraAdressen:_orgInstellingen.boekhoudEmail?[_orgInstellingen.boekhoudEmail]:[],
         testMode:false
       })
     });
@@ -2894,7 +2973,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();}
+function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();}
 </script>
 </body>
 </html>
