@@ -1824,7 +1824,13 @@ function _maakContractPDF(data){
   doc.setFont('helvetica','bold');doc.text('Artikel 6 — Levering en risico',15,y);y+=6;
   doc.setFont('helvetica','normal');
   const a6=doc.splitTextToSize('Het risico van het verkochte gaat over op koper op het moment van feitelijke aflevering. Koper dient het verkochte bij aflevering te controleren op zichtbare gebreken; klachten dienen binnen 7 dagen schriftelijk te worden gemeld.',180);
-  a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=8;
+  a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=4;
+
+  // Kleine voetnoot — aanvullende info bij wanbetaling
+  doc.setFontSize(8);doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  const voetnoot=doc.splitTextToSize('Aanvullend op artikel 5: bij wanbetaling is koper de wettelijke rente verschuldigd over het openstaande bedrag, alsmede buitengerechtelijke incassokosten conform het Besluit vergoeding voor buitengerechtelijke incassokosten (WIK), met een minimum van € 40,-.',180);
+  voetnoot.forEach(l=>{doc.text(l,15,y);y+=4;});y+=4;
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
 
   // Nieuwe pagina als nodig
   if(y>240){doc.addPage();y=20;}
