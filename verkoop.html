@@ -1291,18 +1291,30 @@ async function afronden(){
           const termijnSchema=(STATE.type==='termijn'||STATE.type==='aanbetaling')&&STATE.termijnen.length>1
             ?STATE.termijnen.map(t=>({label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:new Date(t.vervaldatum).toLocaleDateString('nl-NL')}))
             :null;
-          await fetch(SUPABASE_URL+'/functions/v1/verstuur-factuur',{
+          const emailPayload={
+            klantEmail:STATE.klant.email,klantNaam:STATE.klant.naam,
+            factuurnummer:factuurnr,totaalBedrag:factuurTotaal,
+            productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+            pdfBase64,pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
+            termijnSchema,extraAdressen:[],testMode:false
+          };
+          console.log('EMAIL PAYLOAD keys:',Object.keys(emailPayload));
+          console.log('EMAIL PAYLOAD klantEmail:',emailPayload.klantEmail);
+          console.log('EMAIL PAYLOAD pdfBase64 length:',emailPayload.pdfBase64?.length);
+          const emRes=await fetch(SUPABASE_URL+'/functions/v1/verstuur-factuur',{
             method:'POST',
             headers:{'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
-            body:JSON.stringify({
-              klantEmail:STATE.klant.email,klantNaam:STATE.klant.naam,
-              factuurnummer:factuurnr,totaalBedrag:factuurTotaal,
-              productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
-              pdfBase64,pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
-              termijnSchema,extraAdressen:[],testMode:false
-            })
+            body:JSON.stringify(emailPayload)
           });
-        }catch(e){console.warn('Email:',e);}
+          const emTxt=await emRes.text();
+          console.log('EMAIL response status:',emRes.status,'body:',emTxt);
+          if(!emRes.ok){
+            throw new Error(`Email-server: ${emRes.status} — ${emTxt}`);
+          }
+        }catch(e){
+          console.error('Email mislukt:',e);
+          $('s4-status').innerHTML += `<div class="alert alert-err" style="margin-top:8px">⚠️ Email-fout: ${esc(e.message)}</div>`;
+        }
       }
 
       // Contract — kort gehouden, geen PDF maar wel record + email triggeren is een v2
