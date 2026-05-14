@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1E2F3A">
+<title>NB Verkoop</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+:root{
+  --or:#E87722;--orl:#FFF4EC;--nav:#1E2F3A;--dk:#0f1820;
+  --gr:#6b7280;--bd:#e5e7eb;--bg:#f3f4f6;--wd:#fff;
+  --gn:#15803d;--rd:#dc2626;--bl:#2563eb;
+}
+html,body{height:100%;background:var(--bg);color:var(--dk);font-size:15px;overflow-x:hidden}
+body{display:flex;flex-direction:column;min-height:100dvh}
+
+/* TOP BAR */
+.top{background:var(--nav);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.top .logo{color:var(--or);font-size:14px;font-weight:900;letter-spacing:.5px;flex:1}
+.top .logo small{display:block;font-size:9px;letter-spacing:2px;color:#fff;opacity:.6;font-weight:400}
+.btn-icon{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.btn-icon:active{background:rgba(255,255,255,.25)}
+
+/* STAP-INDICATOR */
+.steps{display:flex;background:#fff;padding:14px 12px;gap:6px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.step-dot{flex:1;height:5px;border-radius:3px;background:#e5e7eb;transition:.2s}
+.step-dot.active{background:var(--or)}
+.step-dot.done{background:var(--gn)}
+
+/* MAIN */
+main{flex:1;overflow-y:auto;padding:18px 16px 100px}
+.view{display:none;animation:fadein .25s}
+.view.show{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+h1{font-size:22px;color:var(--nav);margin-bottom:6px;font-weight:800}
+h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
+
+.card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:12px}
+.card-row{display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid #f3f4f6}
+.card-row:first-child{border-top:none}
+
+/* INPUT */
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--nav)}
+.fg input,.fg select,.fg textarea{
+  width:100%;border:1.5px solid var(--bd);border-radius:10px;padding:13px 14px;
+  font-size:16px;background:#fff;color:var(--dk);outline:none;
+  -webkit-appearance:none;appearance:none;
+}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--or);box-shadow:0 0 0 3px rgba(232,119,34,.15)}
+
+/* BOTTOM BAR */
+.bot{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:14px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--bd);display:flex;gap:10px;z-index:50}
+.btn{flex:1;border:none;padding:16px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:.15s;min-height:54px}
+.btn-or{background:var(--or);color:#fff}
+.btn-or:active{background:#d06b1a;transform:scale(.98)}
+.btn-or:disabled{opacity:.4}
+.btn-gy{background:#f3f4f6;color:var(--nav)}
+.btn-gy:active{background:#e5e7eb}
+.btn-back{flex:0 0 54px;background:#f3f4f6;color:var(--nav);font-size:18px;padding:0}
+
+/* TOAST */
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--nav);color:#fff;padding:13px 22px;border-radius:24px;font-size:14px;font-weight:600;z-index:100;opacity:0;pointer-events:none;transition:.25s;max-width:90%;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+/* LOGIN */
+.login-wrap{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:80vh;padding:24px}
+.login-card{background:#fff;border-radius:18px;padding:30px 22px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+.login-logo{text-align:center;margin-bottom:24px}
+.login-logo .ol{color:var(--or);font-size:22px;font-weight:900;letter-spacing:.5px}
+.login-logo .sub{font-size:10px;letter-spacing:2px;color:var(--gr);margin-top:2px}
+
+/* HELPERS */
+.muted{color:var(--gr);font-size:13px}
+.empty{text-align:center;padding:40px 20px;color:var(--gr);font-size:14px}
+.alert{padding:12px 14px;border-radius:10px;margin-bottom:12px;font-size:13px}
+.alert-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="screen-login" class="view show">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="ol">NIJHOF BROTHERS</div>
+        <div class="sub">FURNITURE — VERKOOP</div>
+      </div>
+      <div id="login-err"></div>
+      <div class="fg">
+        <label>Email</label>
+        <input type="email" id="login-email" autocomplete="email" inputmode="email">
+      </div>
+      <div class="fg">
+        <label>Wachtwoord</label>
+        <input type="password" id="login-pw" autocomplete="current-password">
+      </div>
+      <button class="btn btn-or" style="width:100%" onclick="doeLogin()">Inloggen</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="screen-app" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="bevestigUitloggen()" title="Uitloggen">←</button>
+    <div class="logo">VERKOOP <small>NIJHOF BROTHERS</small></div>
+    <button class="btn-icon" onclick="herstart()" title="Opnieuw">↻</button>
+  </div>
+
+  <div class="steps">
+    <div class="step-dot" id="dot-1"></div>
+    <div class="step-dot" id="dot-2"></div>
+    <div class="step-dot" id="dot-3"></div>
+    <div class="step-dot" id="dot-4"></div>
+  </div>
+
+  <main>
+    <!-- STAP 1: ITEM KIEZEN -->
+    <div class="view" id="stap-1">
+      <h1>Welk meubel?</h1>
+      <h2>Stap 1 van 4 — kies een item uit de voorraad</h2>
+      <div class="card" style="padding:0">
+        <input type="search" id="zoek" placeholder="🔍 Zoek op naam of artikelnummer..." style="width:100%;border:none;padding:16px;font-size:15px;background:transparent;outline:none">
+      </div>
+      <div id="items-lijst"></div>
+    </div>
+
+    <!-- STAP 2: PRIJS + SERVICES -->
+    <div class="view" id="stap-2">
+      <h1>Prijs & services</h1>
+      <h2>Stap 2 van 4 — verkoopprijs en eventuele extra's</h2>
+      <div class="card">
+        <div id="gekozen-item"></div>
+      </div>
+      <div class="empty">⏳ Stap 2 wordt later toegevoegd</div>
+    </div>
+
+    <!-- STAP 3: KLANT + BETALING -->
+    <div class="view" id="stap-3">
+      <h1>Klant & betaling</h1>
+      <h2>Stap 3 van 4</h2>
+      <div class="empty">⏳ Stap 3 wordt later toegevoegd</div>
+    </div>
+
+    <!-- STAP 4: BEVESTIGEN -->
+    <div class="view" id="stap-4">
+      <h1>Even checken</h1>
+      <h2>Stap 4 van 4 — controleer en bevestig</h2>
+      <div class="empty">⏳ Stap 4 wordt later toegevoegd</div>
+    </div>
+  </main>
+
+  <div class="bot">
+    <button class="btn btn-back" id="btn-prev" onclick="vorigeStap()" style="display:none">←</button>
+    <button class="btn btn-or" id="btn-next" onclick="volgendeStap()" disabled>Volgende</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjZG5xdXVsdmtodG90bG5seGl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNzM0OTgsImV4cCI6MjA5Mzg0OTQ5OH0.Zah3P1hC1Z9Km84fplP5WgkB9TjAn7KauWXiHSlxfF0';
+const AUTH_KEY = 'nijhof-auth'; // ZELFDE als dashboard zodat sessie gedeeld wordt
+
+// ── STATE ─────────────────────────────────────────────────────────
+const STATE = {
+  user: null,
+  org_id: null,
+  items: [],
+  stap: 1,
+  // verkoop in opbouw:
+  gekozen: null, // gekozen item
+  prijs: 0,
+  services: [],
+  extrasVis: 'samen',
+  btwMethode: 'marge',
+  klant: { naam:'', email:'', tel:'', adres:'', pc:'', plts:'' },
+  type: 'volledig',
+  termijnen: [],
+  wilEmailen: true,
+  wilContract: false
+};
+
+// ── HELPERS ───────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const eur = v => '€'+Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+
+let _toastTimer=null;
+function toast(msg, kleur){
+  const t=$('toast');t.textContent=msg;
+  if(kleur)t.style.background=kleur;else t.style.background='var(--nav)';
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+function toonScherm(id){
+  document.querySelectorAll('.view').forEach(v=>{
+    if(v.id===id||v.id.startsWith('stap-'))return;
+    v.classList.remove('show');
+  });
+  $(id).classList.add('show');
+}
+
+function toonStap(n){
+  STATE.stap=n;
+  for(let i=1;i<=4;i++){
+    const dot=$('dot-'+i);
+    const view=$('stap-'+i);
+    if(!dot||!view)continue;
+    dot.classList.remove('active','done');
+    view.classList.remove('show');
+    if(i<n)dot.classList.add('done');
+    else if(i===n)dot.classList.add('active');
+  }
+  $('stap-'+n).classList.add('show');
+  $('btn-prev').style.display = n>1 ? '' : 'none';
+  $('btn-next').textContent = n===4 ? '✓ Verkoop afronden' : 'Volgende →';
+  _updateNextEnabled();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function _updateNextEnabled(){
+  const btn=$('btn-next');
+  // Stap 1: kan verder als item gekozen
+  // Stap 2/3/4: later
+  if(STATE.stap===1){
+    btn.disabled = !STATE.gekozen;
+  } else {
+    btn.disabled = false; // tijdelijk, voor skelet
+  }
+}
+
+function volgendeStap(){
+  if(STATE.stap<4) toonStap(STATE.stap+1);
+  else afronden();
+}
+function vorigeStap(){
+  if(STATE.stap>1) toonStap(STATE.stap-1);
+}
+
+function herstart(){
+  if(!confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
+  STATE.gekozen=null;
+  STATE.prijs=0;
+  STATE.services=[];
+  STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
+  STATE.type='volledig';
+  STATE.termijnen=[];
+  toonStap(1);
+  renderItems();
+}
+
+function afronden(){
+  toast('⚙️ Afronden komt in fase 5','#c2410c');
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────
+function _getStoredAuth(){
+  try{
+    const raw=localStorage.getItem(AUTH_KEY);
+    return raw?JSON.parse(raw):null;
+  }catch(e){return null;}
+}
+
+async function doeLogin(){
+  const email=$('login-email').value.trim();
+  const pw=$('login-pw').value;
+  const errBox=$('login-err');
+  errBox.innerHTML='';
+  if(!email||!pw){errBox.innerHTML='<div class="alert alert-err">Vul email + wachtwoord in</div>';return;}
+  try{
+    const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Content-Type':'application/json'},
+      body:JSON.stringify({email,password:pw})
+    });
+    const data=await res.json();
+    if(!res.ok||!data.access_token){
+      throw new Error(data.error_description||data.msg||'Inloggen mislukt');
+    }
+    // Opslaan in localStorage (zelfde key als dashboard)
+    localStorage.setItem(AUTH_KEY,JSON.stringify({
+      access_token:data.access_token,
+      refresh_token:data.refresh_token,
+      user:data.user,
+      expires_at:Date.now()+data.expires_in*1000
+    }));
+    STATE.user=data.user;
+    await naApp();
+  }catch(e){
+    errBox.innerHTML=`<div class="alert alert-err">${esc(e.message)}</div>`;
+  }
+}
+
+function bevestigUitloggen(){
+  if(!confirm('Uitloggen?'))return;
+  localStorage.removeItem(AUTH_KEY);
+  STATE.user=null;
+  STATE.org_id=null;
+  toonScherm('screen-login');
+}
+
+// ── DATA LADEN ────────────────────────────────────────────────────
+function _authHeaders(){
+  const a=_getStoredAuth();
+  return {
+    'apikey':SUPABASE_ANON,
+    'Authorization':'Bearer '+(a?.access_token||SUPABASE_ANON),
+    'Content-Type':'application/json'
+  };
+}
+
+async function _restGet(path){
+  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers:_authHeaders()});
+  if(!r.ok)throw new Error('Fetch '+r.status+': '+await r.text());
+  return await r.json();
+}
+
+async function laadOrgId(){
+  if(!STATE.user)return null;
+  try{
+    const rows=await _restGet('org_members?select=org_id&user_id=eq.'+STATE.user.id);
+    if(rows&&rows.length>0){
+      STATE.org_id=rows[0].org_id;
+    }
+  }catch(e){console.error('Org laden:',e);}
+  return STATE.org_id;
+}
+
+async function laadVoorraad(){
+  try{
+    const rows=await _restGet('items?status=eq.voorraad&order=aangemaakt_op.desc');
+    STATE.items=rows||[];
+    renderItems();
+  }catch(e){
+    console.error('Voorraad laden:',e);
+    $('items-lijst').innerHTML='<div class="alert alert-err">⚠️ Voorraad laden mislukt: '+esc(e.message)+'</div>';
+  }
+}
+
+function renderItems(){
+  const lijst=$('items-lijst');
+  if(!lijst)return;
+  const zk=($('zoek')?.value||'').toLowerCase().trim();
+  let items=STATE.items;
+  if(zk){
+    items=items.filter(i=>
+      (i.naam||'').toLowerCase().includes(zk)||
+      (i.artikelnummer||'').toLowerCase().includes(zk)||
+      (i.categorie||'').toLowerCase().includes(zk)
+    );
+  }
+  if(!items.length){
+    lijst.innerHTML=`<div class="empty">${zk?'Geen items voor "'+esc(zk)+'"':'Geen voorraad'}</div>`;
+    return;
+  }
+  lijst.innerHTML=items.map(i=>{
+    const gekozen=STATE.gekozen?.id===i.id;
+    const fotoHTML = i.foto_url
+      ? `<img src="${esc(i.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;background:#f3f4f6">`
+      : '<div style="width:60px;height:60px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:24px">📦</div>';
+    return `
+      <div class="card" style="padding:14px;cursor:pointer;border:2px solid ${gekozen?'var(--or)':'transparent'};transition:.15s" onclick="kiesItem('${esc(i.id)}')">
+        <div style="display:flex;align-items:center;gap:14px">
+          ${fotoHTML}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam||'?')}</div>
+            <div style="font-size:12px;color:var(--gr);margin-top:2px">
+              ${i.artikelnummer?`<span style="background:var(--orl);color:var(--or);padding:2px 8px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace">${esc(i.artikelnummer)}</span>`:''}
+              ${i.categorie?` · ${esc(i.categorie)}`:''}
+            </div>
+            <div style="font-size:13px;color:var(--nav);margin-top:4px">Inkoop: <strong>${eur(i.prijs||0)}</strong></div>
+          </div>
+          ${gekozen?'<div style="color:var(--or);font-size:24px">✓</div>':''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function kiesItem(id){
+  const item=STATE.items.find(x=>x.id===id);
+  if(!item)return;
+  STATE.gekozen=item;
+  renderItems();
+  _updateNextEnabled();
+  toast('✓ '+item.naam);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+async function naApp(){
+  toonScherm('screen-app');
+  await laadOrgId();
+  await laadVoorraad();
+  toonStap(1);
+}
+
+async function init(){
+  const auth=_getStoredAuth();
+  if(auth&&auth.access_token&&auth.expires_at>Date.now()){
+    STATE.user=auth.user;
+    await naApp();
+  } else {
+    toonScherm('screen-login');
+  }
+  // Zoek-listener
+  $('zoek').addEventListener('input',renderItems);
+  // Enter in login
+  $('login-pw').addEventListener('keypress',e=>{if(e.key==='Enter')doeLogin();});
+}
+
+init();
+</script>
+</body>
+</html>
