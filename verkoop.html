@@ -1123,6 +1123,119 @@ function _maakFactuurPDFmobiel(data){
   return doc;
 }
 
+// ── CONTRACT PDF ──────────────────────────────────────────────────
+function _maakContractPDFmobiel(data){
+  const{item,contractnr,verkoopDatum,verkoopprijs,termijnen,klant,type,factuurnr}=data;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('KOOPOVEREENKOMST',15,52);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+  doc.text(`Contractnr: ${contractnr}`,15,59);
+  doc.text(`Datum: ${new Date(verkoopDatum).toLocaleDateString('nl-NL')}`,15,64);
+  if(factuurnr){doc.text(`Factuurnr: ${factuurnr}`,15,69);}
+
+  // Partijen
+  let y=80;
+  doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Tussen:',15,y);y+=6;
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  doc.text('Nijhof Brothers Furniture, gevestigd te Apeldoorn (Dovenetel 9, 7322 DM)',15,y);y+=5;
+  doc.text('KvK 98613783, hierna: "verkoper",',15,y);y+=8;
+  doc.setFont('helvetica','bold');doc.text('en:',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`${klant.naam}${klant.adres?', '+klant.adres:''}${klant.pc||klant.plts?', '+(klant.pc||'')+' '+(klant.plts||''):''}`,15,y);y+=5;
+  if(klant.email){doc.text(`Email: ${klant.email}`,15,y);y+=5;}
+  if(klant.tel){doc.text(`Telefoon: ${klant.tel}`,15,y);y+=5;}
+  doc.text('hierna: "koper".',15,y);y+=10;
+
+  // Artikel 1
+  doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const omschr=`${item.naam}${item.stof?' ('+item.stof+')':''}${item.artikelnummer?' — '+item.artikelnummer:''}`;
+  const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
+  lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 2
+  doc.setFont('helvetica','bold');doc.text('Artikel 2 — Koopprijs',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`De koopprijs bedraagt € ${verkoopprijs.toFixed(2).replace('.',',')} (incl. BTW conform margeregeling).`,15,y);y+=8;
+
+  // Artikel 3
+  doc.setFont('helvetica','bold');doc.text('Artikel 3 — Betaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  if(type==='aanbetaling'){doc.text('Betaling vindt plaats in 2 termijnen:',15,y);y+=5;}
+  else {doc.text(`Betaling vindt plaats in ${termijnen.length} termijnen:`,15,y);y+=5;}
+  termijnen.forEach(t=>{
+    const lbl=t.label||`Termijn ${t.nr}`;
+    const datStr=new Date(t.vervaldatum).toLocaleDateString('nl-NL');
+    doc.text(`  • ${lbl}: € ${t.bedrag.toFixed(2).replace('.',',')} — vervaldatum ${datStr}`,15,y);y+=5;
+  });
+  y+=3;
+
+  // Artikel 4
+  doc.setFont('helvetica','bold');doc.text('Artikel 4 — Eigendomsvoorbehoud',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a4=doc.splitTextToSize('Het verkochte blijft eigendom van verkoper totdat de volledige koopprijs door koper is voldaan. Tot dat moment is het koper niet toegestaan het verkochte te vervreemden, te bezwaren of aan derden over te dragen.',180);
+  a4.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 5
+  doc.setFont('helvetica','bold');doc.text('Artikel 5 — Wanbetaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a5=doc.splitTextToSize('Bij niet-tijdige betaling van een termijn is koper zonder nadere ingebrekestelling in verzuim. Verkoper is alsdan gerechtigd het verkochte terug te nemen, onverminderd zijn recht op vergoeding van geleden schade en redelijke incassokosten conform de Wet incassokosten.',180);
+  a5.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 6
+  doc.setFont('helvetica','bold');doc.text('Artikel 6 — Levering en risico',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a6=doc.splitTextToSize('Het risico van het verkochte gaat over op koper op het moment van feitelijke aflevering. Koper dient het verkochte bij aflevering te controleren op zichtbare gebreken; klachten dienen binnen 7 dagen schriftelijk te worden gemeld.',180);
+  a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=4;
+
+  // Voetnoot incasso
+  doc.setFontSize(8);doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  const voet=doc.splitTextToSize('Aanvullend op artikel 5: bij wanbetaling is koper de wettelijke rente verschuldigd over het openstaande bedrag, alsmede buitengerechtelijke incassokosten conform het Besluit vergoeding voor buitengerechtelijke incassokosten (WIK), met een minimum van € 40,-.',180);
+  voet.forEach(l=>{doc.text(l,15,y);y+=4;});y+=4;
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
+
+  if(y>240){doc.addPage();y=20;}
+
+  // Ondertekening
+  doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text('Ondertekening',15,y);y+=8;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+  doc.text('Verkoper:',15,y);doc.text('Koper:',110,y);y+=5;
+  doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  doc.text('Justin & Jon Nijhof',15,y);
+  doc.text('[ondertekening via online akkoord]',110,y);
+  y+=4;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
+  doc.text(`Datum: ${new Date(verkoopDatum).toLocaleDateString('nl-NL')}`,15,y);
+  doc.text('Datum: ____________',110,y);y+=4;
+  doc.setFont('helvetica','italic');doc.setTextColor(232,119,34);doc.setFontSize(8);
+  doc.text('Nog niet ondertekend',110,y);
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','normal');
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,285,{align:'center'});
+  doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,289,{align:'center'});
+
+  return doc;
+}
+
 // ── REST helpers ──────────────────────────────────────────────────
 async function _restPost(path,data){
   const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
@@ -1317,10 +1430,61 @@ async function afronden(){
         }
       }
 
-      // Contract — kort gehouden, geen PDF maar wel record + email triggeren is een v2
-      // Voor nu: contract niet vanuit verkoop-app. Toon waarschuwing.
-      if(STATE.wilContract){
-        $('s4-status').innerHTML += '<div class="alert" style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c">⚠️ Contract opstellen via verkoop-app komt nog. Gebruik dashboard voor contract.</div>';
+      // Contract flow — als gewenst en termijn/aanbetaling
+      if(STATE.wilContract && (STATE.type==='termijn'||STATE.type==='aanbetaling')){
+        try{
+          const contractnr=_volgendContractnr();
+          const ondertekendToken=_genToken();
+          // PDF
+          const ctData={
+            item,contractnr,verkoopDatum,
+            verkoopprijs:factuurTotaal, // contract toont totaal incl services
+            termijnen:STATE.termijnen,
+            klant:{naam:STATE.klant.naam,email:STATE.klant.email,tel:STATE.klant.tel,adres:STATE.klant.adres,pc:STATE.klant.pc,plts:STATE.klant.plts},
+            type:STATE.type,
+            factuurnr
+          };
+          const ctDoc=_maakContractPDFmobiel(ctData);
+          const ctBlob=ctDoc.output('blob');
+          const ctBase64=ctDoc.output('datauristring').split(',')[1];
+          // Upload contract PDF
+          const ctPad=`${STATE.org_id}/${contractnr}.pdf`;
+          await fetch(`${SUPABASE_URL}/storage/v1/object/contracten-pdf/${ctPad}?upsert=true`,{
+            method:'POST',
+            headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/pdf','x-upsert':'true'},
+            body:ctBlob
+          });
+          // Contract DB record
+          await _restPost('contracten',{
+            id:_genId(),user_id:STATE.user.id,org_id:STATE.org_id,
+            contractnummer:contractnr,verkoop_id:verkoopId,klant_id:klantId,factuur_id:factuurId,
+            klant_naam:STATE.klant.naam,klant_email:STATE.klant.email,
+            product_naam:item.naam,totaalbedrag:factuurTotaal,
+            termijnen_json:STATE.termijnen,
+            ondertekend:false,ondertekend_op:null,ondertekend_naam:null,ondertekend_ip:null,
+            ondertekend_token:ondertekendToken,
+            status:'verzonden',pdf_url:ctPad,pdf_url_blanco:ctPad,
+            aangemaakt_op:new Date().toISOString()
+          });
+          // Email contract
+          const tekenUrl=`${window.location.origin}/teken.html?token=${encodeURIComponent(ondertekendToken)}`;
+          const ctRes=await fetch(SUPABASE_URL+'/functions/v1/verstuur-contract',{
+            method:'POST',
+            headers:{'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+            body:JSON.stringify({
+              klantEmail:STATE.klant.email,klantNaam:STATE.klant.naam,
+              contractnummer:contractnr,totaalBedrag:factuurTotaal,
+              productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+              tekenUrl,pdfBase64:ctBase64,pdfBestandsnaam:`contract-${contractnr}.pdf`
+            })
+          });
+          const ctTxt=await ctRes.text();
+          console.log('CONTRACT response:',ctRes.status,ctTxt);
+          if(!ctRes.ok)throw new Error(`Contract-email: ${ctRes.status} — ${ctTxt}`);
+        }catch(e){
+          console.error('Contract fout:',e);
+          $('s4-status').innerHTML += `<div class="alert alert-err" style="margin-top:8px">⚠️ Contract-fout: ${esc(e.message)}</div>`;
+        }
       }
     }
 
