@@ -1213,7 +1213,7 @@ function genTermijnen(){
   for(let i=0;i<n;i++){
     const d=new Date();d.setMonth(d.getMonth()+i);
     html+=`<div class="term-row"><span style="font-size:12px;font-weight:700">T${i+1}</span>
-      <input class="term-inp" type="number" id="t-bed-${i}" value="${per.toFixed(2)}" min="0" step="0.01">
+      <input class="term-inp" type="number" id="t-bed-${i}" value="${per.toFixed(2)}" min="0" step="0.01" oninput="_herverdeelTermijnen(${i})">
       <input class="term-inp" type="date" id="t-dat-${i}" value="${d.toISOString().split('T')[0]}">
       <select class="term-inp" id="t-bet-${i}"><option value="pin">💳 Pin</option><option value="contant">💵 Contant</option><option value="overschrijving">🏦 Oversch.</option></select>
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="t-ok-${i}"> Betaald</label>
@@ -1221,10 +1221,40 @@ function genTermijnen(){
   }
   el('vk-term-rows').innerHTML=html;
 }
+
+// Herverdeel rest evenredig over OVERIGE termijnen wanneer 1 termijn wordt gewijzigd
+function _herverdeelTermijnen(gewijzigdIdx){
+  const vp=fval('vk-vp');
+  const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
+  if(vp<=0||n<=1)return;
+  const gewijzigd=fval('t-bed-'+gewijzigdIdx);
+  const rest=Math.max(0,vp-gewijzigd);
+  const anderenAantal=n-1;
+  if(anderenAantal<=0)return;
+  const perAndere=rest/anderenAantal;
+  for(let i=0;i<n;i++){
+    if(i===gewijzigdIdx)continue;
+    const inp=el('t-bed-'+i);
+    if(inp)inp.value=perAndere.toFixed(2);
+  }
+}
 function updateVkPrev(){
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
   const prevEl=el('vk-prev');if(!item||!prevEl)return;
   _updateRest();
+  // Als termijn-sectie open is: opnieuw evenredig splitsen bij wijziging verkoopprijs
+  const termSect=el('vk-term-sect');
+  if(termSect && termSect.style.display!=='none'){
+    const vp=fval('vk-vp');
+    const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
+    if(vp>0 && n>0){
+      const per=vp/n;
+      for(let i=0;i<n;i++){
+        const inp=el('t-bed-'+i);
+        if(inp)inp.value=per.toFixed(2);
+      }
+    }
+  }
   const vp=fval('vk-vp'),imp=chk('vk-imp')?fval('vk-imp-p'):0;
   const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
   const warn=vp>0&&vp<item.prijs?'<div class="alert alert-err" style="margin-bottom:8px">⚠️ Verkoopprijs lager dan inkoopprijs!</div>':'';
