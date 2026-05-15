@@ -2820,15 +2820,45 @@ function aiExport(periode,formaat){
   toast('📤 Export gedownload');
 }
 async function resetAll(){
-  if(!confirm('⚠️ ALLE data verwijderen?\nDit kan niet ongedaan worden gemaakt.'))return;
-  if(!confirm('Weet je het heel zeker? Dit verwijdert ALLES uit de database.'))return;
+  if(!confirm('⚠️ ALLE data verwijderen?\nDit verwijdert:\n• Voorraad + verkopen\n• Facturen + contracten + klanten\n• Alle PDF-bestanden uit Storage\n\nDit kan niet ongedaan worden gemaakt.'))return;
+  if(!confirm('Weet je het heel zeker? ALLES wordt gewist.'))return;
+  toast('🗑️ Bezig met opruimen...','#c2410c');
   try{
+    // 1. Storage buckets legen (eerst PDFs voor we DB records verliezen)
+    await _wisStorageBucket('facturen-pdf');
+    await _wisStorageBucket('contracten-pdf');
+    // 2. DB tabellen in juiste volgorde (kinderen eerst, dan ouders)
+    await dbDelete('contracten','id=neq.0');
+    await dbDelete('facturen','id=neq.0');
     await dbDelete('termijnen','id=neq.0');
     await dbDelete('verkopen','id=neq.0');
+    await dbDelete('klanten','id=neq.0');
     await dbDelete('items','id=neq.0');
     await dbDelete('lasten','id=neq.0');
-  }catch(e){toast('⚠️ Reset mislukt','#dc2626');return;}
-  DB=LEEG();_importRijen=[];renderAll();toast('Alle data verwijderd','#6b7280');
+  }catch(e){
+    console.error('Reset fout:',e);
+    toast('⚠️ Reset mislukt: '+e.message,'#dc2626');
+    return;
+  }
+  DB=LEEG();_importRijen=[];_facturenCache=[];_contractenCache=[];renderAll();toast('✅ Alle data verwijderd','#15803d');
+}
+
+async function _wisStorageBucket(bucket){
+  try{
+    const org_id=_getOrgId();
+    if(!org_id)return;
+    // List alle bestanden in mapje {org_id}/
+    const{data:lijst,error}=await _sb.storage.from(bucket).list(org_id,{limit:1000});
+    if(error){console.warn(`Bucket ${bucket} list:`,error);return;}
+    if(!lijst||lijst.length===0)return;
+    // Verwijder alle bestanden
+    const paden=lijst.map(f=>`${org_id}/${f.name}`);
+    const{error:delErr}=await _sb.storage.from(bucket).remove(paden);
+    if(delErr)console.warn(`Bucket ${bucket} delete:`,delErr);
+    else console.log(`✓ ${paden.length} bestanden uit ${bucket} verwijderd`);
+  }catch(e){
+    console.warn(`Bucket ${bucket} opschonen mislukt:`,e);
+  }
 }
 
 // ── FACTUREN UI ───────────────────────────────────────────────────
