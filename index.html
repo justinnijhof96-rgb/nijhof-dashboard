@@ -1622,16 +1622,20 @@ function updateVkPrev(){
   </div>${sw}`;
 }
 function volgendeFactuur(){
-  // Nieuwe format: NBF-YYYYMMDD-N (oplopend per dag)
+  // Format: NBF-YYYYMMDD-N (oplopend per dag)
   const d=new Date();
   const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
   const prefix=`NBF-${datStr}-`;
-  // Tel hoeveel NBF-{vandaag}- nummers bestaan
-  const todayNrs=DB.verkopen
-    .map(v=>v.factuur&&v.factuur.match(new RegExp(`^NBF-${datStr}-(\\d+)$`)))
-    .filter(m=>m)
-    .map(m=>parseInt(m[1],10));
-  const nextN=todayNrs.length?Math.max(...todayNrs)+1:1;
+  const regex=new RegExp(`^NBF-${datStr}-(\\d+)$`);
+  // Tel NBF-{vandaag}-N nummers uit zowel DB.verkopen (cache) ALS facturen tabel
+  const nrsVerkopen=DB.verkopen
+    .map(v=>v.factuur&&v.factuur.match(regex))
+    .filter(m=>m).map(m=>parseInt(m[1],10));
+  const nrsFacturen=(_facturenCache||[])
+    .map(f=>f.factuurnummer&&f.factuurnummer.match(regex))
+    .filter(m=>m).map(m=>parseInt(m[1],10));
+  const alle=[...nrsVerkopen,...nrsFacturen];
+  const nextN=alle.length?Math.max(...alle)+1:1;
   return prefix+nextN;
 }
 async function bevestigVk(){
@@ -2223,7 +2227,7 @@ async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToke
   const uid_user=_getUserId();
   const org_id=_getOrgId();
   if(!uid_user||!org_id)return null;
-  const{item,contractnr,verkoopId,verkoopprijs,termijnen,klant}=data;
+  const{item,contractnr,verkoopId,verkoopprijs,termijnen,klant,type,factuurnr,verkoopDatum}=data;
   const termSnap=termijnen.map(t=>({
     nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum,
     label:t.label,betaald:!!t.betaald
@@ -2238,7 +2242,16 @@ async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToke
     factuur_id:factuurId||null,
     klant_naam:klant.naam,
     klant_email:klant.email||null,
+    klant_telefoon:klant.telefoon||null,
+    klant_adres:klant.adres||null,
+    klant_postcode:klant.postcode||null,
+    klant_plaats:klant.plaats||null,
     product_naam:item.naam,
+    product_artikelnummer:item.artikelnummer||null,
+    product_stof:item.stof||null,
+    type_betaling:type||null,
+    factuurnummer:factuurnr||null,
+    verkoopdatum:verkoopDatum||null,
     totaalbedrag:verkoopprijs,
     termijnen_json:termSnap,
     ondertekend:false,
