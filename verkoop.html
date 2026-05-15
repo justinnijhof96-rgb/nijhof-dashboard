@@ -1261,21 +1261,46 @@ function _genId(){
   return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
 }
 
-function _volgendeFactuurnr(){
+async function _volgendeFactuurnr(){
   const d=new Date();
   const pad=n=>String(n).padStart(2,'0');
   const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
-  // Tijdstempel mee voor uniqueness (er staat geen unique meer dus extra niet nodig maar netter)
-  const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
-  return `NBF-${datStr}-${hh}${mm}${ss}`;
+  const prefix=`NBF-${datStr}-`;
+  // Lees facturen van vandaag uit DB
+  try{
+    const rows=await _restGet(`facturen?select=factuurnummer&factuurnummer=like.${encodeURIComponent(prefix)}*`);
+    const regex=new RegExp(`^NBF-${datStr}-(\\d+)$`);
+    const nrs=(rows||[])
+      .map(f=>f.factuurnummer&&f.factuurnummer.match(regex))
+      .filter(m=>m).map(m=>parseInt(m[1],10));
+    const nextN=nrs.length?Math.max(...nrs)+1:1;
+    return prefix+nextN;
+  }catch(e){
+    console.warn('Factuurnr telling fout, fallback:',e);
+    // Fallback: tijdstempel als DB-call faalt
+    const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
+    return `${prefix}${hh}${mm}${ss}`;
+  }
 }
 
-function _volgendContractnr(){
+async function _volgendContractnr(){
   const d=new Date();
   const pad=n=>String(n).padStart(2,'0');
   const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
-  const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
-  return `NB-CT-${datStr}-${hh}${mm}${ss}`;
+  const prefix=`NB-CT-${datStr}-`;
+  try{
+    const rows=await _restGet(`contracten?select=contractnummer&contractnummer=like.${encodeURIComponent(prefix)}*`);
+    const regex=new RegExp(`^NB-CT-${datStr}-(\\d+)$`);
+    const nrs=(rows||[])
+      .map(c=>c.contractnummer&&c.contractnummer.match(regex))
+      .filter(m=>m).map(m=>parseInt(m[1],10));
+    const nextN=nrs.length?Math.max(...nrs)+1:1;
+    return prefix+nextN;
+  }catch(e){
+    console.warn('Contractnr telling fout, fallback:',e);
+    const hh=pad(d.getHours()),mm=pad(d.getMinutes()),ss=pad(d.getSeconds());
+    return `${prefix}${hh}${mm}${ss}`;
+  }
 }
 
 function _genToken(){
@@ -1291,7 +1316,7 @@ async function afronden(){
   try {
     const item=STATE.gekozen;
     const verkoopId=_genId();
-    const factuurnr=_volgendeFactuurnr();
+    const factuurnr=await _volgendeFactuurnr();
     const verkoopDatum=new Date().toISOString().slice(0,10);
     const servTot=STATE.services.reduce((a,s)=>a+s.bedrag,0);
     const factuurTotaal=STATE.prijs+servTot;
@@ -1433,7 +1458,7 @@ async function afronden(){
       // Contract flow — als gewenst en termijn/aanbetaling
       if(STATE.wilContract && (STATE.type==='termijn'||STATE.type==='aanbetaling')){
         try{
-          const contractnr=_volgendContractnr();
+          const contractnr=await _volgendContractnr();
           const ondertekendToken=_genToken();
           // PDF
           const ctData={
@@ -1459,7 +1484,15 @@ async function afronden(){
             id:_genId(),user_id:STATE.user.id,org_id:STATE.org_id,
             contractnummer:contractnr,verkoop_id:verkoopId,klant_id:klantId,factuur_id:factuurId,
             klant_naam:STATE.klant.naam,klant_email:STATE.klant.email,
-            product_naam:item.naam,totaalbedrag:factuurTotaal,
+            klant_telefoon:STATE.klant.tel||null,klant_adres:STATE.klant.adres||null,
+            klant_postcode:STATE.klant.pc||null,klant_plaats:STATE.klant.plts||null,
+            product_naam:item.naam,
+            product_artikelnummer:item.artikelnummer||null,
+            product_stof:item.stof||null,
+            type_betaling:STATE.type||null,
+            factuurnummer:factuurnr||null,
+            verkoopdatum:verkoopDatum||null,
+            totaalbedrag:factuurTotaal,
             termijnen_json:STATE.termijnen,
             ondertekend:false,ondertekend_op:null,ondertekend_naam:null,ondertekend_ip:null,
             ondertekend_token:ondertekendToken,
