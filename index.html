@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
@@ -197,6 +198,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <a href="#s-voorraad">📦 Voorraad</a>
     <a href="#s-lasten">💸 Lasten</a>
     <a href="#s-debiteuren">📋 Debiteuren</a>
+    <a href="#s-archief">📦 Archief</a>
     <a href="#s-facturen">🧾 Facturen</a>
     <a href="#s-contracten">📝 Contracten</a>
     <a href="#s-dash">📊 Dashboard</a>
@@ -307,6 +309,20 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     </div>
     <div id="deb-stats" style="margin-bottom:12px"></div>
     <div id="deb-lijst"></div>
+  </div>
+</div>
+
+<!-- ARCHIEF (verkochte items) -->
+<div class="sec" id="s-archief">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📦 Verkocht archief</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="arch-z" placeholder="🔍 Zoek op naam, artikelnr, factuurnr..." oninput="renderArchief()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
+      <input type="month" id="arch-mnd" onchange="renderArchief()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" title="Filter op maand">
+      <button class="btn btn-or btn-sm" onclick="exporteerMaandExcel()" title="Excel-export van geselecteerde maand">📊 Excel-export</button>
+    </div>
+    <div id="arch-stats" style="margin-bottom:12px"></div>
+    <div id="arch-container"></div>
   </div>
 </div>
 
@@ -914,7 +930,8 @@ async function voegToe(){
 
 function renderV(){
   const z=val('flt-z').toLowerCase().trim(),c=val('flt-c'),s=val('flt-s'),o=val('flt-o');
-  let items=DB.items.filter(i=>i.status!=='verwijderd');
+  // Voorraad-sectie toont alleen actieve items (beschikbaar, gereserveerd, afgestort)
+  let items=DB.items.filter(i=>i.status!=='verwijderd' && i.status!=='verkocht');
   if(c)items=items.filter(i=>i.categorie===c);
   if(s)items=items.filter(i=>i.status===s);
   if(z)items=items.filter(i=>
@@ -931,6 +948,182 @@ function renderV(){
   const cont=el('k-container');
   if(!items.length){cont.innerHTML='<div style="text-align:center;padding:40px;color:var(--gr);grid-column:1/-1"><div style="font-size:44px;margin-bottom:10px">🛋️</div><p style="font-size:15px;font-weight:500">Voeg je eerste item toe →</p></div>';return;}
   cont.innerHTML=items.map(kaartHTML).join('');
+  // Ook archief renderen
+  renderArchief();
+}
+
+// ── ARCHIEF (verkochte items) ─────────────────────────────────────
+function renderArchief(){
+  const cont=el('arch-container');
+  if(!cont)return;
+  const z=val('arch-z')?.toLowerCase().trim()||'';
+  const mnd=val('arch-mnd')||'';
+  let verkocht=DB.items.filter(i=>i.status==='verkocht');
+  // Verkoopinfo per item ophalen
+  verkocht=verkocht.map(item=>{
+    const v=DB.verkopen.find(v=>v.itemId===item.id);
+    return {item,verkoop:v};
+  }).filter(x=>x.verkoop); // Alleen items met geldige verkoop-record
+  // Zoeken
+  if(z)verkocht=verkocht.filter(x=>
+    (x.item.naam||'').toLowerCase().includes(z) ||
+    (x.item.artikelnummer||'').toLowerCase().includes(z) ||
+    (x.verkoop.factuur||'').toLowerCase().includes(z)
+  );
+  // Maandfilter (YYYY-MM)
+  if(mnd)verkocht=verkocht.filter(x=>(x.verkoop.datum||'').startsWith(mnd));
+  // Sorteer op verkoopdatum nieuwste eerst
+  verkocht.sort((a,b)=>new Date(b.verkoop.datum)-new Date(a.verkoop.datum));
+  // Stats
+  const statsEl=el('arch-stats');
+  if(statsEl){
+    const totOmzet=verkocht.reduce((a,x)=>a+(x.verkoop.verkoopprijs||0),0);
+    const totMarge=verkocht.reduce((a,x)=>a+(x.verkoop.brutoMarge||0),0);
+    statsEl.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+      <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 ${verkocht.length} verkocht</span>
+      <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">💰 Omzet: ${eur(totOmzet)}</span>
+      <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">📈 Bruto marge: ${eur(totMarge)}</span>
+    </div>`;
+  }
+  if(!verkocht.length){
+    cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--gr)">Geen verkochte items in deze filter</div>';
+    return;
+  }
+  cont.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Datum</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Verkoop</th><th>Marge</th><th>Factuurnr.</th><th>Acties</th></tr></thead>
+    <tbody>${verkocht.map(x=>{
+      const i=x.item,v=x.verkoop;
+      const datum=fmtD(v.datum);
+      const marge=(v.brutoMarge||0);
+      return `<tr>
+        <td style="font-size:12px;white-space:nowrap">${datum}</td>
+        <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
+        <td style="font-size:12px">${eur(i.prijs)}</td>
+        <td style="font-weight:600">${eur(v.verkoopprijs)}</td>
+        <td style="color:${marge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(marge)}</td>
+        <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
+          <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+// ── EXCEL EXPORT PER MAAND ────────────────────────────────────────
+function exporteerMaandExcel(){
+  const mnd=val('arch-mnd');
+  if(!mnd){
+    if(!confirm('Geen maand geselecteerd. Wil je ALLE verkopen exporteren?'))return;
+  }
+  if(typeof XLSX==='undefined'){toast('⚠️ Excel-library niet geladen, probeer pagina te verversen','#dc2626');return;}
+  // Verkopen voor periode
+  let verkopen=DB.verkopen.slice();
+  if(mnd)verkopen=verkopen.filter(v=>(v.datum||'').startsWith(mnd));
+  if(!verkopen.length){toast('Geen verkopen in deze periode','#c2410c');return;}
+  // Sorteer chronologisch
+  verkopen.sort((a,b)=>new Date(a.datum)-new Date(b.datum));
+
+  // ─ TAB 1: Verkopen overzicht ─
+  const rijenVerkopen=verkopen.map(v=>{
+    const item=DB.items.find(i=>i.id===v.itemId)||{};
+    return {
+      'Datum':v.datum||'',
+      'Factuurnummer':v.factuur||'',
+      'Artikelnummer':item.artikelnummer||'',
+      'Product':item.naam||'',
+      'Categorie':item.categorie||'',
+      'Stof':item.stof||'',
+      'Inkoopprijs':Number(item.prijs||0),
+      'Inkoopdatum':item.datum||'',
+      'Verkoopprijs':Number(v.verkoopprijs||0),
+      'Impregneer':Number(v.impregneer||0),
+      'Bruto marge':Number(v.brutoMarge||0),
+      'Netto marge':Number(v.nettoMarge||0),
+      'BTW':Number(v.btw||0),
+      'Netto na BTW':Number(v.nettoNaBtw||0),
+      'Type':v.type||'',
+      'Verkooplocatie':v.verkooplocatie||''
+    };
+  });
+
+  // ─ TAB 2: Termijnen detail ─
+  const rijenTermijnen=[];
+  verkopen.forEach(v=>{
+    const item=DB.items.find(i=>i.id===v.itemId)||{};
+    (v.termijnen||[]).forEach(t=>{
+      rijenTermijnen.push({
+        'Factuurnummer':v.factuur||'',
+        'Product':item.naam||'',
+        'Termijn nr.':t.nr,
+        'Label':t.label||`Termijn ${t.nr}`,
+        'Bedrag':Number(t.bedrag||0),
+        'Vervaldatum':t.vervaldatum||'',
+        'Betaalmethode':t.betaalmethode||'',
+        'Betaald':t.betaald?'Ja':'Nee',
+        'Betaald op':t.betaaldOp||''
+      });
+    });
+  });
+
+  // ─ TAB 3: Samenvatting / cijfers ─
+  const totOmzet=verkopen.reduce((a,v)=>a+(v.verkoopprijs||0),0);
+  const totInkoop=verkopen.reduce((a,v)=>{const i=DB.items.find(x=>x.id===v.itemId);return a+(i?.prijs||0);},0);
+  const totBruto=verkopen.reduce((a,v)=>a+(v.brutoMarge||0),0);
+  const totImp=verkopen.reduce((a,v)=>a+(v.impregneer||0),0);
+  const totBtw=verkopen.reduce((a,v)=>a+(v.btw||0),0);
+  const totNetto=verkopen.reduce((a,v)=>a+(v.nettoMarge||0),0);
+  const totNaBtw=verkopen.reduce((a,v)=>a+(v.nettoNaBtw||0),0);
+  // Per categorie
+  const perCat={};
+  verkopen.forEach(v=>{
+    const i=DB.items.find(x=>x.id===v.itemId);
+    const c=i?.categorie||'Onbekend';
+    if(!perCat[c])perCat[c]={aantal:0,omzet:0,marge:0};
+    perCat[c].aantal++;
+    perCat[c].omzet+=v.verkoopprijs||0;
+    perCat[c].marge+=v.brutoMarge||0;
+  });
+  const rijenSamen=[
+    {'Categorie':'Aantal verkopen','Waarde':verkopen.length},
+    {'Categorie':'Totaal omzet','Waarde':totOmzet},
+    {'Categorie':'Totaal inkoop','Waarde':totInkoop},
+    {'Categorie':'Bruto marge','Waarde':totBruto},
+    {'Categorie':'Impregneer totaal','Waarde':totImp},
+    {'Categorie':'Netto marge','Waarde':totNetto},
+    {'Categorie':'BTW winstmarge','Waarde':totBtw},
+    {'Categorie':'Netto na BTW','Waarde':totNaBtw},
+    {'Categorie':'','Waarde':''},
+    {'Categorie':'─── Per categorie ───','Waarde':''}
+  ];
+  Object.keys(perCat).forEach(c=>{
+    rijenSamen.push({'Categorie':`${c} — aantal`,'Waarde':perCat[c].aantal});
+    rijenSamen.push({'Categorie':`${c} — omzet`,'Waarde':perCat[c].omzet});
+    rijenSamen.push({'Categorie':`${c} — marge`,'Waarde':perCat[c].marge});
+  });
+
+  // ─ TAB 4: Lasten in periode ─
+  let lasten=(DB.lasten||[]).slice();
+  if(mnd)lasten=lasten.filter(l=>(l.datum||'').startsWith(mnd));
+  const rijenLasten=lasten.map(l=>({
+    'Datum':l.datum||'',
+    'Omschrijving':l.omschrijving||'',
+    'Categorie':l.categorie||'',
+    'Bedrag':Number(l.bedrag||0)
+  }));
+
+  // ─ Workbook bouwen ─
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rijenSamen),'Samenvatting');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rijenVerkopen),'Verkopen');
+  if(rijenTermijnen.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rijenTermijnen),'Termijnen');
+  if(rijenLasten.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rijenLasten),'Lasten');
+
+  // ─ Download ─
+  const naam=mnd?`NB-verkopen-${mnd}.xlsx`:`NB-verkopen-alle.xlsx`;
+  XLSX.writeFile(wb,naam);
+  toast(`✅ ${naam} gedownload (${verkopen.length} verkopen)`);
 }
 
 function kaartHTML(item){
