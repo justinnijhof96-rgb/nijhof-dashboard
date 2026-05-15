@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Contract ondertekenen — Nijhof Brothers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
 body{background:#f3f4f6;min-height:100vh;padding:20px;color:#1a1a1a}
@@ -90,6 +91,8 @@ if(!TOKEN){
   laadContract();
 }
 
+let CONTRACT_DATA = null; // bewaar volledige contract-data voor PDF regeneratie
+
 async function laadContract(){
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/teken-contract?token=${encodeURIComponent(TOKEN)}`, {
@@ -99,6 +102,7 @@ async function laadContract(){
     if(!res.ok){
       throw new Error(data.error || 'Contract niet gevonden');
     }
+    CONTRACT_DATA = data;
     toonContract(data);
   } catch(e){
     document.getElementById('content').innerHTML = `<div class="alert alert-err">⚠️ ${esc(e.message)}</div>`;
@@ -175,6 +179,121 @@ function toonContract(c){
   `;
 }
 
+// ── PDF GENEREREN met ondertekening ingevuld ──────────────────────
+function maakOndertekendeContractPDF(c, naam, ondertekendOp){
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);
+  doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('KOOPOVEREENKOMST',15,52);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+  doc.text(`Contractnr: ${c.contractnummer}`,15,59);
+  const dat=c.verkoopdatum||c.aangemaakt_op?.slice(0,10)||'';
+  doc.text(`Datum: ${dat?new Date(dat).toLocaleDateString('nl-NL'):''}`,15,64);
+  if(c.factuurnummer){doc.text(`Factuurnr: ${c.factuurnummer}`,15,69);}
+
+  // Partijen
+  let y=80;
+  doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Tussen:',15,y);y+=6;
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  doc.text('Nijhof Brothers Furniture, gevestigd te Apeldoorn (Dovenetel 9, 7322 DM)',15,y);y+=5;
+  doc.text('KvK 98613783, hierna: "verkoper",',15,y);y+=8;
+  doc.setFont('helvetica','bold');doc.text('en:',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`${c.klant_naam}${c.klant_adres?', '+c.klant_adres:''}${c.klant_postcode||c.klant_plaats?', '+(c.klant_postcode||'')+' '+(c.klant_plaats||''):''}`,15,y);y+=5;
+  if(c.klant_email){doc.text(`Email: ${c.klant_email}`,15,y);y+=5;}
+  if(c.klant_telefoon){doc.text(`Telefoon: ${c.klant_telefoon}`,15,y);y+=5;}
+  doc.text('hierna: "koper".',15,y);y+=10;
+
+  // Artikel 1
+  doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const omschr=`${c.product_naam}${c.product_stof?' ('+c.product_stof+')':''}${c.product_artikelnummer?' — '+c.product_artikelnummer:''}`;
+  const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
+  lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 2
+  doc.setFont('helvetica','bold');doc.text('Artikel 2 — Koopprijs',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  doc.text(`De koopprijs bedraagt € ${Number(c.totaalbedrag).toFixed(2).replace('.',',')} (incl. BTW conform margeregeling).`,15,y);y+=8;
+
+  // Artikel 3
+  doc.setFont('helvetica','bold');doc.text('Artikel 3 — Betaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const termijnen=c.termijnen||[];
+  if(c.type_betaling==='aanbetaling'){doc.text('Betaling vindt plaats in 2 termijnen:',15,y);y+=5;}
+  else {doc.text(`Betaling vindt plaats in ${termijnen.length} termijnen:`,15,y);y+=5;}
+  termijnen.forEach(t=>{
+    const lbl=t.label||`Termijn ${t.nr}`;
+    const datStr=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
+    doc.text(`  • ${lbl}: € ${Number(t.bedrag).toFixed(2).replace('.',',')} — vervaldatum ${datStr}`,15,y);y+=5;
+  });
+  y+=3;
+
+  // Artikel 4
+  doc.setFont('helvetica','bold');doc.text('Artikel 4 — Eigendomsvoorbehoud',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a4=doc.splitTextToSize('Het verkochte blijft eigendom van verkoper totdat de volledige koopprijs door koper is voldaan. Tot dat moment is het koper niet toegestaan het verkochte te vervreemden, te bezwaren of aan derden over te dragen.',180);
+  a4.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 5
+  doc.setFont('helvetica','bold');doc.text('Artikel 5 — Wanbetaling',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a5=doc.splitTextToSize('Bij niet-tijdige betaling van een termijn is koper zonder nadere ingebrekestelling in verzuim. Verkoper is alsdan gerechtigd het verkochte terug te nemen, onverminderd zijn recht op vergoeding van geleden schade en redelijke incassokosten conform de Wet incassokosten.',180);
+  a5.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+
+  // Artikel 6
+  doc.setFont('helvetica','bold');doc.text('Artikel 6 — Levering en risico',15,y);y+=6;
+  doc.setFont('helvetica','normal');
+  const a6=doc.splitTextToSize('Het risico van het verkochte gaat over op koper op het moment van feitelijke aflevering. Koper dient het verkochte bij aflevering te controleren op zichtbare gebreken; klachten dienen binnen 7 dagen schriftelijk te worden gemeld.',180);
+  a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=4;
+
+  // Voetnoot incasso
+  doc.setFontSize(8);doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  const voet=doc.splitTextToSize('Aanvullend op artikel 5: bij wanbetaling is koper de wettelijke rente verschuldigd over het openstaande bedrag, alsmede buitengerechtelijke incassokosten conform het Besluit vergoeding voor buitengerechtelijke incassokosten (WIK), met een minimum van € 40,-.',180);
+  voet.forEach(l=>{doc.text(l,15,y);y+=4;});y+=4;
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
+
+  if(y>240){doc.addPage();y=20;}
+
+  // Ondertekening — KOPER IS NU INGEVULD
+  doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text('Ondertekening',15,y);y+=8;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+  doc.text('Verkoper:',15,y);doc.text('Koper:',110,y);y+=5;
+  doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
+  doc.text('Justin & Jon Nijhof',15,y);
+  doc.text(naam,110,y);
+  y+=4;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
+  doc.text(`Datum: ${dat?new Date(dat).toLocaleDateString('nl-NL'):''}`,15,y);
+  doc.text(`Ondertekend: ${new Date(ondertekendOp).toLocaleDateString('nl-NL')}`,110,y);y+=4;
+  doc.setFont('helvetica','italic');doc.setTextColor(22,128,61);doc.setFontSize(8);
+  doc.text('✓ Online ondertekend',110,y);
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','normal');
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,285,{align:'center'});
+  doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,289,{align:'center'});
+
+  return doc;
+}
+
 async function onderteken(){
   const naam = document.getElementById('teken-naam').value.trim();
   const akkoord = document.getElementById('teken-akkoord').checked;
@@ -195,6 +314,18 @@ async function onderteken(){
   msg.innerHTML = '';
 
   try {
+    // Genereer ondertekende PDF lokaal
+    let pdfBase64 = null;
+    if(CONTRACT_DATA && window.jspdf){
+      try {
+        const ondertekendOp = new Date().toISOString();
+        const doc = maakOndertekendeContractPDF(CONTRACT_DATA, naam, ondertekendOp);
+        pdfBase64 = doc.output('datauristring').split(',')[1];
+      } catch(e){
+        console.warn('PDF regenereren mislukt, ga toch door:', e);
+      }
+    }
+
     const res = await fetch(`${SUPABASE_URL}/functions/v1/teken-contract`, {
       method: 'POST',
       headers: {
@@ -202,7 +333,7 @@ async function onderteken(){
         'apikey': SUPABASE_ANON,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ token: TOKEN, naam, akkoord: true })
+      body: JSON.stringify({ token: TOKEN, naam, akkoord: true, pdfBase64Ondertekend: pdfBase64 })
     });
     const data = await res.json();
     if(!res.ok || !data.success){
