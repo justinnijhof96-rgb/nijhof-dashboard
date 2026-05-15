@@ -241,7 +241,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
             <div style="font-size:11px;color:#9ca3af;margin-top:3px">JPG/PNG · automatisch gecomprimeerd</div>
           </div>
         </div>
-        <input type="file" id="f-foto-input" accept="image/*" capture="environment" style="display:none" onchange="kiesFoto(event)">
+        <input type="file" id="f-foto-input" accept="image/*" style="display:none" onchange="kiesFoto(event)">
         <div class="foto-progress" id="f-foto-progress"><div class="foto-progress-bar" id="f-foto-progressbar"></div></div>
       </div>
     </div>
@@ -852,7 +852,7 @@ function wisGekozenFoto(){
 
 async function uploadFotoVoorItem(itemId){
   const inp=document.createElement('input');
-  inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.type='file';inp.accept='image/*';
   inp.onchange=async()=>{
     const file=inp.files[0];if(!file)return;
     if(!file.type.startsWith('image/')){toast('Alleen afbeeldingen','#dc2626');return;}
