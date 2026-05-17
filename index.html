@@ -628,6 +628,7 @@ function _sessieVerlopen(){
   _sessieMeldingTeruggekomen=true;
   // localStorage leegmaken zodat _getToken() null retourneert
   try{localStorage.removeItem('nijhof-auth');}catch(e){}
+  _appGestart=false; // toelaten dat _startApp opnieuw kan draaien na re-login
   toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');
   setTimeout(()=>{
     _sessieMeldingTeruggekomen=false;
@@ -635,7 +636,10 @@ function _sessieVerlopen(){
   },1500);
 }
 
+let _appGestart=false;
 async function _startApp(){
+  if(_appGestart)return; // anti-dubbel
+  _appGestart=true;
   el('login-scherm').style.display='none';
   el('app-container').style.display='block';
   await _laadOrgId();
@@ -669,13 +673,23 @@ let DB = LEEG();
 
 async function laadAllesVanDB(){
   try {
-    const [items, verkopen, termijnen, lasten, inst] = await Promise.all([
+    const results = await Promise.allSettled([
       dbSelect('items','order=aangemaakt_op.desc'),
       dbSelect('verkopen','order=datum_registratie.desc'),
       dbSelect('termijnen'),
       dbSelect('lasten','order=aangemaakt_op.desc'),
       dbSelect('instellingen')
     ]);
+    // Log eventuele errors zonder hele laad af te breken
+    const labels=['items','verkopen','termijnen','lasten','instellingen'];
+    results.forEach((r,i)=>{
+      if(r.status==='rejected')console.warn(`Laden van ${labels[i]} mislukt:`,r.reason);
+    });
+    const items=results[0].status==='fulfilled'?results[0].value:[];
+    const verkopen=results[1].status==='fulfilled'?results[1].value:[];
+    const termijnen=results[2].status==='fulfilled'?results[2].value:[];
+    const lasten=results[3].status==='fulfilled'?results[3].value:[];
+    const inst=results[4].status==='fulfilled'?results[4].value:[];
     const itemsRes={data:items}, verkopenRes={data:verkopen}, termijnenRes={data:termijnen}, lastenRes={data:lasten}, instRes={data:inst};
     DB.items = (itemsRes.data||[]).map(r=>({
       id:r.id, naam:r.naam, categorie:r.categorie, stof:r.stof||'', locatie:r.locatie||'',
@@ -699,6 +713,10 @@ async function laadAllesVanDB(){
       id:r.id, itemId:r.item_id, verkoopprijs:Number(r.verkoopprijs)||0,
       verkooplocatie:r.verkooplocatie||'', factuur:r.factuur||'', datum:r.datum||'',
       type:r.type||'volledig', impregneer:Number(r.impregneer)||0,
+      services:Array.isArray(r.services_json)?r.services_json:null,
+      factuurTotaal:Number(r.factuur_totaal)||null,
+      extrasZichtbaar:!!r.extras_zichtbaar,
+      btwMethode:r.btw_methode||'marge',
       brutoMarge:Number(r.bruto_marge)||0, nettoMarge:Number(r.netto_marge)||0,
       btw:Number(r.btw)||0, nettoNaBtw:Number(r.netto_na_btw)||0,
       datum_registratie:r.datum_registratie,
@@ -752,6 +770,10 @@ async function _syncNaarSupabase(){
       const vkRows=DB.verkopen.map(v=>({
         id:v.id,item_id:v.itemId,verkoopprijs:v.verkoopprijs,verkooplocatie:v.verkooplocatie||'',
         factuur:v.factuur||'',datum:v.datum,type:v.type||'volledig',impregneer:v.impregneer||0,
+        services_json:Array.isArray(v.services)?v.services:null,
+        factuur_totaal:v.factuurTotaal||null,
+        extras_zichtbaar:!!v.extrasZichtbaar,
+        btw_methode:v.btwMethode||'marge',
         bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
         netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie||new Date().toISOString(),
         user_id:uid_user, org_id:org_id
@@ -810,12 +832,14 @@ function toast(msg,kleur='#15803d'){const t=el('toast');t.textContent=msg;t.styl
 
 let _gekozenFoto=null;
 
-async function compressFoto(file,maxW=1200,kwaliteit=0.85){
+async function compressFoto(file,maxDim=1200,kwaliteit=0.85){
   return new Promise((resolve,reject)=>{
     const img=new Image();
     img.onload=()=>{
       let w=img.width,h=img.height;
-      if(w>maxW){h=Math.round(h*(maxW/w));w=maxW;}
+      // Schaal langste zijde naar maxDim — werkt voor zowel landscape als portrait
+      if(w>h && w>maxDim){h=Math.round(h*(maxDim/w));w=maxDim;}
+      else if(h>=w && h>maxDim){w=Math.round(w*(maxDim/h));h=maxDim;}
       const cv=document.createElement('canvas');cv.width=w;cv.height=h;
       const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,w,h);
       cv.toBlob(b=>b?resolve(b):reject(new Error('Compressie mislukt')),'image/jpeg',kwaliteit);
@@ -1121,17 +1145,24 @@ function exporteerMaandExcel(){
   // ─ TAB 1: Verkopen overzicht ─
   const rijenVerkopen=verkopen.map(v=>{
     const item=DB.items.find(i=>i.id===v.itemId)||{};
+    // Services-totaal en lijst-overzicht
+    const _services=Array.isArray(v.services)?v.services:(v.impregneer>0?[{naam:'Impregneerbehandeling',bedrag:v.impregneer}]:[]);
+    const _servicesTot=_services.reduce((a,s)=>a+(s.bedrag||0),0);
+    const _servicesText=_services.map(s=>`${s.naam}: €${s.bedrag.toFixed(2)}`).join(', ');
+    const factTot=v.factuurTotaal||(v.verkoopprijs+_servicesTot);
     return {
-      'Datum':v.datum||'',
+      'Datum':fmtD(v.datum)||'',
       'Factuurnummer':v.factuur||'',
       'Artikelnummer':item.artikelnummer||'',
       'Product':item.naam||'',
       'Categorie':item.categorie||'',
       'Stof':item.stof||'',
       'Inkoopprijs':Number(item.prijs||0),
-      'Inkoopdatum':item.datum||'',
+      'Inkoopdatum':fmtD(item.datum)||'',
       'Verkoopprijs':Number(v.verkoopprijs||0),
-      'Impregneer':Number(v.impregneer||0),
+      'Services':_servicesText,
+      'Services totaal':Number(_servicesTot),
+      'Factuurtotaal':Number(factTot),
       'Bruto marge':Number(v.brutoMarge||0),
       'Netto marge':Number(v.nettoMarge||0),
       'BTW':Number(v.btw||0),
@@ -1152,7 +1183,7 @@ function exporteerMaandExcel(){
         'Termijn nr.':t.nr,
         'Label':t.label||`Termijn ${t.nr}`,
         'Bedrag':Number(t.bedrag||0),
-        'Vervaldatum':t.vervaldatum||'',
+        'Vervaldatum':fmtD(t.vervaldatum)||'',
         'Betaalmethode':t.betaalmethode||'',
         'Betaald':t.betaald?'Ja':'Nee',
         'Betaald op':t.betaaldOp||''
@@ -1164,7 +1195,14 @@ function exporteerMaandExcel(){
   const totOmzet=verkopen.reduce((a,v)=>a+(v.verkoopprijs||0),0);
   const totInkoop=verkopen.reduce((a,v)=>{const i=DB.items.find(x=>x.id===v.itemId);return a+(i?.prijs||0);},0);
   const totBruto=verkopen.reduce((a,v)=>a+(v.brutoMarge||0),0);
-  const totImp=verkopen.reduce((a,v)=>a+(v.impregneer||0),0);
+  // Services totaal: gebruik services_json als beschikbaar, anders fallback op impregneer
+  const totServices=verkopen.reduce((a,v)=>{
+    if(Array.isArray(v.services)&&v.services.length){
+      return a+v.services.reduce((b,s)=>b+(s.bedrag||0),0);
+    }
+    return a+(v.impregneer||0);
+  },0);
+  const totFactuurTotaal=verkopen.reduce((a,v)=>a+(v.factuurTotaal||v.verkoopprijs||0),0);
   const totBtw=verkopen.reduce((a,v)=>a+(v.btw||0),0);
   const totNetto=verkopen.reduce((a,v)=>a+(v.nettoMarge||0),0);
   const totNaBtw=verkopen.reduce((a,v)=>a+(v.nettoNaBtw||0),0);
@@ -1180,11 +1218,12 @@ function exporteerMaandExcel(){
   });
   const rijenSamen=[
     {'Categorie':'Aantal verkopen','Waarde':verkopen.length},
-    {'Categorie':'Totaal omzet','Waarde':totOmzet},
+    {'Categorie':'Totaal omzet (excl services)','Waarde':totOmzet},
+    {'Categorie':'Totaal services','Waarde':totServices},
+    {'Categorie':'Totaal factuurbedragen','Waarde':totFactuurTotaal},
     {'Categorie':'Totaal inkoop','Waarde':totInkoop},
     {'Categorie':'Bruto marge','Waarde':totBruto},
-    {'Categorie':'Impregneer totaal','Waarde':totImp},
-    {'Categorie':'Netto marge','Waarde':totNetto},
+    {'Categorie':'Netto marge (incl services)','Waarde':totNetto},
     {'Categorie':'BTW winstmarge','Waarde':totBtw},
     {'Categorie':'Netto na BTW','Waarde':totNaBtw},
     {'Categorie':'','Waarde':''},
@@ -1198,12 +1237,17 @@ function exporteerMaandExcel(){
 
   // ─ TAB 4: Lasten in periode ─
   let lasten=(DB.lasten||[]).slice();
-  if(mnd)lasten=lasten.filter(l=>(l.datum||'').startsWith(mnd));
+  if(mnd)lasten=lasten.filter(l=>(l.betaaldatum||'').startsWith(mnd));
   const rijenLasten=lasten.map(l=>({
-    'Datum':l.datum||'',
-    'Omschrijving':l.omschrijving||'',
-    'Categorie':l.categorie||'',
-    'Bedrag':Number(l.bedrag||0)
+    'Betaaldatum':fmtD(l.betaaldatum)||'',
+    'Naam':l.naam||'',
+    'Bedrag':Number(l.bedrag||0),
+    'BTW %':Number(l.btwPct||0),
+    'BTW type':l.btwType||'excl',
+    'Type':l.typeKosten||'vast',
+    'Betaalmethode':l.betaalmethode||'',
+    'Betaald':l.betaald?'Ja':'Nee',
+    'Actief':l.actief!==false?'Ja':'Nee'
   }));
 
   // ─ Workbook bouwen ─
@@ -1392,7 +1436,7 @@ function openBewerkVerkoop(itemId) {
 function updateBewerkVkPrev(itemId) {
   const item=DB.items.find(x=>x.id===itemId);const prevEl=el('bvk-prev');if(!item||!prevEl)return;
   const vp=fval('bvk-vp'),imp=DB.verkopen.find(v=>v.itemId===itemId)?.impregneer||0;
-  const bruto=vp-item.prijs,netto=bruto+imp,btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  const bruto=vp-item.prijs,netto=bruto+imp,btw=Math.max(0,(vp-item.prijs)/1.21*0.21),nNaBtw=netto-btw;
   prevEl.innerHTML=`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd);font-size:13px">
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Bruto marge</span><span style="color:${bruto>=0?'var(--gn)':'var(--rd)'}">${eur(bruto)}</span></div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
@@ -1409,7 +1453,7 @@ function slaVerkKopOp(itemId) {
   const factuurTotaal=vp+imp; // services hangen aan vk.impregneer (oud) of services-array (nieuw)
   const bruto=vp-item.prijs;
   const netto=bruto+imp;
-  const btw=(vp-item.prijs)/1.21*0.21;
+  const btw=Math.max(0,(vp-item.prijs)/1.21*0.21);
   const nNaBtw=netto-btw;
   vk.verkoopprijs=vp;vk.verkooplocatie=val('bvk-loc');
   vk.factuur=val('bvk-fac')||vk.factuur;vk.datum=val('bvk-dat')||vk.datum;
@@ -1754,7 +1798,7 @@ function updateVkPrev(){
   const servicesTot=services.reduce((a,s)=>a+s.bedrag,0);
   const bruto=vp-item.prijs;
   const netto=bruto+servicesTot;
-  const btw=(vp-item.prijs)/1.21*0.21;
+  const btw=Math.max(0,(vp-item.prijs)/1.21*0.21);
   const nNaBtw=netto-btw;
   const warn=vp>0&&vp<item.prijs?'<div class="alert alert-err" style="margin-bottom:8px">⚠️ Verkoopprijs lager dan inkoopprijs!</div>':'';
   const catVk=DB.verkopen.filter(v=>{const vi=DB.items.find(x=>x.id===v.itemId);return vi&&vi.categorie===item.categorie;});
@@ -1811,7 +1855,7 @@ async function bevestigVk(){
   // BTW: bij marge = over winstmarge, bij standaard 21% = over factuurtotaal
   const bruto=vp-item.prijs;
   const netto=bruto+servicesTot;
-  const btw=btwMethode==='standaard'?factuurTotaal/1.21*0.21:(vp-item.prijs)/1.21*0.21;
+  const btw=btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(vp-item.prijs)/1.21*0.21);
   const nNaBtw=netto-btw;
 
   // Klantgegevens uit form
@@ -1859,7 +1903,17 @@ async function bevestigVk(){
   const verkoopId=uid();
   const factuurnr=val('vk-fac')||volgendeFactuur();
   const verkoopDatum=val('vk-dat')||vandaag();
-  DB.verkopen.push({id:verkoopId,itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),factuur:factuurnr,datum:verkoopDatum,type,termijnen,impregneer:imp,brutoMarge:bruto,nettoMarge:netto,btw,nettoNaBtw:nNaBtw,datum_registratie:new Date().toISOString()});
+  DB.verkopen.push({
+    id:verkoopId,itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),
+    factuur:factuurnr,datum:verkoopDatum,type,termijnen,
+    impregneer:imp, // backwards compat
+    services:services, // volledige services array
+    factuurTotaal:factuurTotaal,
+    extrasZichtbaar:extrasZichtbaar,
+    btwMethode:btwMethode,
+    brutoMarge:bruto,nettoMarge:netto,btw,nettoNaBtw:nNaBtw,
+    datum_registratie:new Date().toISOString()
+  });
   item.status='verkocht';
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
@@ -1965,7 +2019,14 @@ async function _slaFactuurOpInDB({pdfData,klantId,pdfUrl,wilEmailen}){
   const uid_user=_getUserId();
   const org_id=_getOrgId();
   if(!uid_user||!org_id)return null;
-  const{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs,impregneer,btwMethode,btw,termijnen,klant,type}=pdfData;
+  const{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs,impregneer,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant,type}=pdfData;
+  // Services normaliseren — als nieuwe array, gebruik die; anders fallback op impregneer
+  const _services=Array.isArray(services)?services:(impregneer>0?[{naam:'Impregneerbehandeling',bedrag:impregneer}]:[]);
+  const _servicesTot=_services.reduce((a,s)=>a+s.bedrag,0);
+  const _totaal=factuurTotaal||(verkoopprijs+_servicesTot);
+  // Bezorging-bedrag eruit halen voor het oude bezorging_bedrag veld
+  const _bezorging=_services.filter(s=>s.naam==='Bezorging').reduce((a,s)=>a+s.bedrag,0);
+  const _impregneer=_services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0);
   // Termijnen snapshot in jsonb voor de factuur-historie
   const termijnenSnapshot=termijnen.map(t=>({
     nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum,
@@ -1988,14 +2049,14 @@ async function _slaFactuurOpInDB({pdfData,klantId,pdfUrl,wilEmailen}){
     product_omschr:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
     item_id:item.id,
     product_bedrag:verkoopprijs,
-    impregneer_bedrag:impregneer||0,
-    bezorging_bedrag:0,
-    extras_zichtbaar:false,
+    impregneer_bedrag:_impregneer,
+    bezorging_bedrag:_bezorging,
+    extras_zichtbaar:!!extrasZichtbaar,
     btw_methode:btwMethode,
     btw_percentage:btwMethode==='standaard'?21:0,
     btw_bedrag:btw||0,
-    subtotaal:verkoopprijs,
-    totaal:verkoopprijs,
+    subtotaal:verkoopprijs+_servicesTot,
+    totaal:_totaal,
     betaalwijze:type,
     factuurdatum:verkoopDatum,
     status:wilEmailen?'verzonden':'aangemaakt',
@@ -2230,7 +2291,11 @@ function _volgendContractnr(){
 
 // ── CONTRACT PDF GENEREREN ────────────────────────────────────────
 function _maakContractPDF(data){
-  const{item,contractnr,verkoopDatum,verkoopprijs,termijnen,klant,type,factuurnr,ondertekendData}=data;
+  const{item,contractnr,verkoopDatum,verkoopprijs,services,factuurTotaal,termijnen,klant,type,factuurnr,ondertekendData}=data;
+  // Koopprijs = factuurtotaal incl services. Fallback op verkoopprijs.
+  const _services=Array.isArray(services)?services:[];
+  const _servicesTot=_services.reduce((a,s)=>a+s.bedrag,0);
+  const _koopprijs=factuurTotaal||(verkoopprijs+_servicesTot);
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
 
@@ -2279,7 +2344,7 @@ function _maakContractPDF(data){
   // Artikel 2 - Koopprijs
   doc.setFont('helvetica','bold');doc.text('Artikel 2 — Koopprijs',15,y);y+=6;
   doc.setFont('helvetica','normal');
-  doc.text(`De koopprijs bedraagt € ${verkoopprijs.toFixed(2).replace('.',',')} (incl. BTW conform margeregeling).`,15,y);y+=8;
+  doc.text(`De koopprijs bedraagt € ${_koopprijs.toFixed(2).replace('.',',')} (incl. BTW conform margeregeling).`,15,y);y+=8;
 
   // Artikel 3 - Betaling
   doc.setFont('helvetica','bold');doc.text('Artikel 3 — Betaling',15,y);y+=6;
@@ -2384,7 +2449,11 @@ async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToke
   const uid_user=_getUserId();
   const org_id=_getOrgId();
   if(!uid_user||!org_id)return null;
-  const{item,contractnr,verkoopId,verkoopprijs,termijnen,klant,type,factuurnr,verkoopDatum}=data;
+  const{item,contractnr,verkoopId,verkoopprijs,services,factuurTotaal,termijnen,klant,type,factuurnr,verkoopDatum}=data;
+  // Contract totaal = factuurtotaal incl services. Fallback op verkoopprijs als geen services.
+  const _services=Array.isArray(services)?services:[];
+  const _servicesTot=_services.reduce((a,s)=>a+s.bedrag,0);
+  const _totaal=factuurTotaal||(verkoopprijs+_servicesTot);
   const termSnap=termijnen.map(t=>({
     nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum,
     label:t.label,betaald:!!t.betaald
@@ -2409,7 +2478,7 @@ async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToke
     type_betaling:type||null,
     factuurnummer:factuurnr||null,
     verkoopdatum:verkoopDatum||null,
-    totaalbedrag:verkoopprijs,
+    totaalbedrag:_totaal,
     termijnen_json:termSnap,
     ondertekend:false,
     ondertekend_op:null,
