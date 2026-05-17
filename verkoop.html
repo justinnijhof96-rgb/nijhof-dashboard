@@ -150,6 +150,11 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <span>Inkoop</span>
         <span style="font-size:12px;font-weight:400;opacity:.8">Nieuw item toevoegen</span>
       </button>
+      <button onclick="kiesActie('bonnetje')" style="background:linear-gradient(135deg,#6b7280,#4b5563);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(107,114,128,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">🧾</span>
+        <span>Bonnetje</span>
+        <span style="font-size:12px;font-weight:400;opacity:.8">Losse bon mailen naar invoice@</span>
+      </button>
     </div>
   </main>
 </div>
@@ -257,6 +262,50 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   <div class="bot">
     <button class="btn btn-back" id="ink-btn-prev" onclick="vorigeInkStap()" style="display:none">←</button>
     <button class="btn btn-or" id="ink-btn-next" onclick="volgendeInkStap()" disabled>Volgende</button>
+  </div>
+</div>
+
+<div id="screen-bon" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="terugNaarKeuze()" title="Terug">←</button>
+    <div class="logo">BONNETJE <small>NIJHOF BROTHERS</small></div>
+    <button class="btn-icon" onclick="herstartBon()" title="Opnieuw">↻</button>
+  </div>
+
+  <main>
+    <div class="view show" id="bon-stap-1">
+      <h1>Bonnetje mailen</h1>
+      <h2>Foto + omschrijving · gaat direct naar invoice@</h2>
+
+      <div class="card">
+        <div class="fg"><label class="r">Datum</label><input type="date" id="bon-dat" oninput="updBon()"></div>
+        <div class="fg"><label class="r">Omschrijving</label><input type="text" id="bon-oms" placeholder="Bijv. Diesel A12 station / IKEA gereedschap" oninput="updBon()"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📸 Foto van het bonnetje</div>
+        <div style="font-size:12px;color:var(--gr);margin-bottom:10px">Wordt automatisch omgezet naar PDF en gemaild</div>
+        <input type="file" id="bon-foto" accept="image/*" style="display:none" onchange="kiesBonFoto(event)">
+        <div id="bon-foto-preview"></div>
+        <button class="btn btn-gy" style="width:100%;min-height:48px" onclick="document.getElementById('bon-foto').click()">📷 Foto kiezen</button>
+      </div>
+
+      <div id="bon-status" style="margin-top:12px"></div>
+    </div>
+
+    <div class="view" id="bon-stap-klaar">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:80px;margin-bottom:20px">✅</div>
+        <h1 style="font-size:26px;color:var(--or);margin-bottom:10px">Bonnetje verstuurd!</h1>
+        <div id="bon-klaar-info" style="font-size:14px;color:var(--gr);line-height:1.7;margin:18px 0"></div>
+        <button class="btn btn-or" style="width:100%;margin-top:20px" onclick="nieuwBon()">+ Nieuw bonnetje</button>
+        <button class="btn btn-gy" style="width:100%;margin-top:8px" onclick="terugNaarKeuze()">← Terug naar keuze</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="bot">
+    <button class="btn btn-or" id="bon-btn-versturen" onclick="verstuurBon()" disabled>📤 Versturen</button>
   </div>
 </div>
 
@@ -537,7 +586,7 @@ function toast(msg, kleur){
 
 function toonScherm(id){
   document.querySelectorAll('.view').forEach(v=>{
-    if(v.id===id||v.id.startsWith('stap-')||v.id.startsWith('ink-stap-'))return;
+    if(v.id===id||v.id.startsWith('stap-')||v.id.startsWith('ink-stap-')||v.id.startsWith('bon-stap-'))return;
     v.classList.remove('show');
   });
   $(id).classList.add('show');
@@ -694,6 +743,9 @@ function kiesActie(actie){
   } else if(actie==='inkoop'){
     toonScherm('screen-inkoop');
     herstartInkoop();
+  } else if(actie==='bonnetje'){
+    toonScherm('screen-bon');
+    herstartBon();
   }
 }
 
@@ -838,6 +890,29 @@ function _blobNaarBase64(blob){
   return _blobNaarDataUrl(blob).then(u=>u.split(',')[1]);
 }
 
+// Parseer stad uit een adres-string.
+// Voorbeelden:
+//   "Hoofdstraat 12, 7311 BC Apeldoorn" -> "Apeldoorn"
+//   "Hoofdstraat 12, 7311BC Apeldoorn"  -> "Apeldoorn"
+//   "7322 DM Apeldoorn"                 -> "Apeldoorn"
+//   "Apeldoorn"                          -> "Apeldoorn"
+//   ""                                   -> ""
+function _parseStadUitAdres(adres){
+  if(!adres)return'';
+  let s=String(adres).trim();
+  if(!s)return'';
+  // Als er komma's zijn, neem alles na de laatste komma
+  if(s.includes(',')){
+    const delen=s.split(',');
+    s=delen[delen.length-1].trim();
+  }
+  // Strip Nederlandse postcode (NNNN AA of NNNNAA) ergens in de string
+  s=s.replace(/\b\d{4}\s?[A-Za-z]{2}\b/g,'').trim();
+  // Eventuele dubbele spaties opruimen
+  s=s.replace(/\s+/g,' ').trim();
+  return s;
+}
+
 function vorigeInkStap(){
   if(STATE.inkStap>1)toonInkStap(STATE.inkStap-1);
 }
@@ -900,6 +975,7 @@ async function opslaanInkoop(){
   try{
     // 1. Item in DB inserten (trigger genereert artikelnummer + inkoopbon_nr)
     const itemId=_genId();
+    const stadUitAdres=_parseStadUitAdres(INKOOP.vk_adres);
     const itemData={
       id:itemId,
       user_id:STATE.user.id,
@@ -907,7 +983,7 @@ async function opslaanInkoop(){
       naam:INKOOP.naam,
       categorie:INKOOP.categorie,
       stof:INKOOP.stof,
-      locatie:'Loods',
+      locatie:stadUitAdres||null,
       prijs:INKOOP.prijs,
       verwacht_vp:INKOOP.vvp,
       datum:INKOOP.datum,
@@ -975,17 +1051,18 @@ async function opslaanInkoop(){
     // 4. Inkoopbon PDF + email
     status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📧 Inkoopbon mailen naar invoice@...</div>';
     try{
+      const stadVoorPdf=_parseStadUitAdres(INKOOP.vk_adres);
       const doc=_maakInkoopbonPDFmobiel({
         naam:INKOOP.naam,inkoopbonNr,artikelnummer,
         prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
-        locatie:'Loods',datum:INKOOP.datum,notitie:INKOOP.notitie,
+        locatie:stadVoorPdf,datum:INKOOP.datum,notitie:INKOOP.notitie,
         via:INKOOP.via,vk_naam:INKOOP.vk_naam,vk_adres:INKOOP.vk_adres
       });
       const pdfBase64=doc.output('datauristring').split(',')[1];
       const payload={
         naam:INKOOP.naam,inkoopbonNr,artikelnummer,
         prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
-        locatie:'Loods',datum:INKOOP.datum,notitie:INKOOP.notitie,
+        locatie:stadVoorPdf,datum:INKOOP.datum,notitie:INKOOP.notitie,
         via:INKOOP.via,vkNaam:INKOOP.vk_naam,vkAdres:INKOOP.vk_adres,
         pdfBase64,pdfBestandsnaam:`inkoopbon-${inkoopbonNr}.pdf`
       };
@@ -1025,6 +1102,207 @@ async function opslaanInkoop(){
     status.innerHTML=`<div style="background:#fee2e2;color:#b91c1c;padding:10px;border-radius:8px;font-size:13px">⚠️ Fout: ${_esc(e.message)}</div>`;
     INKOOP.bezig=false;
     updInkStapBtn();
+  }
+}
+
+// ── BONNETJE FLOW ─────────────────────────────────────────────────
+const BON = {
+  datum:'', omschrijving:'',
+  foto:null, foto_dataUrl:null,
+  bezig:false
+};
+
+function resetBon(){
+  Object.assign(BON,{
+    datum:'',omschrijving:'',
+    foto:null,foto_dataUrl:null,
+    bezig:false
+  });
+  ['bon-oms'].forEach(id=>{const e=$(id);if(e)e.value='';});
+  const dat=$('bon-dat');if(dat)dat.value=new Date().toISOString().split('T')[0];
+  const prev=$('bon-foto-preview');if(prev)prev.innerHTML='';
+  const status=$('bon-status');if(status)status.innerHTML='';
+}
+
+function herstartBon(){
+  if(BON.omschrijving||BON.foto){
+    if(!confirm('Bonnetje in opbouw weggooien?'))return;
+  }
+  resetBon();
+  $('bon-stap-1').classList.add('show');
+  $('bon-stap-klaar').classList.remove('show');
+  $('bon-btn-versturen').style.display='block';
+  $('bon-btn-versturen').disabled=true;
+  updBon();
+}
+
+function nieuwBon(){
+  resetBon();
+  $('bon-stap-1').classList.add('show');
+  $('bon-stap-klaar').classList.remove('show');
+  $('bon-btn-versturen').style.display='block';
+  $('bon-btn-versturen').disabled=true;
+}
+
+function updBon(){
+  BON.datum=$('bon-dat').value;
+  BON.omschrijving=$('bon-oms').value.trim();
+  const ok=BON.datum && BON.omschrijving && BON.foto && !BON.bezig;
+  $('bon-btn-versturen').disabled=!ok;
+}
+
+async function kiesBonFoto(evt){
+  const file=evt.target.files[0];evt.target.value='';
+  if(!file)return;
+  if(!file.type.startsWith('image/')){toast('Alleen afbeeldingen','#dc2626');return;}
+  try{
+    const blob=await _compressInkFoto(file); // hergebruik bestaande compressor
+    const dataUrl=await _blobNaarDataUrl(blob);
+    BON.foto=blob;BON.foto_dataUrl=dataUrl;
+    _renderBonFotoPreview();
+    updBon();
+  }catch(e){
+    toast('Foto verwerken mislukt: '+e.message,'#dc2626');
+  }
+}
+
+function _renderBonFotoPreview(){
+  const el=$('bon-foto-preview');if(!el)return;
+  if(!BON.foto_dataUrl){el.innerHTML='';return;}
+  el.innerHTML=`<div style="position:relative;margin-bottom:10px">
+    <img src="${BON.foto_dataUrl}" style="width:100%;max-height:300px;object-fit:contain;border-radius:8px;background:#f3f4f6">
+    <button onclick="wisBonFoto()" style="position:absolute;top:6px;right:6px;background:rgba(220,38,38,.9);color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer">✕</button>
+  </div>`;
+}
+
+function wisBonFoto(){
+  BON.foto=null;BON.foto_dataUrl=null;
+  _renderBonFotoPreview();
+  updBon();
+}
+
+// Foto → A4 PDF (client-side, geen extra server-werk)
+function _maakBonPDF(){
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const fmtD=d=>{if(!d)return'—';const dt=new Date(d);if(isNaN(dt))return d;return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;};
+
+  // Header
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,28,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,24,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(18);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,15);
+  doc.setTextColor(255,255,255);doc.setFontSize(7);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,20);
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(18);doc.setFont('helvetica','bold');
+  doc.text('BONNETJE',15,42);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+  doc.text(fmtD(BON.datum),195,42,{align:'right'});
+
+  // Omschrijving
+  doc.setDrawColor(229,231,235);doc.setLineWidth(0.3);
+  doc.line(15,48,195,48);
+  doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  doc.text('OMSCHRIJVING',15,55);
+  doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','normal');
+  const lines=doc.splitTextToSize(BON.omschrijving,180);
+  let y=62;
+  lines.forEach(l=>{doc.text(l,15,y);y+=5;});
+  y+=4;
+
+  // Foto inbedden — passend op A4 met behoud aspect ratio
+  // Berekenen max h/w: blad is 210mm breed, foto begint op y, voet op 285mm
+  const maxW=180, maxH=285-y-10;
+  // Aspect ratio uit foto halen
+  const img=new Image();
+  img.src=BON.foto_dataUrl;
+  // synchroon — addImage doet ratio zelf maar we willen passen
+  // Gebruik addImage met w en laat hoogte 0 = auto
+  try{
+    doc.addImage(BON.foto_dataUrl,'JPEG',15,y,maxW,0); // hoogte 0 = auto
+  }catch(e){
+    console.warn('addImage failed:',e);
+  }
+
+  // Voet
+  doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','italic');
+  doc.text('Losse bon — verstuurd via Nijhof Brothers Furniture app',105,290,{align:'center'});
+
+  return doc;
+}
+
+async function verstuurBon(){
+  if(BON.bezig)return;
+  if(!BON.datum||!BON.omschrijving||!BON.foto){
+    toast('Vul alles in','#dc2626');return;
+  }
+  BON.bezig=true;updBon();
+  const status=$('bon-status');
+  status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">⏳ PDF maken...</div>';
+
+  try{
+    // 1. PDF maken
+    const doc=_maakBonPDF();
+    const pdfBase64=doc.output('datauristring').split(',')[1];
+
+    // 2. Foto + PDF uploaden naar bucket bonnetjes (privé, org-based)
+    status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📤 Uploaden...</div>';
+    const ts=Date.now();
+    const bonId=_genId();
+    const fotoPad=`${STATE.org_id}/${BON.datum}-${bonId}-foto.jpg`;
+    const pdfPad=`${STATE.org_id}/${BON.datum}-${bonId}.pdf`;
+    try{
+      await fetch(`${SUPABASE_URL}/storage/v1/object/bonnetjes/${fotoPad}`,{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
+        body:BON.foto
+      });
+    }catch(e){console.warn('Foto upload:',e);}
+    try{
+      const pdfBlob=doc.output('blob');
+      await fetch(`${SUPABASE_URL}/storage/v1/object/bonnetjes/${pdfPad}`,{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/pdf'},
+        body:pdfBlob
+      });
+    }catch(e){console.warn('PDF upload:',e);}
+
+    // 3. Edge Function aanroepen voor email
+    status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📧 Mailen naar invoice@...</div>';
+    const fotoBase64=await _blobNaarBase64(BON.foto);
+    const payload={
+      datum:BON.datum,
+      omschrijving:BON.omschrijving,
+      pdfBase64,
+      pdfBestandsnaam:`bonnetje-${BON.datum}.pdf`,
+      fotoBase64,
+      fotoBestandsnaam:`bonnetje-${BON.datum}.jpg`
+    };
+    const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-bonnetje',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const json=await res.json();
+    if(!res.ok)throw new Error(json.error||'Email mislukt');
+
+    // 4. Klaar
+    $('bon-klaar-info').innerHTML=`
+      <div style="font-size:16px;font-weight:700;color:var(--or);margin-bottom:8px">${_esc(BON.omschrijving)}</div>
+      <div>Datum: <strong>${_esc(BON.datum)}</strong></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gr)">Bon-PDF + foto verstuurd naar invoice@nijhofbrothers.nl</div>
+    `;
+    $('bon-stap-1').classList.remove('show');
+    $('bon-stap-klaar').classList.add('show');
+    $('bon-btn-versturen').style.display='none';
+    BON.bezig=false;
+  }catch(e){
+    console.error('Bon versturen fout:',e);
+    status.innerHTML=`<div style="background:#fee2e2;color:#b91c1c;padding:10px;border-radius:8px;font-size:13px">⚠️ Fout: ${_esc(e.message)}</div>`;
+    BON.bezig=false;
+    updBon();
   }
 }
 
