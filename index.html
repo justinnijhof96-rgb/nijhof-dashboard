@@ -698,6 +698,7 @@ async function laadAllesVanDB(){
       del_toel:r.del_toel, stortkosten:Number(r.stortkosten)||0,
       foto_url:r.foto_url||null,
       artikelnummer:r.artikelnummer||null,
+      inkoopbon_nr:r.inkoopbon_nr||null,
       afgestortOp:r.afgestort_op, aangemaaktOp:r.aangemaakt_op, bewerkt:r.bewerkt||[]
     }));
     const termMap={};
@@ -762,7 +763,7 @@ async function _syncNaarSupabase(){
         afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
         user_id:uid_user,
         org_id:org_id
-        // artikelnummer wordt door database trigger gegenereerd, niet meesturen
+        // artikelnummer + inkoopbon_nr worden door database triggers gegenereerd, niet meesturen
       }));
       try{await dbUpsert('items',rows);}catch(e){console.error('Items sync fout:',e);}
     }
@@ -973,8 +974,17 @@ async function voegToe(){
   DB.items.unshift({id:nieuwId,naam,categorie:cat,stof,locatie:loc,prijs:ip,verwacht_vp:fval('f-vvp'),datum:dat,notitie:val('f-not').trim(),status:'beschikbaar',del_reden:null,del_toel:null,stortkosten:0,foto_url:fotoUrl,artikelnummer:null,aangemaaktOp:new Date().toISOString(),bewerkt:[]});
   slaOp();renderV();renderDash();renderDebiteuren();renderInkoopTarget();resetForm();
   toast('✚ Item toegevoegd!');
-  // Na sync (350ms) opnieuw laden om artikelnummer uit DB op te halen
-  setTimeout(async ()=>{ await laadAllesVanDB(); renderV(); }, 1200);
+  // Na sync (1200ms) opnieuw laden om artikelnummer + inkoopbon_nr uit DB op te halen
+  setTimeout(async ()=>{
+    await laadAllesVanDB();
+    renderV();
+    // Inkoopbon email versturen — items zijn nu opnieuw geladen met artikelnr + inkoopbon_nr
+    const versItem=DB.items.find(x=>x.id===nieuwId);
+    if(versItem && versItem.inkoopbon_nr){
+      toast('📧 Inkoopbon mailen naar invoice@...','#2563eb');
+      _verstuurInkoopbonEmail(versItem).then(()=>toast('✅ Inkoopbon verstuurd','#15803d')).catch(()=>{});
+    }
+  }, 1200);
 }
 
 function renderV(){
@@ -2094,6 +2104,139 @@ async function _slaKlantOp(klant){
     return rows&&rows.length?rows[0].id:null;
   }catch(e){console.error('Klant opslaan fout:',e);return null;}
 }
+
+// ── FACTUUR PDF GENEREREN ─────────────────────────────────────────
+// ── INKOOPBON PDF ─────────────────────────────────────────────────
+function _maakInkoopbonPDF(data){
+  const{naam,inkoopbonNr,artikelnummer,prijs,categorie,stof,locatie,datum,notitie}=data;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+
+  // Header NB huisstijl
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);
+  doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('INKOOPBON',15,52);
+  doc.setFontSize(11);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+  doc.text('Interne registratie inkoop',15,59);
+
+  // Inkoopbon-nr en datum rechts
+  doc.setFontSize(10);doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');
+  doc.text('Inkoopbonnr:',140,52);doc.setFont('helvetica','normal');
+  doc.setTextColor(232,119,34);doc.text(inkoopbonNr,195,52,{align:'right'});
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');
+  doc.text('Datum:',140,58);doc.setFont('helvetica','normal');
+  doc.text(fmtD(datum),195,58,{align:'right'});
+
+  // Details box
+  let y=76;
+  doc.setDrawColor(229,231,235);doc.setLineWidth(0.3);
+  doc.line(15,y,195,y);
+
+  const rij=(label,waarde,bold=false)=>{
+    doc.setFontSize(10);
+    doc.setTextColor(107,114,128);doc.setFont('helvetica','normal');
+    doc.text(label,15,y+6);
+    doc.setTextColor(30,47,58);doc.setFont('helvetica',bold?'bold':'normal');
+    doc.text(String(waarde||'—'),70,y+6);
+    y+=10;
+    doc.setDrawColor(243,244,246);doc.line(15,y,195,y);
+  };
+
+  rij('Artikelnummer',artikelnummer||'—',true);
+  rij('Naam',naam,true);
+  rij('Categorie',categorie||'—');
+  if(stof)rij('Stof',stof);
+  if(locatie)rij('Locatie',locatie);
+  rij('Inkoopdatum',fmtD(datum));
+
+  // Prijs prominent
+  y+=4;
+  doc.setFillColor(254,243,199);doc.setDrawColor(232,119,34);
+  doc.roundedRect(15,y,180,16,2,2,'FD');
+  doc.setTextColor(120,53,15);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('INKOOPPRIJS',20,y+10);
+  doc.setTextColor(232,119,34);doc.setFontSize(15);
+  doc.text('€ '+Number(prijs||0).toFixed(2).replace('.',','),190,y+11,{align:'right'});
+  y+=22;
+
+  // Notitie
+  if(notitie){
+    doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
+    doc.text('NOTITIE',15,y+5);y+=8;
+    doc.setTextColor(30,47,58);doc.setFontSize(10);doc.setFont('helvetica','normal');
+    const lines=doc.splitTextToSize(notitie,180);
+    lines.forEach(l=>{doc.text(l,15,y);y+=5;});
+    y+=4;
+  }
+
+  // Footer
+  doc.setTextColor(156,163,175);doc.setFontSize(8);doc.setFont('helvetica','italic');
+  const voetY=270;
+  doc.text('Dit is een interne inkoopbon voor administratie. Bewaar voor je boekhouding.',105,voetY,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(7);
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,voetY+6,{align:'center'});
+  doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,voetY+10,{align:'center'});
+
+  return doc;
+}
+
+// ── INKOOPBON FLOW: PDF maken + email versturen ────────────────────
+async function _verstuurInkoopbonEmail(item){
+  if(!item.inkoopbon_nr){console.warn('Geen inkoopbon_nr — email overslaan');return;}
+  try{
+    const doc=_maakInkoopbonPDF({
+      naam:item.naam,
+      inkoopbonNr:item.inkoopbon_nr,
+      artikelnummer:item.artikelnummer,
+      prijs:item.prijs,
+      categorie:item.categorie,
+      stof:item.stof,
+      locatie:item.locatie,
+      datum:item.datum,
+      notitie:item.notitie
+    });
+    const pdfBase64=doc.output('datauristring').split(',')[1];
+    const token=_getToken();
+    if(!token)throw new Error('Niet ingelogd');
+    const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-inkoop',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        naam:item.naam,
+        inkoopbonNr:item.inkoopbon_nr,
+        artikelnummer:item.artikelnummer,
+        prijs:item.prijs,
+        categorie:item.categorie,
+        stof:item.stof,
+        locatie:item.locatie,
+        datum:item.datum,
+        notitie:item.notitie,
+        pdfBase64,
+        pdfBestandsnaam:`inkoopbon-${item.inkoopbon_nr}.pdf`
+      })
+    });
+    const json=await res.json();
+    if(!res.ok)throw new Error(json.error||'Inkoopbon email mislukt');
+    console.log('✓ Inkoopbon email verstuurd:',json.email_id);
+    return json;
+  }catch(e){
+    console.error('Inkoopbon email fout:',e);
+    toast('⚠️ Inkoopbon email mislukt: '+e.message,'#c2410c');
+  }
+}
+
 
 // ── FACTUUR PDF GENEREREN ─────────────────────────────────────────
 function _maakFactuurPDF(data){
