@@ -172,7 +172,17 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
     <div class="view" id="ink-stap-1">
       <h1>Wat heb je ingekocht?</h1>
       <h2>Stap 1 van 3 — basisgegevens</h2>
+
       <div class="card">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">👤 Verkoper-gegevens</div>
+        <div style="font-size:12px;color:var(--gr);margin-bottom:12px">Optioneel · komen alleen op inkoopbon-PDF, niet in dashboard</div>
+        <div class="fg"><label>Ingekocht via</label><input type="text" id="ink-via" placeholder="Bijv. Marktplaats, Facebook, particulier" oninput="updInkStap1()"></div>
+        <div class="fg"><label>Naam verkoper</label><input type="text" id="ink-vk-naam" placeholder="Volledige naam" oninput="updInkStap1()"></div>
+        <div class="fg"><label>Adres verkoper</label><input type="text" id="ink-vk-adres" placeholder="Straat, postcode, plaats" oninput="updInkStap1()"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px">📦 Item-gegevens</div>
         <div class="fg"><label class="r">Naam</label><input type="text" id="ink-naam" placeholder="Bijv. Chesterfield bank" oninput="updInkStap1()"></div>
         <div class="fg"><label class="r">Categorie</label>
           <select id="ink-cat" onchange="updInkStap1()">
@@ -187,7 +197,6 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
           </select>
         </div>
         <div class="fg"><label class="r">Stof</label><input type="text" id="ink-stof" placeholder="Bijv. velvet, leer, ribstof" oninput="updInkStap1()"></div>
-        <div class="fg"><label class="r">Locatie</label><input type="text" id="ink-loc" placeholder="Loods / showroom / opslag" oninput="updInkStap1()"></div>
         <div class="fg"><label class="r">Inkoopprijs (€)</label><input type="number" id="ink-prijs" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="updInkStap1()"></div>
         <div class="fg"><label>Verwachte verkoopprijs (€)</label><input type="number" id="ink-vvp" inputmode="decimal" min="0" step="0.01" placeholder="optioneel"></div>
         <div class="fg"><label class="r">Inkoopdatum</label><input type="date" id="ink-dat" oninput="updInkStap1()"></div>
@@ -695,7 +704,9 @@ function terugNaarKeuze(){
 // ── INKOOP FLOW ───────────────────────────────────────────────────
 const INKOOP = {
   // form data
-  naam:'', categorie:'', stof:'', locatie:'', prijs:0, vvp:0, datum:'', notitie:'',
+  naam:'', categorie:'', stof:'', prijs:0, vvp:0, datum:'', notitie:'',
+  // verkoper-info (alleen voor PDF + email, niet naar dashboard)
+  via:'', vk_naam:'', vk_adres:'',
   // foto's (Blobs voor upload, dataUrls voor preview)
   foto_prod:null, foto_prod_dataUrl:null,
   foto_bew1:null, foto_bew1_dataUrl:null,
@@ -706,13 +717,14 @@ const INKOOP = {
 
 function resetInkoop(){
   Object.assign(INKOOP,{
-    naam:'',categorie:'',stof:'',locatie:'',prijs:0,vvp:0,datum:'',notitie:'',
+    naam:'',categorie:'',stof:'',prijs:0,vvp:0,datum:'',notitie:'',
+    via:'',vk_naam:'',vk_adres:'',
     foto_prod:null,foto_prod_dataUrl:null,
     foto_bew1:null,foto_bew1_dataUrl:null,
     foto_bew2:null,foto_bew2_dataUrl:null,
     bezig:false
   });
-  ['ink-naam','ink-cat','ink-stof','ink-loc','ink-prijs','ink-vvp','ink-not'].forEach(id=>{
+  ['ink-naam','ink-cat','ink-stof','ink-prijs','ink-vvp','ink-not','ink-via','ink-vk-naam','ink-vk-adres'].forEach(id=>{
     const e=$(id);if(e)e.value='';
   });
   const dat=$('ink-dat');if(dat)dat.value=new Date().toISOString().split('T')[0];
@@ -738,11 +750,13 @@ function updInkStap1(){
   INKOOP.naam=$('ink-naam').value.trim();
   INKOOP.categorie=$('ink-cat').value;
   INKOOP.stof=$('ink-stof').value.trim();
-  INKOOP.locatie=$('ink-loc').value.trim();
   INKOOP.prijs=parseFloat($('ink-prijs').value)||0;
   INKOOP.vvp=parseFloat($('ink-vvp').value)||0;
   INKOOP.datum=$('ink-dat').value;
   INKOOP.notitie=$('ink-not').value.trim();
+  INKOOP.via=$('ink-via').value.trim();
+  INKOOP.vk_naam=$('ink-vk-naam').value.trim();
+  INKOOP.vk_adres=$('ink-vk-adres').value.trim();
   updInkStapBtn();
 }
 
@@ -750,7 +764,7 @@ function updInkStapBtn(){
   const btn=$('ink-btn-next');
   if(!btn)return;
   if(STATE.inkStap===1){
-    const ok=INKOOP.naam && INKOOP.categorie && INKOOP.stof && INKOOP.locatie && INKOOP.prijs>0 && INKOOP.datum;
+    const ok=INKOOP.naam && INKOOP.categorie && INKOOP.stof && INKOOP.prijs>0 && INKOOP.datum;
     btn.disabled=!ok;
   } else if(STATE.inkStap===2){
     btn.disabled=false; // foto's optioneel
@@ -841,14 +855,23 @@ function renderInkOverzicht(){
   if(!el)return;
   const fmtEur=v=>'€'+Number(v||0).toFixed(2).replace('.',',');
   const fmtDt=d=>{if(!d)return'—';const dt=new Date(d);return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;};
+  const heeftVerkoper=INKOOP.via||INKOOP.vk_naam||INKOOP.vk_adres;
   el.innerHTML=`
+    ${heeftVerkoper?`
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:700;margin-bottom:10px">👤 Verkoper</div>
+      <table style="width:100%;font-size:14px">
+        ${INKOOP.via?`<tr><td style="color:var(--gr);padding:4px 0;width:130px">Ingekocht via</td><td>${_esc(INKOOP.via)}</td></tr>`:''}
+        ${INKOOP.vk_naam?`<tr><td style="color:var(--gr);padding:4px 0">Naam</td><td>${_esc(INKOOP.vk_naam)}</td></tr>`:''}
+        ${INKOOP.vk_adres?`<tr><td style="color:var(--gr);padding:4px 0">Adres</td><td>${_esc(INKOOP.vk_adres)}</td></tr>`:''}
+      </table>
+    </div>`:''}
     <div class="card">
       <div style="font-weight:700;margin-bottom:10px">📦 Inkoop overzicht</div>
       <table style="width:100%;font-size:14px">
         <tr><td style="color:var(--gr);padding:4px 0;width:130px">Naam</td><td style="font-weight:600">${_esc(INKOOP.naam)}</td></tr>
         <tr><td style="color:var(--gr);padding:4px 0">Categorie</td><td>${_esc(INKOOP.categorie)}</td></tr>
         <tr><td style="color:var(--gr);padding:4px 0">Stof</td><td>${_esc(INKOOP.stof)}</td></tr>
-        <tr><td style="color:var(--gr);padding:4px 0">Locatie</td><td>${_esc(INKOOP.locatie)}</td></tr>
         <tr><td style="color:var(--gr);padding:4px 0">Inkoopprijs</td><td style="font-weight:700;color:var(--or)">${fmtEur(INKOOP.prijs)}</td></tr>
         ${INKOOP.vvp>0?`<tr><td style="color:var(--gr);padding:4px 0">Verwachte VP</td><td>${fmtEur(INKOOP.vvp)}</td></tr>`:''}
         <tr><td style="color:var(--gr);padding:4px 0">Datum</td><td>${fmtDt(INKOOP.datum)}</td></tr>
@@ -884,7 +907,7 @@ async function opslaanInkoop(){
       naam:INKOOP.naam,
       categorie:INKOOP.categorie,
       stof:INKOOP.stof,
-      locatie:INKOOP.locatie,
+      locatie:'Loods',
       prijs:INKOOP.prijs,
       verwacht_vp:INKOOP.vvp,
       datum:INKOOP.datum,
@@ -955,13 +978,15 @@ async function opslaanInkoop(){
       const doc=_maakInkoopbonPDFmobiel({
         naam:INKOOP.naam,inkoopbonNr,artikelnummer,
         prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
-        locatie:INKOOP.locatie,datum:INKOOP.datum,notitie:INKOOP.notitie
+        locatie:'Loods',datum:INKOOP.datum,notitie:INKOOP.notitie,
+        via:INKOOP.via,vk_naam:INKOOP.vk_naam,vk_adres:INKOOP.vk_adres
       });
       const pdfBase64=doc.output('datauristring').split(',')[1];
       const payload={
         naam:INKOOP.naam,inkoopbonNr,artikelnummer,
         prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
-        locatie:INKOOP.locatie,datum:INKOOP.datum,notitie:INKOOP.notitie,
+        locatie:'Loods',datum:INKOOP.datum,notitie:INKOOP.notitie,
+        via:INKOOP.via,vkNaam:INKOOP.vk_naam,vkAdres:INKOOP.vk_adres,
         pdfBase64,pdfBestandsnaam:`inkoopbon-${inkoopbonNr}.pdf`
       };
       if(INKOOP.foto_bew1){
@@ -1005,7 +1030,7 @@ async function opslaanInkoop(){
 
 // ── INKOOPBON PDF (mobiel) ────────────────────────────────────────
 function _maakInkoopbonPDFmobiel(data){
-  const{naam,inkoopbonNr,artikelnummer,prijs,categorie,stof,locatie,datum,notitie}=data;
+  const{naam,inkoopbonNr,artikelnummer,prijs,categorie,stof,locatie,datum,notitie,via,vk_naam,vk_adres}=data;
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const fmtD=d=>{if(!d)return'—';const dt=new Date(d);if(isNaN(dt))return d;return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;};
@@ -1037,6 +1062,29 @@ function _maakInkoopbonPDFmobiel(data){
   doc.text(fmtD(datum),195,58,{align:'right'});
 
   let y=76;
+
+  // Verkoper-blok (alleen als minstens 1 veld ingevuld)
+  const heeftVerkoper=via||vk_naam||vk_adres;
+  if(heeftVerkoper){
+    doc.setFillColor(249,250,251);doc.setDrawColor(229,231,235);
+    const vkRows=[];
+    if(via)vkRows.push(['Ingekocht via',via]);
+    if(vk_naam)vkRows.push(['Naam',vk_naam]);
+    if(vk_adres)vkRows.push(['Adres',vk_adres]);
+    const vkH=12+vkRows.length*6;
+    doc.roundedRect(15,y,180,vkH,2,2,'FD');
+    doc.setTextColor(107,114,128);doc.setFontSize(8);doc.setFont('helvetica','bold');
+    doc.text('VERKOPER',20,y+6);
+    doc.setFontSize(10);doc.setFont('helvetica','normal');
+    let vy=y+12;
+    vkRows.forEach(([l,v])=>{
+      doc.setTextColor(107,114,128);doc.text(l,20,vy);
+      doc.setTextColor(30,47,58);doc.text(String(v),60,vy);
+      vy+=6;
+    });
+    y+=vkH+6;
+  }
+
   doc.setDrawColor(229,231,235);doc.setLineWidth(0.3);
   doc.line(15,y,195,y);
 
