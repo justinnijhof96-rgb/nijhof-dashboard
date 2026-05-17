@@ -3639,6 +3639,14 @@ function _berekenMaandData(jr,mn){
     return !isNaN(d)&&d>=van&&d<=tot;
   });
 
+  // Services-bedrag per verkoop (helper) — services_json array of fallback op impregneer
+  const _servicesBedrag=v=>{
+    if(Array.isArray(v.services)&&v.services.length){
+      return v.services.reduce((b,s)=>b+(Number(s.bedrag)||0),0);
+    }
+    return Number(v.impregneer)||0;
+  };
+
   // Inkopen op inkoopdatum
   const inkInMnd=DB.items.filter(i=>{
     if(!i.datum)return false;
@@ -3649,8 +3657,11 @@ function _berekenMaandData(jr,mn){
   // Ontvangen omzet (kasstelsel — betaalde termijnen in deze maand)
   const ontvangenInMnd=ontvangenOmzet(jr,mn);
 
-  // Geboekte omzet (verkopen op leveringsdatum)
-  const geboektOmzet=vkInMnd.reduce((a,v)=>a+(Number(v.verkoopprijs)||0),0);
+  // Geboekte omzet meubels (verkopen op leveringsdatum)
+  const geboektOmzetMeubels=vkInMnd.reduce((a,v)=>a+(Number(v.verkoopprijs)||0),0);
+  // Services omzet (impregneer / extra services)
+  const servicesOmzet=vkInMnd.reduce((a,v)=>a+_servicesBedrag(v),0);
+  const geboektOmzet=geboektOmzetMeubels+servicesOmzet;
 
   // Marge cijfers
   const brutoMarge=vkInMnd.reduce((a,v)=>a+(Number(v.brutoMarge)||0),0);
@@ -3743,6 +3754,10 @@ function _berekenMaandData(jr,mn){
   const verkopenDetail=vkInMnd.map(v=>{
     const i=DB.items.find(x=>x.id===v.itemId);
     const dgn=(i?.datum&&v.datum)?Math.max(0,Math.floor((new Date(v.datum)-new Date(i.datum))/86400000)):null;
+    const svcBedrag=_servicesBedrag(v);
+    const svcLijst=Array.isArray(v.services)&&v.services.length
+      ? v.services.map(s=>`${s.naam}: €${(Number(s.bedrag)||0).toFixed(2)}`).join(', ')
+      : (Number(v.impregneer)>0?`Impregneerbehandeling: €${Number(v.impregneer).toFixed(2)}`:'');
     return {
       datum:v.datum,
       factuur:v.factuur||'',
@@ -3752,9 +3767,13 @@ function _berekenMaandData(jr,mn){
       stof:i?.stof||'',
       inkoopprijs:Number(i?.prijs)||0,
       verkoopprijs:Number(v.verkoopprijs)||0,
+      services_bedrag:Math.round(svcBedrag*100)/100,
+      services_omschrijving:svcLijst,
+      factuur_totaal:Math.round((Number(v.verkoopprijs)+svcBedrag)*100)/100,
       bruto_marge:Number(v.brutoMarge)||0,
       btw:Number(v.btw)||0,
       btw_methode:v.btwMethode||'marge',
+      netto_na_btw:Number(v.nettoNaBtw)||0,
       dagen_in_voorraad:dgn,
       verkoop_type:v.type||'volledig'
     };
@@ -3795,6 +3814,8 @@ function _berekenMaandData(jr,mn){
     periode:{jaar:jr,maand:mn+1,maand_naam:MN[mn],van:`${van.getFullYear()}-${String(van.getMonth()+1).padStart(2,'0')}-${String(van.getDate()).padStart(2,'0')}`,tot:`${tot.getFullYear()}-${String(tot.getMonth()+1).padStart(2,'0')}-${String(tot.getDate()).padStart(2,'0')}`},
     omzet:{
       geboekt:Math.round(geboektOmzet*100)/100,
+      geboekt_meubels:Math.round(geboektOmzetMeubels*100)/100,
+      services_omzet:Math.round(servicesOmzet*100)/100,
       ontvangen:Math.round(ontvangenInMnd*100)/100
     },
     marge:{
@@ -3803,7 +3824,8 @@ function _berekenMaandData(jr,mn){
       btw_op_verkopen:Math.round(btwVerkoop*100)/100,
       btw_standaard:Math.round(btwStandaard*100)/100,
       btw_marge_regeling:Math.round(btwMarge*100)/100,
-      marge_pct_van_omzet:geboektOmzet>0?Math.round((brutoMarge/geboektOmzet)*1000)/10:0
+      marge_pct_van_omzet:geboektOmzetMeubels>0?Math.round((brutoMarge/geboektOmzetMeubels)*1000)/10:0,
+      _toelichting_netto_na_btw:'netto_na_btw = bruto_marge + services_omzet - btw (services tellen mee als omzet)'
     },
     inkoop:{
       aantal:inkInMnd.length,
@@ -3860,7 +3882,9 @@ function exportMaand(formaat){
         'Controleer doorlooptijd.gemiddeld_dagen — hoger dan 45 = liquiditeitsrisico',
         'Netto_resultaat is na lasten EN inkopen (cashflow-view, niet boekhoudkundig)',
         'BTW_aangifte saldo is op factuurmoment, niet kasstelsel',
-        'Voorraad_einde_maand.verwachte_verkoopwaarde minus inkoopwaarde = potentiële marge in voorraad'
+        'Voorraad_einde_maand.verwachte_verkoopwaarde minus inkoopwaarde = potentiële marge in voorraad',
+        'omzet.services_omzet bevat impregneer en andere extra services apart van meubels',
+        'marge.bruto is alleen op meubels; netto_na_btw is inclusief services en is de echte totale winst voor lasten'
       ],
       ...data
     };
@@ -3869,10 +3893,10 @@ function exportMaand(formaat){
 
   else if(formaat==='csv'){
     // Eén CSV met verkopen-detail (meest bruikbaar voor eigen analyse)
-    let csv='Datum;Factuur;Artikelnummer;Naam;Categorie;Stof;Inkoopprijs;Verkoopprijs;Bruto marge;BTW;BTW methode;Dagen in voorraad;Type\n';
+    let csv='Datum;Factuur;Artikelnummer;Naam;Categorie;Stof;Inkoopprijs;Verkoopprijs;Services bedrag;Services omschrijving;Factuur totaal;Bruto marge;BTW;BTW methode;Netto na btw;Dagen in voorraad;Type\n';
     const q=s=>String(s==null?'':s).replace(/;/g,',').replace(/"/g,'""');
     data.verkopen_detail.forEach(v=>{
-      csv+=`${q(v.datum)};${q(v.factuur)};${q(v.artikelnummer)};${q(v.naam)};${q(v.categorie)};${q(v.stof)};${v.inkoopprijs};${v.verkoopprijs};${v.bruto_marge};${v.btw};${q(v.btw_methode)};${v.dagen_in_voorraad??''};${q(v.verkoop_type)}\n`;
+      csv+=`${q(v.datum)};${q(v.factuur)};${q(v.artikelnummer)};${q(v.naam)};${q(v.categorie)};${q(v.stof)};${v.inkoopprijs};${v.verkoopprijs};${v.services_bedrag};${q(v.services_omschrijving)};${v.factuur_totaal};${v.bruto_marge};${v.btw};${q(v.btw_methode)};${v.netto_na_btw};${v.dagen_in_voorraad??''};${q(v.verkoop_type)}\n`;
     });
     csv+='\n\n# INKOPEN DETAIL\n';
     csv+='Datum;Artikelnummer;Naam;Categorie;Stof;Inkoopprijs;Verwacht VP;Locatie\n';
@@ -3897,13 +3921,15 @@ function exportMaand(formaat){
       ['Gegenereerd',new Date().toLocaleString('nl-NL')],
       [],
       ['OMZET'],
-      ['Geboekte omzet (leveringsdatum)',data.omzet.geboekt],
+      ['Omzet meubels (leveringsdatum)',data.omzet.geboekt_meubels],
+      ['Services omzet (impregneer e.d.)',data.omzet.services_omzet],
+      ['Totale geboekte omzet',data.omzet.geboekt],
       ['Ontvangen omzet (kasstelsel)',data.omzet.ontvangen],
       [],
       ['MARGE'],
-      ['Bruto marge',data.marge.bruto],
-      ['Netto na BTW',data.marge.netto_na_btw],
-      ['Marge % van omzet',data.marge.marge_pct_van_omzet+'%'],
+      ['Bruto marge (op meubels)',data.marge.bruto],
+      ['Netto na BTW (incl services)',data.marge.netto_na_btw],
+      ['Marge % van meubel-omzet',data.marge.marge_pct_van_omzet+'%'],
       [],
       ['INKOOP'],
       ['Aantal inkopen',data.inkoop.aantal],
@@ -3943,8 +3969,8 @@ function exportMaand(formaat){
 
     // Sheet 3: Verkopen detail
     if(data.verkopen_detail.length){
-      const vk=[['Datum','Factuur','Artikelnr','Naam','Categorie','Stof','Inkoop','Verkoop','Marge','BTW','BTW methode','Dagen voorraad','Type']];
-      data.verkopen_detail.forEach(v=>vk.push([v.datum,v.factuur,v.artikelnummer,v.naam,v.categorie,v.stof,v.inkoopprijs,v.verkoopprijs,v.bruto_marge,v.btw,v.btw_methode,v.dagen_in_voorraad,v.verkoop_type]));
+      const vk=[['Datum','Factuur','Artikelnr','Naam','Categorie','Stof','Inkoop','Verkoop','Services','Services oms','Fact. totaal','Marge','BTW','BTW methode','Netto na btw','Dagen voorraad','Type']];
+      data.verkopen_detail.forEach(v=>vk.push([v.datum,v.factuur,v.artikelnummer,v.naam,v.categorie,v.stof,v.inkoopprijs,v.verkoopprijs,v.services_bedrag,v.services_omschrijving,v.factuur_totaal,v.bruto_marge,v.btw,v.btw_methode,v.netto_na_btw,v.dagen_in_voorraad,v.verkoop_type]));
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(vk),'Verkopen');
     }
 
@@ -3974,7 +4000,9 @@ function exportMaand(formaat){
       `Gegenereerd: ${new Date().toLocaleString('nl-NL')}`,
       ``,
       `▶ OMZET`,
-      `  Geboekt (leveringsdatum):  ${fmtE(data.omzet.geboekt)}`,
+      `  Meubels (leveringsdatum):   ${fmtE(data.omzet.geboekt_meubels)}`,
+      `  Services (impregneer e.d.): ${fmtE(data.omzet.services_omzet)}`,
+      `  Totaal geboekt:            ${fmtE(data.omzet.geboekt)}`,
       `  Ontvangen (kasstelsel):    ${fmtE(data.omzet.ontvangen)}`,
       ``,
       `▶ MARGE`,
@@ -4020,7 +4048,8 @@ function exportMaand(formaat){
     lines.push(``,`▶ VERKOPEN DETAIL`);
     if(data.verkopen_detail.length){
       data.verkopen_detail.forEach(v=>{
-        lines.push(`  ${v.datum} | ${(v.artikelnummer||'').padEnd(8)} | ${(v.naam||'').padEnd(25).slice(0,25)} | in ${fmtE(v.inkoopprijs).padStart(9)} → uit ${fmtE(v.verkoopprijs).padStart(9)} · marge ${fmtE(v.bruto_marge).padStart(9)} · ${v.dagen_in_voorraad??'?'}d voorraad`);
+        const svc=v.services_bedrag>0?` + svc ${fmtE(v.services_bedrag)}`:'';
+        lines.push(`  ${v.datum} | ${(v.artikelnummer||'').padEnd(8)} | ${(v.naam||'').padEnd(25).slice(0,25)} | in ${fmtE(v.inkoopprijs).padStart(9)} → uit ${fmtE(v.verkoopprijs).padStart(9)}${svc} · marge ${fmtE(v.bruto_marge).padStart(9)} · ${v.dagen_in_voorraad??'?'}d voorraad`);
       });
     } else {
       lines.push(`  (geen verkopen deze maand)`);
