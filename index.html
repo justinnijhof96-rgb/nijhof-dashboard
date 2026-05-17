@@ -3145,6 +3145,228 @@ function _trEur(a,b){
   return'';
 }
 
+// ════════════════════════════════════════════════════════════════
+// BTW PER KWARTAAL — aangifte-ready overzicht
+// ════════════════════════════════════════════════════════════════
+let _btwKwartaalJr=null, _btwKwartaalQ=null; // null = huidig kwartaal
+
+function _huidigKwartaal(){
+  const nu=new Date();
+  return{jr:nu.getFullYear(),q:Math.floor(nu.getMonth()/3)+1};
+}
+function _btwInitKwartaal(){
+  if(_btwKwartaalJr===null||_btwKwartaalQ===null){
+    const h=_huidigKwartaal();_btwKwartaalJr=h.jr;_btwKwartaalQ=h.q;
+  }
+}
+function btwKwartaalNav(d){
+  _btwInitKwartaal();
+  _btwKwartaalQ+=d;
+  if(_btwKwartaalQ>4){_btwKwartaalQ=1;_btwKwartaalJr++;}
+  else if(_btwKwartaalQ<1){_btwKwartaalQ=4;_btwKwartaalJr--;}
+  _renderBtwBlok();
+}
+function btwKwartaalReset(){
+  const h=_huidigKwartaal();_btwKwartaalJr=h.jr;_btwKwartaalQ=h.q;_renderBtwBlok();
+}
+
+function _berekenBtwKwartaal(jr,q){
+  // Kwartaal range
+  const startMnd=(q-1)*3;
+  const van=new Date(jr,startMnd,1);
+  const tot=new Date(jr,startMnd+3,0,23,59,59,999); // laatste dag van kwartaal
+  const eindeMnd=startMnd+2; // 0-indexed laatste maand v.h. kwartaal
+
+  // ── VERKOPEN op leveringsdatum ──
+  const vkInQ=DB.verkopen.filter(v=>{
+    if(!v.datum)return false;
+    const d=new Date(v.datum);
+    return !isNaN(d)&&d>=van&&d<=tot;
+  });
+  let btwStandaard=0,btwMarge=0,omzetStandaard=0,margeTotaal=0;
+  let aantalStandaard=0,aantalMarge=0;
+  vkInQ.forEach(v=>{
+    const btwBedrag=Number(v.btw)||0;
+    if(v.btwMethode==='standaard'){
+      btwStandaard+=btwBedrag;
+      omzetStandaard+=Number(v.verkoopprijs)||0;
+      aantalStandaard++;
+    } else { // 'marge' of leeg
+      btwMarge+=btwBedrag;
+      // marge = btw * (1.21/0.21) → bruto-marge incl btw
+      const bm=Number(v.brutoMarge)||0;
+      margeTotaal+=bm;
+      aantalMarge++;
+    }
+  });
+  const btwAfdragen=btwStandaard+btwMarge;
+
+  // ── LASTEN op aangemaakt_op ──
+  // Voor terugkerende lasten: tellen voor elke maand in kwartaal dat ze actief waren
+  // Voor eenmalige: alleen in de maand van aangemaakt_op
+  const lastenInQ=[];
+  DB.lasten.filter(l=>l.actief!==false).forEach(l=>{
+    const aangD=l.aangemaaktOp?new Date(l.aangemaaktOp):null;
+    if(!aangD||isNaN(aangD))return;
+    if(l.terugkerend){
+      // Tel voor elke maand in kwartaal dat aangD <= einde van die maand
+      for(let m=startMnd;m<=eindeMnd;m++){
+        const eindeM=new Date(jr,m+1,0,23,59,59,999);
+        if(aangD<=eindeM){
+          lastenInQ.push({...l,_periodeMaand:m,_periodeJr:jr});
+        }
+      }
+    } else {
+      // Eenmalige last: alleen in maand van aangemaakt_op
+      if(aangD>=van&&aangD<=tot){
+        lastenInQ.push({...l,_periodeMaand:aangD.getMonth(),_periodeJr:aangD.getFullYear()});
+      }
+    }
+  });
+  let voorbelasting=0;
+  const lastDetails=lastenInQ.map(l=>{
+    const bedrag=Number(l.bedrag)||0;
+    const pct=Number(l.btwPct)||0;
+    let btwBedrag=0;
+    if(pct>0){
+      btwBedrag=l.btwType==='incl'?bedrag-bedrag/(1+pct/100):bedrag*(pct/100);
+    }
+    voorbelasting+=btwBedrag;
+    return{...l,btwBedrag};
+  });
+
+  const saldo=btwAfdragen-voorbelasting;
+  return{
+    jr,q,van,tot,
+    btwStandaard,btwMarge,btwAfdragen,
+    omzetStandaard,margeTotaal,
+    aantalStandaard,aantalMarge,
+    voorbelasting,saldo,
+    lastDetails,vkInQ
+  };
+}
+
+function _renderBtwBlok(){
+  _btwInitKwartaal();
+  const el=document.getElementById('btw-kwartaal-blok');
+  if(!el)return;
+  const r=_berekenBtwKwartaal(_btwKwartaalJr,_btwKwartaalQ);
+  const huidig=_huidigKwartaal();
+  const isHuidig=(huidig.jr===r.jr&&huidig.q===r.q);
+  const lbl=`Q${r.q} ${r.jr}`;
+  const periodeText=`${String(r.van.getDate()).padStart(2,'0')}-${String(r.van.getMonth()+1).padStart(2,'0')}-${r.van.getFullYear()} t/m ${String(r.tot.getDate()).padStart(2,'0')}-${String(r.tot.getMonth()+1).padStart(2,'0')}-${r.tot.getFullYear()}`;
+
+  // Lasten-tabel
+  const lastenTbl=r.lastDetails.length
+    ? `<div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:12px"><thead><tr><th>Last</th><th>Maand</th><th style="text-align:right">Bedrag</th><th>BTW</th><th style="text-align:right">Voorbelasting</th></tr></thead><tbody>${
+        r.lastDetails.map(l=>`<tr><td><strong>${esc(l.naam)}</strong>${l.terugkerend?' 🔄':''}</td><td>${MN[l._periodeMaand]||'?'}</td><td style="text-align:right">${eur(l.bedrag)}</td><td>${l.btwPct||0}% ${esc(l.btwType||'excl')}</td><td style="text-align:right;font-weight:600">${eur(l.btwBedrag)}</td></tr>`).join('')
+      }<tr style="background:#f9fafb;font-weight:700"><td colspan="4">Totaal voorbelasting</td><td style="text-align:right;color:var(--gn)">${eur(r.voorbelasting)}</td></tr></tbody></table></div>`
+    : '<div class="alert alert-info" style="margin-top:8px">Geen lasten in dit kwartaal.</div>';
+
+  el.innerHTML=`
+    <div class="db-card-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>🧾 BTW per kwartaal — ${lbl}${isHuidig?' <span style="font-size:10px;color:var(--gr);font-weight:400">(huidig)</span>':''}</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <button class="btn btn-gy btn-xs" onclick="btwKwartaalNav(-1)" title="Vorig kwartaal">←</button>
+        ${!isHuidig?'<button class="btn btn-gy btn-xs" onclick="btwKwartaalReset()" title="Naar huidig kwartaal">⌂</button>':''}
+        <button class="btn btn-gy btn-xs" onclick="btwKwartaalNav(1)" title="Volgend kwartaal">→</button>
+        <button class="btn btn-or btn-xs" onclick="exportBtwKwartaal()" title="Export naar Excel">📊 Export</button>
+      </span>
+    </div>
+    <div style="font-size:11px;color:var(--gr);margin-bottom:12px">Periode: ${periodeText} · Verkopen op leveringsdatum · Lasten op factuurmoment</div>
+
+    <div class="mgrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
+      <div class="mc red"><div class="ml">⬆️ Af te dragen</div><div class="mv">${eur(r.btwAfdragen)}</div><div class="mt" style="color:var(--gr);font-size:10px">btw op verkopen</div></div>
+      <div class="mc green"><div class="ml">⬇️ Voorbelasting</div><div class="mv">${eur(r.voorbelasting)}</div><div class="mt" style="color:var(--gr);font-size:10px">btw op lasten</div></div>
+      <div class="mc ${r.saldo>=0?'red':'green'}" style="border-width:2px"><div class="ml" style="font-weight:700">💼 Saldo aangifte</div><div class="mv" style="color:${r.saldo>=0?'var(--rd)':'var(--gn)'};font-size:22px">${eur(Math.abs(r.saldo))}</div><div class="mt" style="color:var(--gr);font-size:10px">${r.saldo>=0?'te betalen':'terug te vragen'}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:#9a3412;letter-spacing:1px;margin-bottom:8px">VERKOPEN STANDAARD 21%</div>
+        <div style="font-size:13px;line-height:1.7">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Aantal</span><strong>${r.aantalStandaard}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Omzet incl BTW</span><strong>${eur(r.omzetStandaard)}</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid #fed7aa;margin-top:6px;padding-top:6px"><span style="color:var(--gr)">BTW 21%</span><strong style="color:var(--rd)">${eur(r.btwStandaard)}</strong></div>
+        </div>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:#1e40af;letter-spacing:1px;margin-bottom:8px">MARGEREGELING</div>
+        <div style="font-size:13px;line-height:1.7">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Aantal</span><strong>${r.aantalMarge}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Bruto marge incl BTW</span><strong>${eur(r.margeTotaal)}</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid #bfdbfe;margin-top:6px;padding-top:6px"><span style="color:var(--gr)">BTW 21% over marge</span><strong style="color:var(--rd)">${eur(r.btwMarge)}</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--dk);margin-bottom:4px">📋 Voorbelasting — lasten in dit kwartaal</div>
+    ${lastenTbl}
+  `;
+}
+
+function exportBtwKwartaal(){
+  _btwInitKwartaal();
+  const r=_berekenBtwKwartaal(_btwKwartaalJr,_btwKwartaalQ);
+  const wb=XLSX.utils.book_new();
+
+  // Sheet 1: Samenvatting
+  const samenvatting=[
+    ['BTW-aangifte',`Q${r.q} ${r.jr}`],
+    ['Periode',`${r.van.toLocaleDateString('nl-NL')} - ${r.tot.toLocaleDateString('nl-NL')}`],
+    [],
+    ['VERKOPEN'],
+    ['Standaard 21% - aantal',r.aantalStandaard],
+    ['Standaard 21% - omzet incl btw',r.omzetStandaard],
+    ['Standaard 21% - btw',r.btwStandaard],
+    ['Margeregeling - aantal',r.aantalMarge],
+    ['Margeregeling - bruto marge',r.margeTotaal],
+    ['Margeregeling - btw',r.btwMarge],
+    ['Totaal af te dragen',r.btwAfdragen],
+    [],
+    ['LASTEN (voorbelasting)'],
+    ['Totaal voorbelasting',r.voorbelasting],
+    [],
+    ['SALDO AANGIFTE'],
+    [r.saldo>=0?'Te betalen aan Belastingdienst':'Terug te vragen van Belastingdienst',Math.abs(r.saldo)]
+  ];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(samenvatting),'Samenvatting');
+
+  // Sheet 2: Verkopen detail
+  const vkRows=[['Datum','Factuur','Klant','Methode','Verkoopprijs','Bruto marge','BTW']];
+  r.vkInQ.forEach(v=>{
+    vkRows.push([
+      fmtD(v.datum),
+      v.factuur||'',
+      v.klantNaam||v.klant_naam||'',
+      v.btwMethode||'marge',
+      Number(v.verkoopprijs)||0,
+      Number(v.brutoMarge)||0,
+      Number(v.btw)||0
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(vkRows),'Verkopen');
+
+  // Sheet 3: Lasten detail
+  const lRows=[['Last','Maand','Bedrag','BTW %','Type','Voorbelasting','Terugkerend']];
+  r.lastDetails.forEach(l=>{
+    lRows.push([
+      l.naam,
+      MN[l._periodeMaand]||'',
+      Number(l.bedrag)||0,
+      l.btwPct||0,
+      l.btwType||'excl',
+      l.btwBedrag,
+      l.terugkerend?'Ja':'Nee'
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lRows),'Lasten');
+
+  const naam=`NB-BTW-Q${r.q}-${r.jr}.xlsx`;
+  XLSX.writeFile(wb,naam);
+  toast(`✅ ${naam} gedownload`);
+}
+
 function _renderDashMain(range){
   const nu=new Date();
   const cur=_calcPeriode(range.van,range.tot);
@@ -3268,7 +3490,10 @@ function _renderDashMain(range){
 
   const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'📅 Omzet per week (12 weken)':_periodeType==='jaar'?'📅 Omzet per maand — '+range.jr:'📅 Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
 
-  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
+  const btwBlok=`<div class="db-card" id="btw-kwartaal-blok" style="border-left:4px solid var(--bl)"></div>`;
+
+  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+btwBlok+_catAnalyse()+grafiek;
+  _renderBtwBlok();
 }
 
 function _projectedCard(label,dagNr,totDagen,restDagen,gemDag,projBruto,projNetto,projNaLasten,lasten,salesToGo,GEM_MARGE,gemBron){
