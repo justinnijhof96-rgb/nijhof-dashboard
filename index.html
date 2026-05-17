@@ -314,8 +314,13 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 
 <!-- ARCHIEF (verkochte items) -->
 <div class="sec" id="s-archief">
-  <div class="sec-hdr" onclick="tog(this)"><h2>📦 Verkocht archief</h2><span class="arr">▼</span></div>
+  <div class="sec-hdr" onclick="tog(this)"><h2>📦 Archief</h2><span class="arr">▼</span></div>
   <div class="sec-body">
+    <!-- TABS -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:2px solid var(--bd)">
+      <button class="arch-tab on" id="arch-tab-verkocht" onclick="setArchTab('verkocht')" style="background:transparent;border:none;padding:10px 16px;font-weight:700;color:var(--nav);cursor:pointer;border-bottom:3px solid var(--or);margin-bottom:-2px">✅ Verkocht</button>
+      <button class="arch-tab" id="arch-tab-afgestort" onclick="setArchTab('afgestort')" style="background:transparent;border:none;padding:10px 16px;font-weight:600;color:var(--gr);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px">🚮 Afgestort</button>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <input type="text" id="arch-z" placeholder="🔍 Zoek op naam, artikelnr, factuurnr..." oninput="renderArchief()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
       <input type="month" id="arch-mnd" onchange="renderArchief()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none" title="Filter op maand">
@@ -543,7 +548,7 @@ async function _laadOrgId(){
 
 async function _rest(method, path, options={}){
   const token=_getToken();
-  if(!token)throw new Error('Niet ingelogd');
+  if(!token){_sessieVerlopen();throw new Error('Niet ingelogd');}
   const headers={
     'apikey':SUPABASE_ANON,
     'Authorization':'Bearer '+token,
@@ -554,6 +559,10 @@ async function _rest(method, path, options={}){
   const init={method,headers};
   if(options.body)init.body=JSON.stringify(options.body);
   const res=await fetch(url,init);
+  if(res.status===401){
+    _sessieVerlopen();
+    throw new Error('Sessie verlopen — log opnieuw in');
+  }
   if(!res.ok){
     const txt=await res.text();
     throw new Error(`${res.status}: ${txt}`);
@@ -612,6 +621,19 @@ function toggleWwReset(e){e.preventDefault();const r=el('ww-reset');r.style.disp
 function toonLoginErr(msg){const e=el('login-err');e.textContent=msg;e.style.display=msg?'block':'none';}
 
 function _ingelogd(){return !!_getToken();}
+
+let _sessieMeldingTeruggekomen=false;
+function _sessieVerlopen(){
+  if(_sessieMeldingTeruggekomen)return; // niet 10x toast bij parallelle calls
+  _sessieMeldingTeruggekomen=true;
+  // localStorage leegmaken zodat _getToken() null retourneert
+  try{localStorage.removeItem('nijhof-auth');}catch(e){}
+  toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');
+  setTimeout(()=>{
+    _sessieMeldingTeruggekomen=false;
+    _toonLogin();
+  },1500);
+}
 
 async function _startApp(){
   el('login-scherm').style.display='none';
@@ -930,8 +952,8 @@ async function voegToe(){
 
 function renderV(){
   const z=val('flt-z').toLowerCase().trim(),c=val('flt-c'),s=val('flt-s'),o=val('flt-o');
-  // Voorraad-sectie toont alleen actieve items (beschikbaar, gereserveerd, afgestort)
-  let items=DB.items.filter(i=>i.status!=='verwijderd' && i.status!=='verkocht');
+  // Voorraad-sectie toont alleen actieve items (beschikbaar, gereserveerd)
+  let items=DB.items.filter(i=>i.status==='beschikbaar' || i.status==='gereserveerd');
   if(c)items=items.filter(i=>i.categorie===c);
   if(s)items=items.filter(i=>i.status===s);
   if(z)items=items.filter(i=>
@@ -952,8 +974,29 @@ function renderV(){
   renderArchief();
 }
 
-// ── ARCHIEF (verkochte items) ─────────────────────────────────────
+// ── ARCHIEF (verkochte + afgestorte items) ──────────────────────
+let _archTab='verkocht'; // 'verkocht' of 'afgestort'
+
+function setArchTab(tab){
+  _archTab=tab;
+  const v=el('arch-tab-verkocht'),a=el('arch-tab-afgestort');
+  if(v&&a){
+    v.style.color=tab==='verkocht'?'var(--nav)':'var(--gr)';
+    v.style.fontWeight=tab==='verkocht'?'700':'600';
+    v.style.borderBottomColor=tab==='verkocht'?'var(--or)':'transparent';
+    a.style.color=tab==='afgestort'?'var(--nav)':'var(--gr)';
+    a.style.fontWeight=tab==='afgestort'?'700':'600';
+    a.style.borderBottomColor=tab==='afgestort'?'var(--or)':'transparent';
+  }
+  renderArchief();
+}
+
 function renderArchief(){
+  if(_archTab==='afgestort')return _renderAfgestort();
+  return _renderVerkocht();
+}
+
+function _renderVerkocht(){
   const cont=el('arch-container');
   if(!cont)return;
   const z=val('arch-z')?.toLowerCase().trim()||'';
@@ -1007,6 +1050,53 @@ function renderArchief(){
           <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
           <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
         </td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+function _renderAfgestort(){
+  const cont=el('arch-container');
+  if(!cont)return;
+  const z=val('arch-z')?.toLowerCase().trim()||'';
+  const mnd=val('arch-mnd')||'';
+  let afgestort=DB.items.filter(i=>i.status==='afgestort');
+  if(z)afgestort=afgestort.filter(i=>
+    (i.naam||'').toLowerCase().includes(z) ||
+    (i.artikelnummer||'').toLowerCase().includes(z) ||
+    (i.del_reden||'').toLowerCase().includes(z) ||
+    (i.del_toel||'').toLowerCase().includes(z)
+  );
+  if(mnd)afgestort=afgestort.filter(i=>(i.afgestortOp||'').startsWith(mnd) || (i.datum||'').startsWith(mnd));
+  afgestort.sort((a,b)=>new Date(b.afgestortOp||b.datum)-new Date(a.afgestortOp||a.datum));
+  // Stats
+  const statsEl=el('arch-stats');
+  if(statsEl){
+    const totVerlies=afgestort.reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
+    const totStort=afgestort.reduce((a,i)=>a+(i.stortkosten||0),0);
+    statsEl.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+      <span style="background:#fef3c7;color:#92400e;padding:6px 12px;border-radius:20px;font-weight:600">🚮 ${afgestort.length} afgestort</span>
+      <span style="background:#fee2e2;color:#b91c1c;padding:6px 12px;border-radius:20px;font-weight:600">📉 Totaal verlies: ${eur(totVerlies)}</span>
+      ${totStort>0?`<span style="background:#fef3c7;color:#92400e;padding:6px 12px;border-radius:20px;font-weight:600">💸 Stortkosten: ${eur(totStort)}</span>`:''}
+    </div>`;
+  }
+  if(!afgestort.length){
+    cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--gr)">Geen afgestorte items in deze filter</div>';
+    return;
+  }
+  cont.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Afgestort</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Stortkosten</th><th>Verlies</th><th>Reden</th></tr></thead>
+    <tbody>${afgestort.map(i=>{
+      const datum=fmtD(i.afgestortOp||i.datum);
+      const verlies=i.prijs+(i.stortkosten||0);
+      const reden=(i.del_reden||'—')+(i.del_toel?`<br><span style="font-size:11px;color:var(--gr)">${esc(i.del_toel)}</span>`:'');
+      return `<tr>
+        <td style="font-size:12px;white-space:nowrap">${datum}</td>
+        <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
+        <td style="font-size:12px">${eur(i.prijs)}</td>
+        <td style="font-size:12px">${i.stortkosten?eur(i.stortkosten):'—'}</td>
+        <td style="color:var(--rd);font-weight:600">−${eur(verlies)}</td>
+        <td style="font-size:12px;max-width:200px">${reden}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
 }
@@ -3027,7 +3117,8 @@ function aiExport(periode,formaat){
 }
 async function resetAll(){
   if(!confirm('⚠️ ALLE data verwijderen?\nDit verwijdert:\n• Voorraad + verkopen\n• Facturen + contracten + klanten\n• Alle PDF-bestanden uit Storage\n\nDit kan niet ongedaan worden gemaakt.'))return;
-  if(!confirm('Weet je het heel zeker? ALLES wordt gewist.'))return;
+  const bevestiging=prompt('Typ exact "WIS ALLES" (in hoofdletters) om te bevestigen:');
+  if(bevestiging!=='WIS ALLES'){toast('Reset geannuleerd','#6b7280');return;}
   toast('🗑️ Bezig met opruimen...','#c2410c');
   try{
     // 1. Storage buckets legen (eerst PDFs voor we DB records verliezen)
