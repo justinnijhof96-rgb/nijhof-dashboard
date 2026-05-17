@@ -543,8 +543,21 @@ function _authHeaders(){
 
 async function _restGet(path){
   const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers:_authHeaders()});
+  if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('Fetch '+r.status+': '+await r.text());
   return await r.json();
+}
+
+let _sessieMeldingActief=false;
+function _sessieVerlopen(){
+  if(_sessieMeldingActief)return;
+  _sessieMeldingActief=true;
+  try{localStorage.removeItem(AUTH_KEY);}catch(e){}
+  alert('⚠️ Sessie verlopen — log opnieuw in');
+  setTimeout(()=>{
+    _sessieMeldingActief=false;
+    location.reload();
+  },1000);
 }
 
 async function laadOrgId(){
@@ -709,7 +722,7 @@ function updateS2(){
   const factTot=vp+servTot;
   const bruto=vp-(item?.prijs||0);
   const netto=bruto+servTot;
-  const btw=STATE.btwMethode==='standaard'?factTot/1.21*0.21:(vp-(item?.prijs||0))/1.21*0.21;
+  const btw=STATE.btwMethode==='standaard'?factTot/1.21*0.21:Math.max(0,(vp-(item?.prijs||0))/1.21*0.21);
   const nNaBtw=netto-btw;
 
   const warn=vp>0&&vp<(item?.prijs||0)?'<div class="alert alert-err" style="margin-bottom:10px">⚠️ Verkoopprijs lager dan inkoop!</div>':'';
@@ -1243,6 +1256,7 @@ async function _restPost(path,data){
     headers:{..._authHeaders(),'Prefer':'return=representation'},
     body:JSON.stringify(data)
   });
+  if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('POST '+r.status+': '+await r.text());
   return await r.json();
 }
@@ -1253,6 +1267,7 @@ async function _restPatch(path,data){
     headers:{..._authHeaders(),'Prefer':'return=representation'},
     body:JSON.stringify(data)
   });
+  if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('PATCH '+r.status+': '+await r.text());
   return await r.json();
 }
@@ -1322,7 +1337,7 @@ async function afronden(){
     const factuurTotaal=STATE.prijs+servTot;
     const bruto=STATE.prijs-(item.prijs||0);
     const netto=bruto+servTot;
-    const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:(STATE.prijs-(item.prijs||0))/1.21*0.21;
+    const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(STATE.prijs-(item.prijs||0))/1.21*0.21);
 
     // 1. Verkoop in DB (geen termijnen veld — dat is aparte tabel)
     const verkoopData={
@@ -1331,6 +1346,10 @@ async function afronden(){
       verkooplocatie:'verkoop-app',
       factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
       impregneer:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
+      services_json:STATE.services||[],
+      factuur_totaal:factuurTotaal,
+      extras_zichtbaar:!!STATE.extrasZichtbaar,
+      btw_methode:STATE.btwMethode||'marge',
       bruto_marge:bruto,netto_marge:netto,btw:btw,netto_na_btw:netto-btw,
       datum_registratie:new Date().toISOString()
     };
