@@ -3792,7 +3792,7 @@ function _berekenMaandData(jr,mn){
   const nettoResultaat=nettoNaBtw-lastenTotaal-inkoopUitgaven;
 
   return {
-    periode:{jaar:jr,maand:mn+1,maand_naam:MN[mn],van:van.toISOString().split('T')[0],tot:tot.toISOString().split('T')[0]},
+    periode:{jaar:jr,maand:mn+1,maand_naam:MN[mn],van:`${van.getFullYear()}-${String(van.getMonth()+1).padStart(2,'0')}-${String(van.getDate()).padStart(2,'0')}`,tot:`${tot.getFullYear()}-${String(tot.getMonth()+1).padStart(2,'0')}-${String(tot.getDate()).padStart(2,'0')}`},
     omzet:{
       geboekt:Math.round(geboektOmzet*100)/100,
       ontvangen:Math.round(ontvangenInMnd*100)/100
