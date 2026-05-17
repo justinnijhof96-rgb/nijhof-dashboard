@@ -3102,7 +3102,9 @@ function _calcPeriode(van,tot){
   const btwKosten=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
   const btwSaldo=btw-btwKosten;
   const inkopen=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
-  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen};
+  const inkoopUitgaven=inkopen.reduce((a,i)=>a+(i.prijs||0),0);
+  const nNaInkoop=nNaLasten-inkoopUitgaven;
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkoopUitgaven,nNaInkoop};
 }
 
 function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
@@ -3126,12 +3128,12 @@ function renderDash(){
 }
 
 function _renderKpiWarns(range){
-  const{beschikbaar,openBed,nNaLasten,lastenP,afstortVerlies}=_calcPeriode(range.van,range.tot);
+  const{beschikbaar,openBed,nNaInkoop,lastenP,afstortVerlies,inkoopUitgaven}=_calcPeriode(range.van,range.tot);
   const warns=[];
   const lang=beschikbaar.filter(i=>dgl(i.datum)>45);
   if(lang.length)warns.push({l:'r',m:`⏰ ${lang.length} item(s) staan langer dan 45 dagen in voorraad`});
   if(openBed>500)warns.push({l:'o',m:`💳 ${eur(openBed)} aan openstaande betalingen`});
-  if(lastenP>0&&nNaLasten<0)warns.push({l:'r',m:`📉 Negatief resultaat: ${eur(nNaLasten)} (lasten: ${eur(lastenP)})`});
+  if(lastenP>0&&nNaInkoop<0)warns.push({l:'r',m:`📉 Negatief netto resultaat: ${eur(nNaInkoop)} (lasten: ${eur(lastenP)} · inkoop: ${eur(inkoopUitgaven)})`});
   if(afstortVerlies>0)warns.push({l:'o',m:`🚮 ${eur(afstortVerlies)} verlies door afgestorte items`});
   el('kpi-warns').innerHTML=warns.map(w=>`<div class="kpi-warn kpi-${w.l}">${w.m}</div>`).join('');
 }
@@ -3148,8 +3150,8 @@ function _renderDashMain(range){
   const cur=_calcPeriode(range.van,range.tot);
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
-  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen}=cur;
-  const inkW=beschikbaar.reduce((a,i)=>a+i.prijs,0);
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkoopUitgaven,nNaInkoop}=cur;
+  const inkW=beschikbaar.reduce((a,i)=>a+(i.verwacht_vp>0?i.verwacht_vp:i.prijs),0);
   const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
 
   const kpis=`<div class="mgrid">
@@ -3158,6 +3160,8 @@ function _renderDashMain(range){
     <div class="mc ${netto>=0?'':'red'}"><div class="ml">✅ Netto marge</div><div class="mv" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
     <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">🧾 BTW saldo</div><div class="mv">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
     <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">🏢 Netto na lasten</div><div class="mv" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
+    <div class="mc ${inkoopUitgaven>0?'red':''}"><div class="ml">💸 Inkoop uitgaven</div><div class="mv" style="color:${inkoopUitgaven>0?'var(--rd)':'var(--dk)'}">${eur(inkoopUitgaven)}</div><div class="mt" style="color:var(--gr);font-size:10px">${inkopen.length} inkopen</div></div>
+    <div class="mc ${nNaInkoop>=0?'green':'red'}" style="border-width:2px"><div class="ml" style="font-weight:700">💼 Netto resultaat</div><div class="mv" style="color:${nNaInkoop>=0?'var(--gn)':'var(--rd)'};font-size:22px">${eur(nNaInkoop)}</div><div class="mt" style="color:var(--gr);font-size:10px">na lasten én inkopen</div></div>
     ${afstortVerlies>0?`<div class="mc red"><div class="ml">🚮 Afstortverlies</div><div class="mv">${eur(afstortVerlies)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. stortkosten</div></div>`:''}
     <div class="mc ${openBed>0?'red':'green'}"><div class="ml">📋 Openstaand</div><div class="mv">${eur(openBed)}</div><div class="mt" style="color:var(--gr)">termijnen</div></div>
   </div>`;
@@ -3237,7 +3241,9 @@ function _renderDashMain(range){
     ...(afstortVerlies>0?[{lbl:'− Afstortverlies',val:-afstortVerlies,kleur:'var(--rd)',vet:false}]:[]),
     {lbl:'= Netto marge',     val:netto,               kleur:netto>=0?'var(--gn)':'var(--rd)',       vet:true },
     {lbl:'− Vaste lasten',    val:-lastenP,            kleur:'var(--rd)',                           vet:false},
-    {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true }
+    {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true },
+    {lbl:'− Inkoop uitgaven', val:-inkoopUitgaven,     kleur:'var(--rd)',                           vet:false},
+    {lbl:'= Netto resultaat', val:nNaInkoop,           kleur:nNaInkoop>=0?'var(--gn)':'var(--rd)', vet:true }
   ];
   const maxAbs=Math.max(...stappen.map(s=>Math.abs(s.val)),1);
   const waterval=`<div class="db-card"><div class="db-card-title">💧 Marge-kosten overzicht</div>
@@ -3256,7 +3262,7 @@ function _renderDashMain(range){
       <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv">${inkopen.length}</div></div>
       <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv">${eur(inkBed)}</div></div>
       <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
-      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items</div></div>
+      <div class="mc blue"><div class="ml">Verwachte verkoopwaarde</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items in loods</div></div>
     </div>
   </div>`;
 
