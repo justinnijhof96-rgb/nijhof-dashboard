@@ -827,8 +827,11 @@ async function compressFoto(file,maxW=1200,kwaliteit=0.85){
 
 async function uploadFotoNaarStorage(blob,itemId){
   const uid_user=_getUserId();
+  const org_id=_getOrgId();
   if(!uid_user)throw new Error('Niet ingelogd');
-  const fotoPad=`${uid_user}/${itemId}-${Date.now()}.jpg`;
+  if(!org_id)throw new Error('Geen org_id');
+  // Pad op org_id basis (zelfde als facturen/contracten) zodat alle org-leden bij elkaars foto's kunnen
+  const fotoPad=`${org_id}/${itemId}-${Date.now()}.jpg`;
   const{error}=await _sb.storage.from(FOTO_BUCKET).upload(fotoPad,blob,{contentType:'image/jpeg',upsert:false});
   if(error)throw error;
   const{data}=_sb.storage.from(FOTO_BUCKET).getPublicUrl(fotoPad);
@@ -1244,11 +1247,17 @@ function kaartHTML(item){
           <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','afstorten')">🚮 Afstort</button>
           <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','verwijderen')">🗑️ Verwijder</button>`;
   }
+  const laatstBewerkt = Array.isArray(item.bewerkt) && item.bewerkt.length>0
+    ? item.bewerkt[item.bewerkt.length-1].ts
+    : null;
+  const bewerktBadge = laatstBewerkt
+    ? `<span class="badge b-cat" title="Laatst bewerkt: ${esc(fmtDT(laatstBewerkt))}" style="background:#f3f4f6;color:var(--gr);font-size:9px">✏️ ${item.bewerkt.length}×</span>`
+    : '';
   return `<div class="kaart${item.status==='verkocht'?' verkocht':item.status==='afgestort'?' afgestort':''}" id="k-${iid}">
     <div class="kico${heeftFoto?' met-foto':''}">${fotoHTML}${artnrHTML}<span class="dpill ${pk}">${d>45?'🔴 ':d>20?'⏰ ':''}${d}d</span></div>
     <div class="kbody">
       <div class="kname">${esc(item.naam)}</div>
-      <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}</div>
+      <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}${bewerktBadge}</div>
       <div class="kinfo">📍 ${esc(item.locatie)}<br>💶 Inkoop: ${eur(item.prijs)}${item.verwacht_vp>0?`<br>🎯 Verwacht: ${eur(item.verwacht_vp)}`:''}<br>📅 ${esc(item.datum)}</div>
       ${item.notitie?`<div class="knote">📝 ${esc(item.notitie)}</div>`:''}
     </div>
@@ -1396,35 +1405,93 @@ function slaVerkKopOp(itemId) {
   const vpStr=val('bvk-vp').trim(),vp=parseFloat(vpStr);
   if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
   const item=DB.items.find(x=>x.id===itemId);
-  const bruto=vp-item.prijs,netto=bruto+(vk.impregneer||0);
-  const btw=(vp-item.prijs)/1.21*0.21,nNaBtw=netto-btw;
+  const imp=(vk.impregneer||0);
+  const factuurTotaal=vp+imp; // services hangen aan vk.impregneer (oud) of services-array (nieuw)
+  const bruto=vp-item.prijs;
+  const netto=bruto+imp;
+  const btw=(vp-item.prijs)/1.21*0.21;
+  const nNaBtw=netto-btw;
   vk.verkoopprijs=vp;vk.verkooplocatie=val('bvk-loc');
   vk.factuur=val('bvk-fac')||vk.factuur;vk.datum=val('bvk-dat')||vk.datum;
   vk.brutoMarge=bruto;vk.nettoMarge=netto;vk.btw=btw;vk.nettoNaBtw=nNaBtw;
-  if(vk.type==='volledig'&&vk.termijnen?.length===1){vk.termijnen[0].bedrag=vp;}
+  // Herverdelen termijnen op factuurTotaal-basis
+  if(vk.termijnen?.length){
+    if(vk.type==='volledig'){
+      vk.termijnen[0].bedrag=factuurTotaal;
+    } else if(vk.type==='termijn'){
+      // Behoud verhoudingen — schaal alle termijnen evenredig
+      const oudeSom=vk.termijnen.reduce((a,t)=>a+(t.bedrag||0),0);
+      if(oudeSom>0){
+        const factor=factuurTotaal/oudeSom;
+        vk.termijnen.forEach(t=>{t.bedrag=Number((t.bedrag*factor).toFixed(2));});
+        // Fix rounding op laatste termijn
+        const nieuwSom=vk.termijnen.reduce((a,t)=>a+t.bedrag,0);
+        const diff=factuurTotaal-nieuwSom;
+        if(Math.abs(diff)>0.001 && vk.termijnen.length>0){
+          vk.termijnen[vk.termijnen.length-1].bedrag=Number((vk.termijnen[vk.termijnen.length-1].bedrag+diff).toFixed(2));
+        }
+      }
+    } else if(vk.type==='aanbetaling' && vk.termijnen.length>=2){
+      // Aanbetaling blijft, rest herverdeeld
+      const aanbet=vk.termijnen[0].bedrag||0;
+      vk.termijnen[1].bedrag=Math.max(0,Number((factuurTotaal-aanbet).toFixed(2)));
+    }
+  }
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');
-  toast('✏️ Verkoop bijgewerkt');
+  toast('✏️ Verkoop bijgewerkt — termijnen aangepast');
 }
 
 async function ongedaanVerkoop(itemId) {
   const vk=DB.verkopen.find(v=>v.itemId===itemId);
   if(!vk)return;
   const open=(vk.termijnen||[]).filter(t=>!t.betaald);
+  // Check of er facturen/contracten bij horen
+  const factuur=_facturenCache.find(f=>f.verkoop_id===vk.id);
+  const contract=_contractenCache.find(c=>c.verkoop_id===vk.id);
+  let waarschuwing='';
   if(open.length>0){
     const openBed=open.reduce((a,t)=>a+t.bedrag,0);
-    if(!confirm(`⚠️ Er staan nog ${open.length} openstaande termijn(en) open (${eur(openBed)}).\n\nVerkoop toch ongedaan maken? Deze termijnen verdwijnen.`))return;
-  } else {
-    if(!confirm('Verkoop ongedaan maken? Het item komt terug als beschikbaar.'))return;
+    waarschuwing+=`⚠️ ${open.length} openstaande termijn(en) van ${eur(openBed)}\n`;
+  }
+  if(factuur)waarschuwing+=`⚠️ Factuur ${factuur.factuurnummer} wordt ook verwijderd\n`;
+  if(contract)waarschuwing+=`⚠️ Contract ${contract.contractnummer} wordt ook verwijderd${contract.ondertekend?' (ONDERTEKEND!)':''}\n`;
+  const msg=waarschuwing
+    ? waarschuwing+'\nVerkoop toch ongedaan maken? Alle gekoppelde data verdwijnt definitief.'
+    : 'Verkoop ongedaan maken? Het item komt terug als beschikbaar.';
+  if(!confirm(msg))return;
+  if(contract&&contract.ondertekend){
+    if(!confirm('Extra check: dit contract is ONDERTEKEND door de klant. Echt verwijderen?'))return;
   }
   const item=DB.items.find(x=>x.id===itemId);if(!item)return;
   try{
+    // Volgorde: kinderen eerst, daarna ouders
+    if(contract){
+      // PDF uit storage
+      if(contract.pdf_url){
+        await _sb.storage.from('contracten-pdf').remove([contract.pdf_url]).catch(e=>console.warn('Contract PDF wissen:',e));
+      }
+      await dbDelete('contracten','id=eq.'+encodeURIComponent(contract.id));
+    }
+    if(factuur){
+      if(factuur.pdf_url){
+        await _sb.storage.from('facturen-pdf').remove([factuur.pdf_url]).catch(e=>console.warn('Factuur PDF wissen:',e));
+      }
+      await dbDelete('facturen','id=eq.'+encodeURIComponent(factuur.id));
+    }
     await dbDelete('termijnen','verkoop_id=eq.'+encodeURIComponent(vk.id));
     await dbDelete('verkopen','id=eq.'+encodeURIComponent(vk.id));
-  }catch(e){toast('⚠️ Mislukt','#dc2626');return;}
+  }catch(e){
+    console.error('Ongedaan maken fout:',e);
+    toast('⚠️ Mislukt: '+e.message,'#dc2626');
+    return;
+  }
+  // Cache opschonen
   DB.verkopen=DB.verkopen.filter(v=>v.itemId!==itemId);
+  if(factuur)_facturenCache=_facturenCache.filter(f=>f.id!==factuur.id);
+  if(contract)_contractenCache=_contractenCache.filter(c=>c.id!==contract.id);
   item.status='beschikbaar';
-  slaOp();renderV();renderDash();renderDebiteuren();
-  toast('↩️ Verkoop ongedaan gemaakt','#2563eb');
+  slaOp();renderV();renderDash();renderDebiteuren();renderFacturen?.();renderContracten?.();
+  toast('↩️ Verkoop ongedaan gemaakt' + (factuur||contract?' (incl. factuur/contract)':''),'#2563eb');
 }
 
 let _vkId=null;
