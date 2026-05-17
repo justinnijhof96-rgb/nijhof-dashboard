@@ -132,9 +132,128 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 </div>
 
 <!-- APP -->
-<div id="screen-app" class="view">
+<div id="screen-keuze" class="view">
   <div class="top">
     <button class="btn-icon" onclick="bevestigUitloggen()" title="Uitloggen">←</button>
+    <div class="logo">NIJHOF BROTHERS <small>Wat ga je doen?</small></div>
+    <span style="width:36px"></span>
+  </div>
+  <main style="padding-top:30px">
+    <div style="display:flex;flex-direction:column;gap:16px;max-width:480px;margin:0 auto">
+      <button onclick="kiesActie('verkoop')" style="background:linear-gradient(135deg,#e87722,#d36b1f);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(232,119,34,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">🛋️</span>
+        <span>Verkoop</span>
+        <span style="font-size:12px;font-weight:400;opacity:.9">Item uit voorraad verkopen</span>
+      </button>
+      <button onclick="kiesActie('inkoop')" style="background:linear-gradient(135deg,#1e2f3a,#16242c);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(30,47,58,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">📥</span>
+        <span>Inkoop</span>
+        <span style="font-size:12px;font-weight:400;opacity:.8">Nieuw item toevoegen</span>
+      </button>
+    </div>
+  </main>
+</div>
+
+<div id="screen-inkoop" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="terugNaarKeuze()" title="Terug">←</button>
+    <div class="logo">INKOOP <small>NIJHOF BROTHERS</small></div>
+    <button class="btn-icon" onclick="herstartInkoop()" title="Opnieuw">↻</button>
+  </div>
+
+  <div class="steps">
+    <div class="step-dot" id="ink-dot-1"></div>
+    <div class="step-dot" id="ink-dot-2"></div>
+    <div class="step-dot" id="ink-dot-3"></div>
+  </div>
+
+  <main>
+    <!-- INKOOP STAP 1: GEGEVENS -->
+    <div class="view" id="ink-stap-1">
+      <h1>Wat heb je ingekocht?</h1>
+      <h2>Stap 1 van 3 — basisgegevens</h2>
+      <div class="card">
+        <div class="fg"><label class="r">Naam</label><input type="text" id="ink-naam" placeholder="Bijv. Chesterfield bank" oninput="updInkStap1()"></div>
+        <div class="fg"><label class="r">Categorie</label>
+          <select id="ink-cat" onchange="updInkStap1()">
+            <option value="">— kies —</option>
+            <option value="bank">Bank</option>
+            <option value="hoekbank">Hoekbank</option>
+            <option value="fauteuil">Fauteuil</option>
+            <option value="loveseat">Loveseat</option>
+            <option value="kast">Kast</option>
+            <option value="dressoir">Dressoir</option>
+            <option value="overig">Overig</option>
+          </select>
+        </div>
+        <div class="fg"><label class="r">Stof</label><input type="text" id="ink-stof" placeholder="Bijv. velvet, leer, ribstof" oninput="updInkStap1()"></div>
+        <div class="fg"><label class="r">Locatie</label><input type="text" id="ink-loc" placeholder="Loods / showroom / opslag" oninput="updInkStap1()"></div>
+        <div class="fg"><label class="r">Inkoopprijs (€)</label><input type="number" id="ink-prijs" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="updInkStap1()"></div>
+        <div class="fg"><label>Verwachte verkoopprijs (€)</label><input type="number" id="ink-vvp" inputmode="decimal" min="0" step="0.01" placeholder="optioneel"></div>
+        <div class="fg"><label class="r">Inkoopdatum</label><input type="date" id="ink-dat" oninput="updInkStap1()"></div>
+        <div class="fg"><label>Notitie</label><textarea id="ink-not" rows="2" placeholder="optioneel"></textarea></div>
+      </div>
+    </div>
+
+    <!-- INKOOP STAP 2: FOTO'S -->
+    <div class="view" id="ink-stap-2">
+      <h1>Foto's toevoegen</h1>
+      <h2>Stap 2 van 3 — productfoto en bewijsfoto's (allemaal optioneel)</h2>
+
+      <div class="card">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📸 Productfoto</div>
+        <div style="font-size:12px;color:var(--gr);margin-bottom:10px">Komt in voorraad-overzicht te staan</div>
+        <input type="file" id="ink-foto-prod" accept="image/*" style="display:none" onchange="kiesInkFoto(event,'prod')">
+        <div id="ink-foto-prod-preview"></div>
+        <button class="btn btn-gy" style="width:100%;min-height:48px" onclick="document.getElementById('ink-foto-prod').click()">📷 Kies productfoto</button>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📎 Bewijsfoto 1</div>
+        <div style="font-size:12px;color:var(--gr);margin-bottom:10px">Bijv. kassabon, betaalbewijs, prijslabel</div>
+        <input type="file" id="ink-foto-bew1" accept="image/*" style="display:none" onchange="kiesInkFoto(event,'bew1')">
+        <div id="ink-foto-bew1-preview"></div>
+        <button class="btn btn-gy" style="width:100%;min-height:48px" onclick="document.getElementById('ink-foto-bew1').click()">📎 Kies bewijsfoto 1</button>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📎 Bewijsfoto 2</div>
+        <div style="font-size:12px;color:var(--gr);margin-bottom:10px">Bijv. tweede deel kassabon, overdrachtsbewijs</div>
+        <input type="file" id="ink-foto-bew2" accept="image/*" style="display:none" onchange="kiesInkFoto(event,'bew2')">
+        <div id="ink-foto-bew2-preview"></div>
+        <button class="btn btn-gy" style="width:100%;min-height:48px" onclick="document.getElementById('ink-foto-bew2').click()">📎 Kies bewijsfoto 2</button>
+      </div>
+    </div>
+
+    <!-- INKOOP STAP 3: BEVESTIGEN -->
+    <div class="view" id="ink-stap-3">
+      <h1>Klaar om op te slaan</h1>
+      <h2>Stap 3 van 3 — controleer en bevestig</h2>
+      <div id="ink-overzicht"></div>
+      <div id="ink-status" style="margin-top:12px"></div>
+    </div>
+
+    <!-- INKOOP KLAAR -->
+    <div class="view" id="ink-stap-klaar">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:80px;margin-bottom:20px">📦</div>
+        <h1 style="font-size:26px;color:var(--or);margin-bottom:10px">Inkoop opgeslagen!</h1>
+        <div id="ink-klaar-info" style="font-size:14px;color:var(--gr);line-height:1.7;margin:18px 0"></div>
+        <button class="btn btn-or" style="width:100%;margin-top:20px" onclick="nieuweInkoop()">+ Nieuwe inkoop</button>
+        <button class="btn btn-gy" style="width:100%;margin-top:8px" onclick="terugNaarKeuze()">← Terug naar keuze</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="bot">
+    <button class="btn btn-back" id="ink-btn-prev" onclick="vorigeInkStap()" style="display:none">←</button>
+    <button class="btn btn-or" id="ink-btn-next" onclick="volgendeInkStap()" disabled>Volgende</button>
+  </div>
+</div>
+
+<div id="screen-app" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="terugNaarKeuze()" title="Terug">←</button>
     <div class="logo">VERKOOP <small>NIJHOF BROTHERS</small></div>
     <button class="btn-icon" onclick="herstart()" title="Opnieuw">↻</button>
   </div>
@@ -409,10 +528,32 @@ function toast(msg, kleur){
 
 function toonScherm(id){
   document.querySelectorAll('.view').forEach(v=>{
-    if(v.id===id||v.id.startsWith('stap-'))return;
+    if(v.id===id||v.id.startsWith('stap-')||v.id.startsWith('ink-stap-'))return;
     v.classList.remove('show');
   });
   $(id).classList.add('show');
+}
+
+function toonInkStap(n){
+  STATE.inkStap=n;
+  for(let i=1;i<=3;i++){
+    const dot=$('ink-dot-'+i);
+    if(dot){
+      dot.classList.toggle('on',i===n);
+      dot.classList.toggle('done',i<n);
+    }
+  }
+  for(let i=1;i<=3;i++){
+    const v=$('ink-stap-'+i);
+    if(v)v.classList.toggle('show',i===n);
+  }
+  // Klaar-screen apart
+  $('ink-stap-klaar').classList.remove('show');
+  // Prev/next knoppen
+  $('ink-btn-prev').style.display=n>1?'block':'none';
+  $('ink-btn-next').textContent=n===3?'✓ Inkoop opslaan':'Volgende';
+  updInkStapBtn();
+  if(n===3)renderInkOverzicht();
 }
 
 function toonStap(n){
@@ -470,13 +611,18 @@ function vorigeStap(){
 }
 
 function herstart(){
-  if(!confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
+  const stateVuil = STATE.gekozen || STATE.prijs>0 || STATE.klant.naam || STATE.termijnen.length>0;
+  if(stateVuil && !confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
   STATE.gekozen=null;
   STATE.prijs=0;
   STATE.services=[];
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
   STATE.type='volledig';
   STATE.termijnen=[];
+  // UI: zorg dat steps + bottom bar weer zichtbaar zijn (succes-screen verbergt ze)
+  document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
+  // Klaar-screen verbergen indien zichtbaar
+  const klaar=$('stap-klaar');if(klaar)klaar.classList.remove('show');
   toonStap(1);
   renderItems();
 }
@@ -530,6 +676,415 @@ function bevestigUitloggen(){
   STATE.org_id=null;
   toonScherm('screen-login');
 }
+
+// ── KEUZE-FLOW ────────────────────────────────────────────────────
+function kiesActie(actie){
+  if(actie==='verkoop'){
+    toonScherm('screen-app');
+    herstart(); // reset verkoop-state + ga naar stap 1
+  } else if(actie==='inkoop'){
+    toonScherm('screen-inkoop');
+    herstartInkoop();
+  }
+}
+
+function terugNaarKeuze(){
+  toonScherm('screen-keuze');
+}
+
+// ── INKOOP FLOW ───────────────────────────────────────────────────
+const INKOOP = {
+  // form data
+  naam:'', categorie:'', stof:'', locatie:'', prijs:0, vvp:0, datum:'', notitie:'',
+  // foto's (Blobs voor upload, dataUrls voor preview)
+  foto_prod:null, foto_prod_dataUrl:null,
+  foto_bew1:null, foto_bew1_dataUrl:null,
+  foto_bew2:null, foto_bew2_dataUrl:null,
+  // bezig met opslaan
+  bezig:false
+};
+
+function resetInkoop(){
+  Object.assign(INKOOP,{
+    naam:'',categorie:'',stof:'',locatie:'',prijs:0,vvp:0,datum:'',notitie:'',
+    foto_prod:null,foto_prod_dataUrl:null,
+    foto_bew1:null,foto_bew1_dataUrl:null,
+    foto_bew2:null,foto_bew2_dataUrl:null,
+    bezig:false
+  });
+  ['ink-naam','ink-cat','ink-stof','ink-loc','ink-prijs','ink-vvp','ink-not'].forEach(id=>{
+    const e=$(id);if(e)e.value='';
+  });
+  const dat=$('ink-dat');if(dat)dat.value=new Date().toISOString().split('T')[0];
+  ['ink-foto-prod-preview','ink-foto-bew1-preview','ink-foto-bew2-preview'].forEach(id=>{
+    const e=$(id);if(e)e.innerHTML='';
+  });
+}
+
+function herstartInkoop(){
+  if(INKOOP.naam||INKOOP.prijs>0){
+    if(!confirm('Inkoop in opbouw weggooien?'))return;
+  }
+  resetInkoop();
+  toonInkStap(1);
+}
+
+function nieuweInkoop(){
+  resetInkoop();
+  toonInkStap(1);
+}
+
+function updInkStap1(){
+  INKOOP.naam=$('ink-naam').value.trim();
+  INKOOP.categorie=$('ink-cat').value;
+  INKOOP.stof=$('ink-stof').value.trim();
+  INKOOP.locatie=$('ink-loc').value.trim();
+  INKOOP.prijs=parseFloat($('ink-prijs').value)||0;
+  INKOOP.vvp=parseFloat($('ink-vvp').value)||0;
+  INKOOP.datum=$('ink-dat').value;
+  INKOOP.notitie=$('ink-not').value.trim();
+  updInkStapBtn();
+}
+
+function updInkStapBtn(){
+  const btn=$('ink-btn-next');
+  if(!btn)return;
+  if(STATE.inkStap===1){
+    const ok=INKOOP.naam && INKOOP.categorie && INKOOP.stof && INKOOP.locatie && INKOOP.prijs>0 && INKOOP.datum;
+    btn.disabled=!ok;
+  } else if(STATE.inkStap===2){
+    btn.disabled=false; // foto's optioneel
+  } else if(STATE.inkStap===3){
+    btn.disabled=INKOOP.bezig;
+  }
+}
+
+async function kiesInkFoto(evt,welke){
+  const file=evt.target.files[0];evt.target.value='';
+  if(!file)return;
+  if(!file.type.startsWith('image/')){toast('Alleen afbeeldingen','#dc2626');return;}
+  try{
+    const blob=await _compressInkFoto(file);
+    const dataUrl=await _blobNaarDataUrl(blob);
+    if(welke==='prod'){INKOOP.foto_prod=blob;INKOOP.foto_prod_dataUrl=dataUrl;}
+    else if(welke==='bew1'){INKOOP.foto_bew1=blob;INKOOP.foto_bew1_dataUrl=dataUrl;}
+    else if(welke==='bew2'){INKOOP.foto_bew2=blob;INKOOP.foto_bew2_dataUrl=dataUrl;}
+    _renderInkFotoPreview(welke);
+  }catch(e){
+    toast('Foto verwerken mislukt: '+e.message,'#dc2626');
+  }
+}
+
+function _renderInkFotoPreview(welke){
+  const map={prod:{el:'ink-foto-prod-preview',dataUrl:INKOOP.foto_prod_dataUrl},
+             bew1:{el:'ink-foto-bew1-preview',dataUrl:INKOOP.foto_bew1_dataUrl},
+             bew2:{el:'ink-foto-bew2-preview',dataUrl:INKOOP.foto_bew2_dataUrl}};
+  const m=map[welke];if(!m)return;
+  const el=$(m.el);if(!el)return;
+  if(!m.dataUrl){el.innerHTML='';return;}
+  el.innerHTML=`<div style="position:relative;margin-bottom:10px">
+    <img src="${m.dataUrl}" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;background:#f3f4f6">
+    <button onclick="wisInkFoto('${welke}')" style="position:absolute;top:6px;right:6px;background:rgba(220,38,38,.9);color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer">✕</button>
+  </div>`;
+}
+
+function wisInkFoto(welke){
+  if(welke==='prod'){INKOOP.foto_prod=null;INKOOP.foto_prod_dataUrl=null;}
+  else if(welke==='bew1'){INKOOP.foto_bew1=null;INKOOP.foto_bew1_dataUrl=null;}
+  else if(welke==='bew2'){INKOOP.foto_bew2=null;INKOOP.foto_bew2_dataUrl=null;}
+  _renderInkFotoPreview(welke);
+}
+
+async function _compressInkFoto(file,maxDim=1200,kwaliteit=0.85){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      if(w>h && w>maxDim){h=Math.round(h*(maxDim/w));w=maxDim;}
+      else if(h>=w && h>maxDim){w=Math.round(w*(maxDim/h));h=maxDim;}
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      cv.toBlob(b=>b?resolve(b):reject(new Error('Compressie mislukt')),'image/jpeg',kwaliteit);
+    };
+    img.onerror=()=>reject(new Error('Foto lezen mislukt'));
+    img.src=URL.createObjectURL(file);
+  });
+}
+
+function _blobNaarDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result);
+    r.onerror=()=>reject(new Error('Read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+function _blobNaarBase64(blob){
+  return _blobNaarDataUrl(blob).then(u=>u.split(',')[1]);
+}
+
+function vorigeInkStap(){
+  if(STATE.inkStap>1)toonInkStap(STATE.inkStap-1);
+}
+
+async function volgendeInkStap(){
+  if(STATE.inkStap===3){
+    await opslaanInkoop();
+    return;
+  }
+  toonInkStap(STATE.inkStap+1);
+}
+
+function renderInkOverzicht(){
+  const el=$('ink-overzicht');
+  if(!el)return;
+  const fmtEur=v=>'€'+Number(v||0).toFixed(2).replace('.',',');
+  const fmtDt=d=>{if(!d)return'—';const dt=new Date(d);return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;};
+  el.innerHTML=`
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:10px">📦 Inkoop overzicht</div>
+      <table style="width:100%;font-size:14px">
+        <tr><td style="color:var(--gr);padding:4px 0;width:130px">Naam</td><td style="font-weight:600">${_esc(INKOOP.naam)}</td></tr>
+        <tr><td style="color:var(--gr);padding:4px 0">Categorie</td><td>${_esc(INKOOP.categorie)}</td></tr>
+        <tr><td style="color:var(--gr);padding:4px 0">Stof</td><td>${_esc(INKOOP.stof)}</td></tr>
+        <tr><td style="color:var(--gr);padding:4px 0">Locatie</td><td>${_esc(INKOOP.locatie)}</td></tr>
+        <tr><td style="color:var(--gr);padding:4px 0">Inkoopprijs</td><td style="font-weight:700;color:var(--or)">${fmtEur(INKOOP.prijs)}</td></tr>
+        ${INKOOP.vvp>0?`<tr><td style="color:var(--gr);padding:4px 0">Verwachte VP</td><td>${fmtEur(INKOOP.vvp)}</td></tr>`:''}
+        <tr><td style="color:var(--gr);padding:4px 0">Datum</td><td>${fmtDt(INKOOP.datum)}</td></tr>
+        ${INKOOP.notitie?`<tr><td style="color:var(--gr);padding:4px 0;vertical-align:top">Notitie</td><td style="white-space:pre-wrap">${_esc(INKOOP.notitie)}</td></tr>`:''}
+      </table>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px">
+        ${INKOOP.foto_prod?'<span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:12px;font-weight:600">📸 Productfoto</span>':''}
+        ${INKOOP.foto_bew1?'<span style="background:#dbeafe;color:#1d4ed8;padding:4px 10px;border-radius:12px;font-weight:600">📎 Bewijs 1</span>':''}
+        ${INKOOP.foto_bew2?'<span style="background:#dbeafe;color:#1d4ed8;padding:4px 10px;border-radius:12px;font-weight:600">📎 Bewijs 2</span>':''}
+        ${!INKOOP.foto_prod&&!INKOOP.foto_bew1&&!INKOOP.foto_bew2?'<span style="color:var(--gr)">Geen foto\'s toegevoegd</span>':''}
+      </div>
+      <div style="margin-top:14px;padding:10px;background:#fff7ed;border-radius:8px;font-size:12px;color:#9a3412">
+        ℹ️ Na opslaan krijgt het item een artikelnummer (NB-XXXX) en inkoopbonnummer (NBI-XXXX). Een mail met inkoopbon-PDF${INKOOP.foto_bew1||INKOOP.foto_bew2?' + bewijsfoto\'s':''} gaat naar invoice@.
+      </div>
+    </div>`;
+}
+
+function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function opslaanInkoop(){
+  if(INKOOP.bezig)return;
+  INKOOP.bezig=true;
+  updInkStapBtn();
+  const status=$('ink-status');
+  status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">⏳ Item opslaan...</div>';
+  try{
+    // 1. Item in DB inserten (trigger genereert artikelnummer + inkoopbon_nr)
+    const itemId=_genId();
+    const itemData={
+      id:itemId,
+      user_id:STATE.user.id,
+      org_id:STATE.org_id,
+      naam:INKOOP.naam,
+      categorie:INKOOP.categorie,
+      stof:INKOOP.stof,
+      locatie:INKOOP.locatie,
+      prijs:INKOOP.prijs,
+      verwacht_vp:INKOOP.vvp,
+      datum:INKOOP.datum,
+      notitie:INKOOP.notitie,
+      status:'beschikbaar',
+      stortkosten:0,
+      foto_url:null,
+      bewerkt:[],
+      aangemaakt_op:new Date().toISOString()
+    };
+    const inserted=await _restPost('items',itemData);
+    if(!inserted||!inserted.length)throw new Error('Item opslaan mislukt');
+    const itemRow=inserted[0];
+    const artikelnummer=itemRow.artikelnummer;
+    const inkoopbonNr=itemRow.inkoopbon_nr;
+
+    // 2. Productfoto uploaden (optioneel)
+    if(INKOOP.foto_prod){
+      status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📸 Productfoto uploaden...</div>';
+      try{
+        const padProd=`${STATE.org_id}/${itemId}-${Date.now()}.jpg`;
+        await fetch(`${SUPABASE_URL}/storage/v1/object/item-fotos/${padProd}`,{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
+          body:INKOOP.foto_prod
+        });
+        const publicUrl=`${SUPABASE_URL}/storage/v1/object/public/item-fotos/${padProd}`;
+        await _restPatch(`items?id=eq.${encodeURIComponent(itemId)}`,{foto_url:publicUrl});
+      }catch(e){console.warn('Productfoto upload:',e);}
+    }
+
+    // 3. Bewijsfoto's uploaden naar privé bucket (optioneel)
+    let bewijs1Url=null,bewijs2Url=null;
+    if(INKOOP.foto_bew1){
+      status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📎 Bewijsfoto 1 uploaden...</div>';
+      try{
+        const padB1=`${STATE.org_id}/${itemId}-bewijs1-${Date.now()}.jpg`;
+        await fetch(`${SUPABASE_URL}/storage/v1/object/inkoop-bewijzen/${padB1}`,{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
+          body:INKOOP.foto_bew1
+        });
+        bewijs1Url=padB1;
+      }catch(e){console.warn('Bewijs1 upload:',e);}
+    }
+    if(INKOOP.foto_bew2){
+      status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📎 Bewijsfoto 2 uploaden...</div>';
+      try{
+        const padB2=`${STATE.org_id}/${itemId}-bewijs2-${Date.now()}.jpg`;
+        await fetch(`${SUPABASE_URL}/storage/v1/object/inkoop-bewijzen/${padB2}`,{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
+          body:INKOOP.foto_bew2
+        });
+        bewijs2Url=padB2;
+      }catch(e){console.warn('Bewijs2 upload:',e);}
+    }
+    // Bewijsfoto-paden opslaan in items
+    if(bewijs1Url||bewijs2Url){
+      try{await _restPatch(`items?id=eq.${encodeURIComponent(itemId)}`,{
+        bewijs1_url:bewijs1Url,bewijs2_url:bewijs2Url
+      });}catch(e){console.warn('Bewijs paden opslaan:',e);}
+    }
+
+    // 4. Inkoopbon PDF + email
+    status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📧 Inkoopbon mailen naar invoice@...</div>';
+    try{
+      const doc=_maakInkoopbonPDFmobiel({
+        naam:INKOOP.naam,inkoopbonNr,artikelnummer,
+        prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
+        locatie:INKOOP.locatie,datum:INKOOP.datum,notitie:INKOOP.notitie
+      });
+      const pdfBase64=doc.output('datauristring').split(',')[1];
+      const payload={
+        naam:INKOOP.naam,inkoopbonNr,artikelnummer,
+        prijs:INKOOP.prijs,categorie:INKOOP.categorie,stof:INKOOP.stof,
+        locatie:INKOOP.locatie,datum:INKOOP.datum,notitie:INKOOP.notitie,
+        pdfBase64,pdfBestandsnaam:`inkoopbon-${inkoopbonNr}.pdf`
+      };
+      if(INKOOP.foto_bew1){
+        payload.bewijs1Base64=await _blobNaarBase64(INKOOP.foto_bew1);
+        payload.bewijs1Bestandsnaam=`bewijs-1-${inkoopbonNr}.jpg`;
+      }
+      if(INKOOP.foto_bew2){
+        payload.bewijs2Base64=await _blobNaarBase64(INKOOP.foto_bew2);
+        payload.bewijs2Bestandsnaam=`bewijs-2-${inkoopbonNr}.jpg`;
+      }
+      const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-inkoop',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+      const json=await res.json();
+      if(!res.ok)console.warn('Inkoop email:',json);
+    }catch(e){console.warn('Inkoop email mislukt:',e);}
+
+    // 5. Klaar
+    $('ink-klaar-info').innerHTML=`
+      <div style="font-size:18px;font-weight:700;color:var(--or);margin-bottom:8px">${_esc(INKOOP.naam)}</div>
+      <div>Artikelnummer: <strong>${_esc(artikelnummer||'—')}</strong></div>
+      <div>Inkoopbon: <strong>${_esc(inkoopbonNr||'—')}</strong></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gr)">Mail met inkoopbon-PDF is verstuurd naar invoice@nijhofbrothers.nl</div>
+    `;
+    $('ink-stap-1').classList.remove('show');
+    $('ink-stap-2').classList.remove('show');
+    $('ink-stap-3').classList.remove('show');
+    $('ink-stap-klaar').classList.add('show');
+    $('ink-btn-prev').style.display='none';
+    $('ink-btn-next').style.display='none';
+    INKOOP.bezig=false;
+  }catch(e){
+    console.error('Inkoop opslaan fout:',e);
+    status.innerHTML=`<div style="background:#fee2e2;color:#b91c1c;padding:10px;border-radius:8px;font-size:13px">⚠️ Fout: ${_esc(e.message)}</div>`;
+    INKOOP.bezig=false;
+    updInkStapBtn();
+  }
+}
+
+// ── INKOOPBON PDF (mobiel) ────────────────────────────────────────
+function _maakInkoopbonPDFmobiel(data){
+  const{naam,inkoopbonNr,artikelnummer,prijs,categorie,stof,locatie,datum,notitie}=data;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const fmtD=d=>{if(!d)return'—';const dt=new Date(d);if(isNaN(dt))return d;return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;};
+
+  // Header
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,35,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,31,210,4,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,17);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE',15,23);
+  doc.setFontSize(8);
+  doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
+  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('BTW NL868569215B01',195,23,{align:'right'});
+  doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
+
+  // Titel
+  doc.setTextColor(30,47,58);doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('INKOOPBON',15,52);
+  doc.setFontSize(11);doc.setFont('helvetica','normal');doc.setTextColor(107,114,128);
+  doc.text('Interne registratie inkoop',15,59);
+
+  doc.setFontSize(10);doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');
+  doc.text('Inkoopbonnr:',140,52);doc.setFont('helvetica','normal');
+  doc.setTextColor(232,119,34);doc.text(inkoopbonNr||'—',195,52,{align:'right'});
+  doc.setTextColor(30,47,58);doc.setFont('helvetica','bold');
+  doc.text('Datum:',140,58);doc.setFont('helvetica','normal');
+  doc.text(fmtD(datum),195,58,{align:'right'});
+
+  let y=76;
+  doc.setDrawColor(229,231,235);doc.setLineWidth(0.3);
+  doc.line(15,y,195,y);
+
+  const rij=(label,waarde,bold=false)=>{
+    doc.setFontSize(10);
+    doc.setTextColor(107,114,128);doc.setFont('helvetica','normal');
+    doc.text(label,15,y+6);
+    doc.setTextColor(30,47,58);doc.setFont('helvetica',bold?'bold':'normal');
+    doc.text(String(waarde||'—'),70,y+6);
+    y+=10;
+    doc.setDrawColor(243,244,246);doc.line(15,y,195,y);
+  };
+
+  rij('Artikelnummer',artikelnummer||'—',true);
+  rij('Naam',naam,true);
+  rij('Categorie',categorie||'—');
+  if(stof)rij('Stof',stof);
+  if(locatie)rij('Locatie',locatie);
+  rij('Inkoopdatum',fmtD(datum));
+
+  y+=4;
+  doc.setFillColor(254,243,199);doc.setDrawColor(232,119,34);
+  doc.roundedRect(15,y,180,16,2,2,'FD');
+  doc.setTextColor(120,53,15);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('INKOOPPRIJS',20,y+10);
+  doc.setTextColor(232,119,34);doc.setFontSize(15);
+  doc.text('€ '+Number(prijs||0).toFixed(2).replace('.',','),190,y+11,{align:'right'});
+  y+=22;
+
+  if(notitie){
+    doc.setTextColor(107,114,128);doc.setFontSize(9);doc.setFont('helvetica','bold');
+    doc.text('NOTITIE',15,y+5);y+=8;
+    doc.setTextColor(30,47,58);doc.setFontSize(10);doc.setFont('helvetica','normal');
+    const lines=doc.splitTextToSize(notitie,180);
+    lines.forEach(l=>{doc.text(l,15,y);y+=5;});
+    y+=4;
+  }
+
+  doc.setTextColor(156,163,175);doc.setFontSize(8);doc.setFont('helvetica','italic');
+  const voetY=270;
+  doc.text('Dit is een interne inkoopbon voor administratie. Bewaar voor je boekhouding.',105,voetY,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(7);
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,voetY+6,{align:'center'});
+  doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,voetY+10,{align:'center'});
+
+  return doc;
+}
+
 
 // ── DATA LADEN ────────────────────────────────────────────────────
 function _authHeaders(){
@@ -1577,10 +2132,13 @@ function nieuweVerkoop(){
 
 
 async function naApp(){
-  toonScherm('screen-app');
+  toonScherm('screen-keuze');
   await laadOrgId();
+  // Voorraad alvast voor verkoop, maar gebruiker kiest eerst
   await laadVoorraad();
-  toonStap(1);
+  toonStap(1); // hidden, alleen ready voor wanneer verkoop gekozen wordt
+  // Reset inkoopdatum default
+  const dat=$('ink-dat');if(dat&&!dat.value)dat.value=new Date().toISOString().split('T')[0];
 }
 
 async function init(){
