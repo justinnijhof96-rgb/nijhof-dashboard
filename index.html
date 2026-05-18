@@ -1075,6 +1075,10 @@ function _renderVerkocht(){
       const i=x.item,v=x.verkoop;
       const datum=fmtD(v.datum);
       const marge=(v.brutoMarge||0);
+      // Check of factuur bestaat
+      const heeftFactuur=_facturenCache.some(f=>f.verkoop_id===v.id);
+      const factuurBtnLabel=heeftFactuur?'👁️':'📄';
+      const factuurBtnTitle=heeftFactuur?'Bekijk factuur PDF':'Factuur genereren';
       return `<tr>
         <td style="font-size:12px;white-space:nowrap">${datum}</td>
         <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
@@ -1084,11 +1088,85 @@ function _renderVerkocht(){
         <td style="color:${marge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(marge)}</td>
         <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
         <td style="white-space:nowrap">
+          <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
           <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
           <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
         </td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
+}
+
+// ── FACTUUR ACTIE VANUIT ARCHIEF ──────────────────────────────────
+// Bekijk bestaande factuur of genereer nieuwe als 'ie ontbreekt
+async function factuurActieArchief(itemId){
+  const item=DB.items.find(x=>x.id===itemId);
+  const vk=DB.verkopen.find(v=>v.itemId===itemId);
+  if(!item||!vk){toast('Item of verkoop niet gevonden','#dc2626');return;}
+  // Bestaand?
+  const bestaand=_facturenCache.find(f=>f.verkoop_id===vk.id);
+  if(bestaand){
+    return bekijkFactuurPDF(bestaand.id);
+  }
+  // Genereren
+  if(!confirm(`Factuur PDF genereren voor "${item.naam}"?\nFactuurnr: ${vk.factuur||'(nieuw)'}\nDeze wordt opgeslagen in Storage + DB.`))return;
+  toast('💾 Factuur genereren...','#2563eb');
+  try{
+    // Klantdata reconstrueren — vanuit klanten-tabel of vk metadata
+    let klantData={naam:'',email:'',telefoon:'',adres:'',postcode:'',plaats:''};
+    // Probeer klant te vinden via verkoop_id link in facturen (niet aanwezig) → val terug op leeg
+    // Bewerk-flow: vraag minimaal naam
+    const klantNaam=prompt('Klantnaam (verplicht voor factuur):','');
+    if(!klantNaam || !klantNaam.trim()){toast('Geannuleerd','#6b7280');return;}
+    klantData.naam=klantNaam.trim();
+    const klantEmail=prompt('Klant email (optioneel — leeg laten = geen mail):','')||'';
+    klantData.email=klantEmail.trim();
+
+    // Factuurnr — als ontbrekend, nieuwe genereren
+    let factuurnr=vk.factuur;
+    if(!factuurnr){
+      factuurnr=volgendeFactuur();
+      vk.factuur=factuurnr;
+      // Update verkopen-record
+      try{await dbUpdate('verkopen',vk.id,{factuur:factuurnr});}catch(e){console.warn('Factuurnr update:',e);}
+    }
+
+    const pdfData={
+      item,
+      verkoopId:vk.id,
+      factuurnr,
+      verkoopDatum:vk.datum,
+      verkoopprijs:vk.verkoopprijs,
+      impregneer:vk.impregneer||0,
+      services:vk.services||null,
+      extrasZichtbaar:!!vk.extrasZichtbaar,
+      factuurTotaal:vk.factuurTotaal||vk.verkoopprijs,
+      btwMethode:vk.btwMethode||'marge',
+      btw:vk.btw||0,
+      termijnen:vk.termijnen||[],
+      klant:klantData,
+      type:vk.type||'volledig'
+    };
+
+    // PDF maken
+    const doc=_maakFactuurPDF(pdfData);
+    const pdfBlob=doc.output('blob');
+
+    // Upload
+    const r=await _uploadFactuurPDF(pdfBlob,factuurnr);
+    const pdfPad=r.pad;
+
+    // DB record
+    const rows=await _slaFactuurOpInDB({pdfData,klantId:null,pdfUrl:pdfPad,wilEmailen:false});
+    if(!rows||!rows.length)throw new Error('DB-record opslaan mislukt');
+
+    // Lijst verversen
+    await laadFacturenUitDB();
+    renderArchief();
+    toast(`✅ Factuur ${factuurnr} gegenereerd`,'#15803d');
+  }catch(e){
+    console.error('Factuur genereren fout:',e);
+    toast('⚠️ Mislukt: '+e.message,'#dc2626');
+  }
 }
 
 function _renderAfgestort(){
