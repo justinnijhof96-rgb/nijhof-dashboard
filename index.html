@@ -3570,7 +3570,8 @@ function renderFacturen(){
       const fid=esc(f.id);
       const acties=`
         <button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${fid}')" title="Bekijk PDF">👁️</button>
-        ${f.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${fid}')" title="Opnieuw versturen">📤</button>`:''}`;
+        ${f.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${fid}')" title="Opnieuw versturen">📤</button>`:''}
+        <button class="btn btn-rd btn-xs" onclick="verwijderFactuur('${fid}')" title="Verwijder factuur">🗑️</button>`;
       return `<tr>
         <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(f.factuurnummer)}</span></td>
         <td>${datum}</td>
@@ -3591,6 +3592,30 @@ async function bekijkFactuurPDF(factuurId){
   const signedUrl=await _getFactuurSignedUrl(f.pdf_url);
   if(!signedUrl){toast('PDF link genereren mislukt','#dc2626');return;}
   window.open(signedUrl,'_blank');
+}
+
+async function verwijderFactuur(factuurId){
+  const f=_facturenCache.find(x=>x.id===factuurId);
+  if(!f){toast('Factuur niet gevonden','#dc2626');return;}
+  const klant=f.klant_naam||'(geen klant)';
+  if(!confirm(`Factuur ${f.factuurnummer} (${klant}) verwijderen?\n\nDe verkoop zelf blijft staan — je kunt later opnieuw een factuur genereren in 📦 Archief.`))return;
+  toast('🗑️ Factuur verwijderen...','#c2410c');
+  try{
+    // 1. PDF uit storage (best effort)
+    if(f.pdf_url){
+      await _sb.storage.from('facturen-pdf').remove([f.pdf_url]).catch(e=>console.warn('PDF wissen:',e));
+    }
+    // 2. DB record
+    await dbDelete('facturen','id=eq.'+encodeURIComponent(factuurId));
+    // 3. Cache opschonen
+    _facturenCache=_facturenCache.filter(x=>x.id!==factuurId);
+    renderFacturen();
+    if(typeof renderArchief==='function')renderArchief();
+    toast(`✅ Factuur ${f.factuurnummer} verwijderd`,'#15803d');
+  }catch(e){
+    console.error('Factuur verwijder fout:',e);
+    toast('⚠️ Verwijderen mislukt: '+e.message,'#dc2626');
+  }
 }
 
 async function verstuurFactuurOpnieuw(factuurId){
