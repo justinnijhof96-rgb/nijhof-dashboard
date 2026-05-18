@@ -3230,7 +3230,9 @@ function _renderDashMain(range){
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
   const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen}=cur;
-  const inkW=beschikbaar.reduce((a,i)=>a+i.prijs,0);
+  // Waarde in loods: verwachte verkoopprijs (fallback op inkoopprijs als vvp niet ingevuld)
+  const inkW=beschikbaar.reduce((a,i)=>a+(i.verwacht_vp>0?i.verwacht_vp:i.prijs),0);
+  const zonderVvp=beschikbaar.filter(i=>!(i.verwacht_vp>0)).length;
   const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
 
   const kpis=`<div class="mgrid">
@@ -3337,7 +3339,7 @@ function _renderDashMain(range){
       <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv">${inkopen.length}</div></div>
       <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv">${eur(inkBed)}</div></div>
       <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
-      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items</div></div>
+      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items${zonderVvp>0?` · ⚠️ ${zonderVvp} zonder VVP`:''}</div></div>
     </div>
   </div>`;
 
