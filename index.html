@@ -196,6 +196,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <div id="nav-links">
     <a href="#s-inkoop">📥 Inkoop</a>
     <a href="#s-voorraad">📦 Voorraad</a>
+    <a href="#s-status">📊 Hoe staan we ervoor?</a>
     <a href="#s-lasten">💸 Lasten</a>
     <a href="#s-debiteuren">📋 Debiteuren</a>
     <a href="#s-archief">📦 Archief</a>
@@ -273,6 +274,14 @@ main{max-width:1280px;margin:0 auto;padding:16px}
       </select>
     </div>
     <div class="kgrid" id="k-container"></div>
+  </div>
+</div>
+
+<!-- HOE STAAN WE ERVOOR — focus op huidige maand -->
+<div class="sec" id="s-status">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📊 Hoe staan we ervoor?</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div id="status-content"></div>
   </div>
 </div>
 
@@ -3167,6 +3176,96 @@ function _afstortVerliesInRange(van,tot){
   }).reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
 }
 
+// ──────────────────────────────────────────────────────────────────
+// HOE STAAN WE ERVOOR — focus op huidige maand
+// ──────────────────────────────────────────────────────────────────
+function renderStatus(){
+  const cont=el('status-content');
+  if(!cont)return;
+  // Lopende maand range
+  const nu=new Date();
+  const jr=nu.getFullYear(),mn=nu.getMonth();
+  const van=new Date(jr,mn,1);
+  const tot=new Date(jr,mn+1,0,23,59,59);
+  const dagenInMnd=new Date(jr,mn+1,0).getDate();
+  const dagVdMnd=nu.getDate();
+  const dagenLeft=Math.max(0,dagenInMnd-dagVdMnd);
+  // Cijfers (via _calcPeriode formules)
+  const calc=_calcPeriode(van,tot);
+  const marge=calc.netto; // bruto - btw - afstortverlies
+  const lastenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
+  const teGaan=Math.max(0, lastenM-marge);
+  const gedekt=marge>=lastenM;
+  const winst=marge-lastenM;
+  // Ritme: hoeveel verkopen nog nodig
+  const {waarde:gemMarge}=getGemMarge();
+  const verkopenTeGaan=teGaan>0 && gemMarge>0 ? Math.ceil(teGaan/gemMarge) : 0;
+  // Progress %
+  const progressPct = lastenM>0 ? Math.min(100, Math.round(marge/lastenM*100)) : 0;
+  const MN=['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+
+  // Tile 1: Marge deze maand
+  const tile1=`
+    <div class="mc green" style="border-left:4px solid var(--gn)">
+      <div class="ml">💰 Marge deze maand</div>
+      <div class="mv" style="font-size:26px;color:${marge>=0?'var(--gn)':'var(--rd)'}">${eur(marge)}</div>
+      <div class="mt" style="color:var(--gr)">netto marge</div>
+    </div>`;
+  // Tile 2: Te gaan
+  const tile2=gedekt
+    ? `<div class="mc green" style="border-left:4px solid var(--gn)">
+        <div class="ml">🎯 Te gaan</div>
+        <div class="mv" style="font-size:22px;color:var(--gn)">✅ Gedekt!</div>
+        <div class="mt" style="color:var(--gn)">+${eur(winst)} winst</div>
+      </div>`
+    : `<div class="mc" style="border-left:4px solid var(--or)">
+        <div class="ml">🎯 Te gaan</div>
+        <div class="mv" style="font-size:26px;color:var(--or)">${eur(teGaan)}</div>
+        <div class="mt" style="color:var(--gr)">voor lasten gedekt</div>
+      </div>`;
+  // Tile 3: Ritme
+  let tile3;
+  if(gedekt){
+    tile3=`<div class="mc green" style="border-left:4px solid var(--gn)">
+      <div class="ml">⏱️ Ritme</div>
+      <div class="mv" style="font-size:20px;color:var(--gn)">Doorlopen</div>
+      <div class="mt" style="color:var(--gr)">${dagenLeft} dagen left</div>
+    </div>`;
+  } else if(verkopenTeGaan===0){
+    tile3=`<div class="mc" style="border-left:4px solid var(--gr)">
+      <div class="ml">⏱️ Ritme</div>
+      <div class="mv" style="font-size:18px;color:var(--gr)">—</div>
+      <div class="mt" style="color:var(--gr)">vul gem. marge in</div>
+    </div>`;
+  } else {
+    tile3=`<div class="mc" style="border-left:4px solid var(--or)">
+      <div class="ml">⏱️ Ritme nodig</div>
+      <div class="mv" style="font-size:26px;color:var(--or)">~${verkopenTeGaan} verko${verkopenTeGaan===1?'op':'pen'}</div>
+      <div class="mt" style="color:var(--gr)">in ${dagenLeft} dagen</div>
+    </div>`;
+  }
+  // Progress bar
+  const barKleur = gedekt?'var(--gn)':progressPct>=66?'var(--gn)':progressPct>=33?'var(--or)':'var(--rd)';
+  const progressText = gedekt
+    ? `✅ Lasten gedekt + ${eur(winst)} winst`
+    : `${progressPct}% richting break-even`;
+  const progressBar=`
+    <div style="margin-top:18px">
+      <div style="height:18px;background:#f3f4f6;border-radius:9px;overflow:hidden;position:relative">
+        <div style="height:100%;width:${Math.min(100,progressPct)}%;background:${barKleur};transition:width .4s ease;border-radius:9px"></div>
+      </div>
+      <div style="text-align:center;font-size:13px;font-weight:600;color:${barKleur};margin-top:6px">${progressText}</div>
+    </div>`;
+
+  cont.innerHTML=`
+    <div style="font-size:13px;color:var(--gr);margin-bottom:10px">${MN[mn]} ${jr} — dag ${dagVdMnd} van ${dagenInMnd}</div>
+    <div class="mgrid" style="margin:0">
+      ${tile1}${tile2}${tile3}
+    </div>
+    ${progressBar}
+  `;
+}
+
 function _calcPeriode(van,tot){
   const vkSel=_vkInRange(van,tot);
   const ontvangen=_ontvangenInRange(van,tot);
@@ -3204,6 +3303,7 @@ function renderDash(){
   el('periode-lbl').textContent=_periodeLbl(range);
   _renderKpiWarns(range);
   _renderDashMain(range);
+  renderStatus();
 }
 
 function _renderKpiWarns(range){
@@ -3932,7 +4032,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();}
+function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();}
 </script>
 </body>
 </html>
