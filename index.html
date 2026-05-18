@@ -3003,7 +3003,7 @@ function _bevestigImport(){
   toast(gedupliceerd>0?`✅ ${toegevoegd} geïmporteerd (${gedupliceerd} mogelijk dubbel)`:`✅ ${toegevoegd} lasten geïmporteerd`);
 }
 
-let _instellingen = { inkoopTarget:3, gemMargeOverride:null, bankBalans:null };
+let _instellingen = { inkoopTarget:3, gemMargeOverride:null };
 let _orgInstellingen = { boekhoudEmail:null, naam:'' };
 
 async function slaInstellingenOp(){
@@ -3176,28 +3176,6 @@ function _afstortVerliesInRange(van,tot){
   }).reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
 }
 
-// Bankbalans — lokaal opslaan per user
-function _bankBalansKey(){
-  const uid = _getUserId ? _getUserId() : 'anon';
-  return 'nb-bank-balans-'+uid;
-}
-function _leesBankBalans(){
-  try{
-    const v = localStorage.getItem(_bankBalansKey());
-    if(v===null || v==='') return null;
-    const n = parseFloat(v);
-    return isNaN(n) ? null : n;
-  }catch(e){return null;}
-}
-function setBankBalans(v){
-  const n = parseFloat(v);
-  try{
-    if(isNaN(n)) localStorage.removeItem(_bankBalansKey());
-    else localStorage.setItem(_bankBalansKey(), String(n));
-  }catch(e){console.warn('bankBalans opslaan:',e);}
-  renderStatus();
-}
-
 // ──────────────────────────────────────────────────────────────────
 // HOE STAAN WE ERVOOR — focus op huidige maand
 // ──────────────────────────────────────────────────────────────────
@@ -3279,89 +3257,6 @@ function renderStatus(){
       <div style="text-align:center;font-size:13px;font-weight:600;color:${barKleur};margin-top:6px">${progressText}</div>
     </div>`;
 
-  // ── CASHFLOW BLOK ──────────────────────────────────────────────
-  const bankBalans = _leesBankBalans();
-  // Termijnen vervallend rest van deze maand
-  let termijnenRestMnd = 0;
-  DB.verkopen.forEach(vk=>{
-    (vk.termijnen||[]).filter(t=>!t.betaald && t.vervaldatum).forEach(t=>{
-      const vd = new Date(t.vervaldatum);
-      if(!isNaN(vd) && vd>=nu && vd<=tot){
-        termijnenRestMnd += t.bedrag||0;
-      }
-    });
-  });
-  // Projected nieuwe verkopen — als OMZET (marge ÷ marge-ratio uit huidige maand)
-  const margeRatio = calc.ontvangen>0 ? calc.bruto/calc.ontvangen : 0.5; // fallback 50%
-  const projDagMarge = dagVdMnd>0 ? calc.bruto/dagVdMnd : 0;
-  const projNieuweMarge = projDagMarge * dagenLeft;
-  const projNieuweOmzet = margeRatio>0 ? projNieuweMarge/margeRatio : 0;
-  // Totaal verwacht binnen rest maand
-  const verwachtBinnen = termijnenRestMnd + projNieuweOmzet;
-  // Lasten volgende maand
-  const lastenVolgendeMnd = lastenM;
-  // Projected saldo eind maand (na betaling volgende-maand lasten)
-  const projectedSaldo = bankBalans!==null ? bankBalans + verwachtBinnen - lastenVolgendeMnd : null;
-  // Veilig inkoopbudget = projected saldo − lasten daarna
-  const veiligBudget = projectedSaldo!==null ? projectedSaldo - lastenM : null;
-
-  const MN_KORT=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
-  const volgendeMnd = MN_KORT[(mn+1)%12];
-  const lastenDaarnaMnd = MN_KORT[(mn+2)%12];
-
-  const cashflowBlok = `
-    <div style="margin-top:22px;border-top:1px solid #e5e7eb;padding-top:18px">
-      <div style="font-weight:700;font-size:15px;margin-bottom:12px">💳 Cashflow</div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div style="background:#f9fafb;padding:14px;border-radius:8px">
-          <div style="font-size:12px;color:var(--gr);margin-bottom:6px">Bankbalans nu</div>
-          <input type="number" id="bank-balans-inp" step="0.01" min="0" placeholder="0,00"
-            value="${bankBalans!==null?bankBalans:''}"
-            onchange="setBankBalans(this.value)"
-            style="width:100%;font-size:22px;font-weight:700;color:var(--nv);border:none;background:transparent;outline:none;padding:0">
-          <div style="font-size:11px;color:var(--gr);margin-top:4px">€ — handmatig invoeren</div>
-        </div>
-
-        ${bankBalans!==null ? `
-        <div style="background:${projectedSaldo>=0?'#dcfce7':'#fee2e2'};padding:14px;border-radius:8px">
-          <div style="font-size:12px;color:${projectedSaldo>=0?'#15803d':'#b91c1c'};margin-bottom:6px;font-weight:600">Projected eind ${MN_KORT[mn]} (na lasten ${volgendeMnd})</div>
-          <div style="font-size:22px;font-weight:700;color:${projectedSaldo>=0?'#15803d':'#b91c1c'}">${eur(projectedSaldo)}</div>
-          <div style="font-size:11px;color:${projectedSaldo>=0?'#15803d':'#b91c1c'};margin-top:4px;opacity:.8">na -${eur(lastenVolgendeMnd)} ${volgendeMnd}-lasten</div>
-        </div>
-        ` : `
-        <div style="background:#f9fafb;padding:14px;border-radius:8px;color:var(--gr);font-size:13px;display:flex;align-items:center">
-          ⬅️ Vul bankbalans in om projecties te zien
-        </div>
-        `}
-      </div>
-
-      ${bankBalans!==null ? `
-      <details style="margin-top:10px;font-size:13px;color:var(--gr)">
-        <summary style="cursor:pointer;user-select:none">📋 Berekening tonen</summary>
-        <table style="width:100%;margin-top:8px;font-size:13px">
-          <tr><td style="padding:3px 0">Bankbalans nu</td><td style="text-align:right;font-family:ui-monospace,monospace">${eur(bankBalans)}</td></tr>
-          <tr><td style="padding:3px 0;color:var(--gn)">+ Termijnen vervallend rest ${MN_KORT[mn]}</td><td style="text-align:right;font-family:ui-monospace,monospace;color:var(--gn)">+${eur(termijnenRestMnd)}</td></tr>
-          <tr><td style="padding:3px 0;color:var(--gn)">+ Projected nieuwe omzet (${dagenLeft} dagen × ~${eur(projNieuweOmzet/Math.max(dagenLeft,1))}/dag)</td><td style="text-align:right;font-family:ui-monospace,monospace;color:var(--gn)">+${eur(projNieuweOmzet)}</td></tr>
-          <tr><td style="padding:3px 0;color:var(--rd)">- Vaste lasten ${volgendeMnd} vooruit</td><td style="text-align:right;font-family:ui-monospace,monospace;color:var(--rd)">-${eur(lastenVolgendeMnd)}</td></tr>
-          <tr style="border-top:1px solid #e5e7eb"><td style="padding:6px 0;font-weight:700">= Projected eind ${MN_KORT[mn]}</td><td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:${projectedSaldo>=0?'var(--gn)':'var(--rd)'}">${eur(projectedSaldo)}</td></tr>
-        </table>
-      </details>
-      ` : ''}
-
-      ${bankBalans!==null ? `
-      <div style="margin-top:14px;background:${veiligBudget>=0?'#dcfce7':'#fef3c7'};border-left:4px solid ${veiligBudget>=0?'var(--gn)':'#c2410c'};padding:14px;border-radius:8px">
-        <div style="font-size:12px;color:${veiligBudget>=0?'#15803d':'#9a3412'};font-weight:600;margin-bottom:4px">🛒 Veilig inkoopbudget</div>
-        <div style="font-size:24px;font-weight:700;color:${veiligBudget>=0?'#15803d':'#c2410c'}">${eur(veiligBudget)}</div>
-        <div style="font-size:11px;color:${veiligBudget>=0?'#15803d':'#9a3412'};margin-top:4px;opacity:.85">
-          ${veiligBudget>=0
-            ? `kan je nu uitgeven aan inkoop zonder ${lastenDaarnaMnd}-lasten in gevaar te brengen`
-            : `tekort van ${eur(Math.abs(veiligBudget))} om ${lastenDaarnaMnd}-lasten te dekken`}
-        </div>
-      </div>
-      ` : ''}
-    </div>
-  `;
 
   cont.innerHTML=`
     <div style="font-size:13px;color:var(--gr);margin-bottom:10px">${MN[mn]} ${jr} — dag ${dagVdMnd} van ${dagenInMnd}</div>
@@ -3369,7 +3264,6 @@ function renderStatus(){
       ${tile1}${tile2}${tile3}
     </div>
     ${progressBar}
-    ${cashflowBlok}
   `;
 }
 
