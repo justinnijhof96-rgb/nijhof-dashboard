@@ -407,6 +407,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
             <input type="file" accept=".json" onchange="importJSON(event)" style="display:none">
           </label>
           <button class="btn btn-gy btn-sm" onclick="window.print()">🖨️ PDF / Printen</button>
+          <button class="btn btn-or btn-sm" onclick="diagnoseExport()" title="Voor support — alle data + berekeningen">🔍 Diagnose-export</button>
         </div>
       </div>
       <div>
@@ -3446,6 +3447,143 @@ function stopConf(){if(_cRAF){cancelAnimationFrame(_cRAF);_cRAF=null;}const cv=e
 
 function dlBlob(blob,naam){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=naam;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);}
 function exportJSON(){dlBlob(new Blob([JSON.stringify({...DB,geexporteerd:new Date().toISOString()},null,2)],{type:'application/json'}),`nijhof-backup-${vandaag()}.json`);toast('⬇️ Backup gedownload');}
+
+function diagnoseExport(){
+  // Volledige diagnose: items, verkopen, termijnen, facturen, lasten + doorgerekende waarden
+  const nu=new Date().toISOString();
+  // Items met enrichments
+  const items=DB.items.map(i=>{
+    const vk=DB.verkopen.find(v=>v.itemId===i.id);
+    return {
+      id:i.id, artikelnummer:i.artikelnummer, inkoopbon_nr:i.inkoopbon_nr,
+      naam:i.naam, categorie:i.categorie, stof:i.stof, locatie:i.locatie,
+      prijs:i.prijs, verwacht_vp:i.verwacht_vp, datum:i.datum,
+      status:i.status, stortkosten:i.stortkosten||0,
+      afgestortOp:i.afgestortOp, del_reden:i.del_reden,
+      aangemaaktOp:i.aangemaaktOp,
+      heeft_verkoop:!!vk, verkoop_id:vk?.id
+    };
+  });
+  // Verkopen met enrichments + DOORGEREKENDE waarden
+  const verkopen=DB.verkopen.map(v=>{
+    const item=DB.items.find(i=>i.id===v.itemId);
+    const services=Array.isArray(v.services)?v.services:(v.impregneer>0?[{naam:'Impregneerbehandeling',bedrag:v.impregneer}]:[]);
+    const servicesTot=services.reduce((a,s)=>a+(s.bedrag||0),0);
+    const factTot=v.factuurTotaal||(v.verkoopprijs+servicesTot);
+    const termTotaal=(v.termijnen||[]).reduce((a,t)=>a+(t.bedrag||0),0);
+    const termBetaald=(v.termijnen||[]).filter(t=>t.betaald).reduce((a,t)=>a+(t.bedrag||0),0);
+    const termOpenstaand=termTotaal-termBetaald;
+    const bruto=item?(v.verkoopprijs-item.prijs):null;
+    const netto=bruto!==null?bruto+servicesTot:null;
+    const btwBerekend=v.btwMethode==='standaard'
+      ? factTot/1.21*0.21
+      : Math.max(0,(v.verkoopprijs-(item?.prijs||0))/1.21*0.21);
+    // Diagnose: zit de termijn-som gelijk aan factuurTotaal?
+    const termClopt=Math.abs(termTotaal-factTot)<0.02;
+    // Cache-status: factuur en contract aanwezig?
+    const factuur=_facturenCache.find(f=>f.verkoop_id===v.id);
+    const contract=_contractenCache.find(c=>c.verkoop_id===v.id);
+    return {
+      id:v.id, factuur:v.factuur,
+      item_id:v.itemId, item_naam:item?.naam, item_artikelnummer:item?.artikelnummer,
+      item_inkoop:item?.prijs,
+      verkoopprijs:v.verkoopprijs,
+      services_json:services,
+      services_totaal:servicesTot,
+      factuur_totaal_opgeslagen:v.factuurTotaal,
+      factuur_totaal_berekend:factTot,
+      btw_methode:v.btwMethode,
+      btw_opgeslagen:v.btw,
+      btw_berekend:btwBerekend,
+      btw_klopt:Math.abs((v.btw||0)-btwBerekend)<0.02,
+      bruto_marge_opgeslagen:v.brutoMarge,
+      bruto_marge_berekend:bruto,
+      bruto_klopt:bruto===null?null:Math.abs((v.brutoMarge||0)-bruto)<0.02,
+      netto_marge_opgeslagen:v.nettoMarge,
+      netto_marge_berekend:netto,
+      netto_klopt:netto===null?null:Math.abs((v.nettoMarge||0)-netto)<0.02,
+      type:v.type, extras_zichtbaar:v.extrasZichtbaar,
+      datum:v.datum, datum_registratie:v.datum_registratie,
+      termijnen:(v.termijnen||[]).map(t=>({
+        nr:t.nr, label:t.label, bedrag:t.bedrag,
+        vervaldatum:t.vervaldatum, betaalmethode:t.betaalmethode,
+        betaald:!!t.betaald, betaaldOp:t.betaaldOp
+      })),
+      termijnen_totaal:termTotaal,
+      termijnen_betaald:termBetaald,
+      termijnen_openstaand:termOpenstaand,
+      termijnen_kloppen_met_factuurtotaal:termClopt,
+      heeft_factuur_record:!!factuur,
+      factuurnummer_in_factuur_tabel:factuur?.factuurnummer,
+      factuurnummer_in_verkoop:v.factuur,
+      factuurnummer_klopt:!factuur||factuur.factuurnummer===v.factuur,
+      heeft_contract:!!contract,
+      contract_ondertekend:contract?.ondertekend
+    };
+  });
+  // Facturen tabel (DB)
+  const facturen=(_facturenCache||[]).map(f=>({
+    id:f.id, factuurnummer:f.factuurnummer, verkoop_id:f.verkoop_id,
+    klant_naam:f.klant_naam, klant_email:f.klant_email,
+    product_naam:f.product_naam, item_id:f.item_id,
+    product_bedrag:f.product_bedrag, impregneer_bedrag:f.impregneer_bedrag,
+    bezorging_bedrag:f.bezorging_bedrag, subtotaal:f.subtotaal, totaal:f.totaal,
+    btw_methode:f.btw_methode, btw_bedrag:f.btw_bedrag,
+    factuurdatum:f.factuurdatum, status:f.status, pdf_url:f.pdf_url
+  }));
+  // Contracten
+  const contracten=(_contractenCache||[]).map(c=>({
+    id:c.id, contractnummer:c.contractnummer, verkoop_id:c.verkoop_id,
+    klant_naam:c.klant_naam, totaalbedrag:c.totaalbedrag,
+    ondertekend:c.ondertekend, ondertekend_op:c.ondertekend_op,
+    ondertekend_naam:c.ondertekend_naam, status:c.status, pdf_url:c.pdf_url
+  }));
+  // Lasten
+  const lasten=(DB.lasten||[]).map(l=>({
+    id:l.id, naam:l.naam, bedrag:l.bedrag, btwPct:l.btwPct, btwType:l.btwType,
+    typeKosten:l.typeKosten, betaalmethode:l.betaalmethode,
+    betaaldatum:l.betaaldatum, betaald:l.betaald, actief:l.actief
+  }));
+  // Samenvatting per status
+  const itemsPerStatus=items.reduce((acc,i)=>{acc[i.status]=(acc[i.status]||0)+1;return acc;},{});
+  // Vlaggen voor potentiële problemen
+  const problemen=[];
+  verkopen.forEach(v=>{
+    if(!v.bruto_klopt && v.bruto_klopt!==null)problemen.push(`Verkoop ${v.factuur}: bruto marge mismatch (opgeslagen ${v.bruto_marge_opgeslagen}, berekend ${v.bruto_marge_berekend})`);
+    if(!v.netto_klopt && v.netto_klopt!==null)problemen.push(`Verkoop ${v.factuur}: netto marge mismatch`);
+    if(!v.btw_klopt)problemen.push(`Verkoop ${v.factuur}: BTW mismatch (opgeslagen ${v.btw_opgeslagen}, berekend ${v.btw_berekend})`);
+    if(!v.termijnen_kloppen_met_factuurtotaal)problemen.push(`Verkoop ${v.factuur}: termijnen-som (${v.termijnen_totaal}) ≠ factuurtotaal (${v.factuur_totaal_berekend})`);
+    if(!v.factuurnummer_klopt)problemen.push(`Verkoop ${v.factuur}: factuurnummer mismatch tussen verkopen-tabel en facturen-tabel`);
+  });
+  // Dubbele factuurnummers?
+  const factuurNrs={};
+  [...verkopen.map(v=>v.factuur), ...facturen.map(f=>f.factuurnummer)].forEach(nr=>{
+    if(nr)factuurNrs[nr]=(factuurNrs[nr]||0)+1;
+  });
+  const dubbele=Object.keys(factuurNrs).filter(nr=>factuurNrs[nr]>1);
+  if(dubbele.length)problemen.push(`Dubbele factuurnummers: ${dubbele.join(', ')}`);
+
+  const diag={
+    geexporteerd_op:nu,
+    samenvatting:{
+      aantal_items:items.length,
+      items_per_status:itemsPerStatus,
+      aantal_verkopen:verkopen.length,
+      aantal_facturen:facturen.length,
+      aantal_contracten:contracten.length,
+      aantal_lasten:lasten.length,
+      aantal_problemen:problemen.length
+    },
+    potentiele_problemen:problemen,
+    items,
+    verkopen,
+    facturen,
+    contracten,
+    lasten
+  };
+  dlBlob(new Blob([JSON.stringify(diag,null,2)],{type:'application/json'}),`nijhof-diagnose-${vandaag()}.json`);
+  toast(`🔍 Diagnose gedownload — ${problemen.length} potentiële issue${problemen.length===1?'':'s'} gevonden`,problemen.length>0?'#c2410c':'#15803d');
+}
 function importJSON(evt){
   const f=evt.target.files[0];if(!f)return;
   const r=new FileReader();
