@@ -390,14 +390,13 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <div class="sec-body">
     <div class="grid3" style="gap:14px">
       <div>
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📊 Maand-analyse export</div>
-        <div style="font-size:11px;color:var(--gr);margin-bottom:8px">Volledige rapportage per maand. Voor AI-analyse, eigen Excel-bewerking, of als chat-input.</div>
-        <select id="maand-export-sel" class="btn btn-gy btn-sm" style="width:100%;margin-bottom:6px;text-align:left"></select>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📊 AI Analyse Export</div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          <button class="btn btn-or btn-sm" onclick="exportMaand('json')">📄 JSON — voor AI-prompt</button>
-          <button class="btn btn-gn btn-sm" onclick="exportMaand('xlsx')">📊 Excel — bewerken</button>
-          <button class="btn btn-gy btn-sm" onclick="exportMaand('csv')">📑 CSV — ruwe data</button>
-          <button class="btn btn-bl btn-sm" onclick="exportMaand('txt')">📝 TXT — plakken in chat</button>
+          <button class="btn btn-or btn-sm" onclick="aiExport('mtd','json')">📄 JSON — deze maand</button>
+          <button class="btn btn-or btn-sm" onclick="aiExport('ytd','json')">📄 JSON — jaar tot nu</button>
+          <button class="btn btn-gy btn-sm" onclick="aiExport('mtd','csv')">📑 CSV — deze maand</button>
+          <button class="btn btn-gy btn-sm" onclick="aiExport('ytd','csv')">📑 CSV — jaar tot nu</button>
+          <button class="btn btn-bl btn-sm" onclick="aiExport('mtd','txt')">📝 TXT samenvatting</button>
         </div>
       </div>
       <div>
@@ -1929,14 +1928,16 @@ async function bevestigVk(){
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
 
-  // ── FACTUUR FLOW (als klantgegevens ingevuld) ──
-  if(klantNaam && klantEmail){
+  // ── FACTUUR FLOW (altijd starten als klantnaam ingevuld — email optioneel) ──
+  if(klantNaam){
     const klantData={naam:klantNaam,email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
     const wilContract=(type==='termijn'||type==='aanbetaling') && chk('vk-maak-contract');
+    // Email-checkbox kan alleen aan als klant-email is ingevuld; zonder email → wilEmailen forceren op false
+    const wilEmailenEcht=wilEmailen && klantEmail;
     _voltooiFactuurFlow({
       klantData,
       pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant:klantData,type},
-      wilEmailen,
+      wilEmailen:wilEmailenEcht,
       wilContract
     }).catch(e=>{
       console.error('Factuur flow mislukt:',e);
@@ -3103,9 +3104,7 @@ function _calcPeriode(van,tot){
   const btwKosten=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
   const btwSaldo=btw-btwKosten;
   const inkopen=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
-  const inkoopUitgaven=inkopen.reduce((a,i)=>a+(i.prijs||0),0);
-  const nNaInkoop=nNaLasten-inkoopUitgaven;
-  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkoopUitgaven,nNaInkoop};
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen};
 }
 
 function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
@@ -3129,12 +3128,12 @@ function renderDash(){
 }
 
 function _renderKpiWarns(range){
-  const{beschikbaar,openBed,nNaInkoop,lastenP,afstortVerlies,inkoopUitgaven}=_calcPeriode(range.van,range.tot);
+  const{beschikbaar,openBed,nNaLasten,lastenP,afstortVerlies}=_calcPeriode(range.van,range.tot);
   const warns=[];
   const lang=beschikbaar.filter(i=>dgl(i.datum)>45);
   if(lang.length)warns.push({l:'r',m:`⏰ ${lang.length} item(s) staan langer dan 45 dagen in voorraad`});
   if(openBed>500)warns.push({l:'o',m:`💳 ${eur(openBed)} aan openstaande betalingen`});
-  if(lastenP>0&&nNaInkoop<0)warns.push({l:'r',m:`📉 Negatief netto resultaat: ${eur(nNaInkoop)} (lasten: ${eur(lastenP)} · inkoop: ${eur(inkoopUitgaven)})`});
+  if(lastenP>0&&nNaLasten<0)warns.push({l:'r',m:`📉 Negatief resultaat: ${eur(nNaLasten)} (lasten: ${eur(lastenP)})`});
   if(afstortVerlies>0)warns.push({l:'o',m:`🚮 ${eur(afstortVerlies)} verlies door afgestorte items`});
   el('kpi-warns').innerHTML=warns.map(w=>`<div class="kpi-warn kpi-${w.l}">${w.m}</div>`).join('');
 }
@@ -3146,235 +3145,13 @@ function _trEur(a,b){
   return'';
 }
 
-// ════════════════════════════════════════════════════════════════
-// BTW PER KWARTAAL — aangifte-ready overzicht
-// ════════════════════════════════════════════════════════════════
-let _btwKwartaalJr=null, _btwKwartaalQ=null; // null = huidig kwartaal
-
-function _huidigKwartaal(){
-  const nu=new Date();
-  return{jr:nu.getFullYear(),q:Math.floor(nu.getMonth()/3)+1};
-}
-function _btwInitKwartaal(){
-  if(_btwKwartaalJr===null||_btwKwartaalQ===null){
-    const h=_huidigKwartaal();_btwKwartaalJr=h.jr;_btwKwartaalQ=h.q;
-  }
-}
-function btwKwartaalNav(d){
-  _btwInitKwartaal();
-  _btwKwartaalQ+=d;
-  if(_btwKwartaalQ>4){_btwKwartaalQ=1;_btwKwartaalJr++;}
-  else if(_btwKwartaalQ<1){_btwKwartaalQ=4;_btwKwartaalJr--;}
-  _renderBtwBlok();
-}
-function btwKwartaalReset(){
-  const h=_huidigKwartaal();_btwKwartaalJr=h.jr;_btwKwartaalQ=h.q;_renderBtwBlok();
-}
-
-function _berekenBtwKwartaal(jr,q){
-  // Kwartaal range
-  const startMnd=(q-1)*3;
-  const van=new Date(jr,startMnd,1);
-  const tot=new Date(jr,startMnd+3,0,23,59,59,999); // laatste dag van kwartaal
-  const eindeMnd=startMnd+2; // 0-indexed laatste maand v.h. kwartaal
-
-  // ── VERKOPEN op leveringsdatum ──
-  const vkInQ=DB.verkopen.filter(v=>{
-    if(!v.datum)return false;
-    const d=new Date(v.datum);
-    return !isNaN(d)&&d>=van&&d<=tot;
-  });
-  let btwStandaard=0,btwMarge=0,omzetStandaard=0,margeTotaal=0;
-  let aantalStandaard=0,aantalMarge=0;
-  vkInQ.forEach(v=>{
-    const btwBedrag=Number(v.btw)||0;
-    if(v.btwMethode==='standaard'){
-      btwStandaard+=btwBedrag;
-      omzetStandaard+=Number(v.verkoopprijs)||0;
-      aantalStandaard++;
-    } else { // 'marge' of leeg
-      btwMarge+=btwBedrag;
-      // marge = btw * (1.21/0.21) → bruto-marge incl btw
-      const bm=Number(v.brutoMarge)||0;
-      margeTotaal+=bm;
-      aantalMarge++;
-    }
-  });
-  const btwAfdragen=btwStandaard+btwMarge;
-
-  // ── LASTEN op aangemaakt_op ──
-  // Voor terugkerende lasten: tellen voor elke maand in kwartaal dat ze actief waren
-  // Voor eenmalige: alleen in de maand van aangemaakt_op
-  const lastenInQ=[];
-  DB.lasten.filter(l=>l.actief!==false).forEach(l=>{
-    const aangD=l.aangemaaktOp?new Date(l.aangemaaktOp):null;
-    if(!aangD||isNaN(aangD))return;
-    if(l.terugkerend){
-      // Tel voor elke maand in kwartaal dat aangD <= einde van die maand
-      for(let m=startMnd;m<=eindeMnd;m++){
-        const eindeM=new Date(jr,m+1,0,23,59,59,999);
-        if(aangD<=eindeM){
-          lastenInQ.push({...l,_periodeMaand:m,_periodeJr:jr});
-        }
-      }
-    } else {
-      // Eenmalige last: alleen in maand van aangemaakt_op
-      if(aangD>=van&&aangD<=tot){
-        lastenInQ.push({...l,_periodeMaand:aangD.getMonth(),_periodeJr:aangD.getFullYear()});
-      }
-    }
-  });
-  let voorbelasting=0;
-  const lastDetails=lastenInQ.map(l=>{
-    const bedrag=Number(l.bedrag)||0;
-    const pct=Number(l.btwPct)||0;
-    let btwBedrag=0;
-    if(pct>0){
-      btwBedrag=l.btwType==='incl'?bedrag-bedrag/(1+pct/100):bedrag*(pct/100);
-    }
-    voorbelasting+=btwBedrag;
-    return{...l,btwBedrag};
-  });
-
-  const saldo=btwAfdragen-voorbelasting;
-  return{
-    jr,q,van,tot,
-    btwStandaard,btwMarge,btwAfdragen,
-    omzetStandaard,margeTotaal,
-    aantalStandaard,aantalMarge,
-    voorbelasting,saldo,
-    lastDetails,vkInQ
-  };
-}
-
-function _renderBtwBlok(){
-  _btwInitKwartaal();
-  const el=document.getElementById('btw-kwartaal-blok');
-  if(!el)return;
-  const r=_berekenBtwKwartaal(_btwKwartaalJr,_btwKwartaalQ);
-  const huidig=_huidigKwartaal();
-  const isHuidig=(huidig.jr===r.jr&&huidig.q===r.q);
-  const lbl=`Q${r.q} ${r.jr}`;
-  const periodeText=`${String(r.van.getDate()).padStart(2,'0')}-${String(r.van.getMonth()+1).padStart(2,'0')}-${r.van.getFullYear()} t/m ${String(r.tot.getDate()).padStart(2,'0')}-${String(r.tot.getMonth()+1).padStart(2,'0')}-${r.tot.getFullYear()}`;
-
-  // Lasten-tabel
-  const lastenTbl=r.lastDetails.length
-    ? `<div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:12px"><thead><tr><th>Last</th><th>Maand</th><th style="text-align:right">Bedrag</th><th>BTW</th><th style="text-align:right">Voorbelasting</th></tr></thead><tbody>${
-        r.lastDetails.map(l=>`<tr><td><strong>${esc(l.naam)}</strong>${l.terugkerend?' 🔄':''}</td><td>${MN[l._periodeMaand]||'?'}</td><td style="text-align:right">${eur(l.bedrag)}</td><td>${l.btwPct||0}% ${esc(l.btwType||'excl')}</td><td style="text-align:right;font-weight:600">${eur(l.btwBedrag)}</td></tr>`).join('')
-      }<tr style="background:#f9fafb;font-weight:700"><td colspan="4">Totaal voorbelasting</td><td style="text-align:right;color:var(--gn)">${eur(r.voorbelasting)}</td></tr></tbody></table></div>`
-    : '<div class="alert alert-info" style="margin-top:8px">Geen lasten in dit kwartaal.</div>';
-
-  el.innerHTML=`
-    <div class="db-card-title" style="display:flex;align-items:center;justify-content:space-between">
-      <span>🧾 BTW per kwartaal — ${lbl}${isHuidig?' <span style="font-size:10px;color:var(--gr);font-weight:400">(huidig)</span>':''}</span>
-      <span style="display:flex;gap:6px;align-items:center">
-        <button class="btn btn-gy btn-xs" onclick="btwKwartaalNav(-1)" title="Vorig kwartaal">←</button>
-        ${!isHuidig?'<button class="btn btn-gy btn-xs" onclick="btwKwartaalReset()" title="Naar huidig kwartaal">⌂</button>':''}
-        <button class="btn btn-gy btn-xs" onclick="btwKwartaalNav(1)" title="Volgend kwartaal">→</button>
-        <button class="btn btn-or btn-xs" onclick="exportBtwKwartaal()" title="Export naar Excel">📊 Export</button>
-      </span>
-    </div>
-    <div style="font-size:11px;color:var(--gr);margin-bottom:12px">Periode: ${periodeText} · Verkopen op leveringsdatum · Lasten op factuurmoment</div>
-
-    <div class="mgrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
-      <div class="mc red"><div class="ml">⬆️ Af te dragen</div><div class="mv">${eur(r.btwAfdragen)}</div><div class="mt" style="color:var(--gr);font-size:10px">btw op verkopen</div></div>
-      <div class="mc green"><div class="ml">⬇️ Voorbelasting</div><div class="mv">${eur(r.voorbelasting)}</div><div class="mt" style="color:var(--gr);font-size:10px">btw op lasten</div></div>
-      <div class="mc ${r.saldo>=0?'red':'green'}" style="border-width:2px"><div class="ml" style="font-weight:700">💼 Saldo aangifte</div><div class="mv" style="color:${r.saldo>=0?'var(--rd)':'var(--gn)'};font-size:22px">${eur(Math.abs(r.saldo))}</div><div class="mt" style="color:var(--gr);font-size:10px">${r.saldo>=0?'te betalen':'terug te vragen'}</div></div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:#9a3412;letter-spacing:1px;margin-bottom:8px">VERKOPEN STANDAARD 21%</div>
-        <div style="font-size:13px;line-height:1.7">
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Aantal</span><strong>${r.aantalStandaard}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Omzet incl BTW</span><strong>${eur(r.omzetStandaard)}</strong></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid #fed7aa;margin-top:6px;padding-top:6px"><span style="color:var(--gr)">BTW 21%</span><strong style="color:var(--rd)">${eur(r.btwStandaard)}</strong></div>
-        </div>
-      </div>
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:#1e40af;letter-spacing:1px;margin-bottom:8px">MARGEREGELING</div>
-        <div style="font-size:13px;line-height:1.7">
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Aantal</span><strong>${r.aantalMarge}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gr)">Bruto marge incl BTW</span><strong>${eur(r.margeTotaal)}</strong></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid #bfdbfe;margin-top:6px;padding-top:6px"><span style="color:var(--gr)">BTW 21% over marge</span><strong style="color:var(--rd)">${eur(r.btwMarge)}</strong></div>
-        </div>
-      </div>
-    </div>
-
-    <div style="font-size:12px;font-weight:700;color:var(--dk);margin-bottom:4px">📋 Voorbelasting — lasten in dit kwartaal</div>
-    ${lastenTbl}
-  `;
-}
-
-function exportBtwKwartaal(){
-  _btwInitKwartaal();
-  const r=_berekenBtwKwartaal(_btwKwartaalJr,_btwKwartaalQ);
-  const wb=XLSX.utils.book_new();
-
-  // Sheet 1: Samenvatting
-  const samenvatting=[
-    ['BTW-aangifte',`Q${r.q} ${r.jr}`],
-    ['Periode',`${r.van.toLocaleDateString('nl-NL')} - ${r.tot.toLocaleDateString('nl-NL')}`],
-    [],
-    ['VERKOPEN'],
-    ['Standaard 21% - aantal',r.aantalStandaard],
-    ['Standaard 21% - omzet incl btw',r.omzetStandaard],
-    ['Standaard 21% - btw',r.btwStandaard],
-    ['Margeregeling - aantal',r.aantalMarge],
-    ['Margeregeling - bruto marge',r.margeTotaal],
-    ['Margeregeling - btw',r.btwMarge],
-    ['Totaal af te dragen',r.btwAfdragen],
-    [],
-    ['LASTEN (voorbelasting)'],
-    ['Totaal voorbelasting',r.voorbelasting],
-    [],
-    ['SALDO AANGIFTE'],
-    [r.saldo>=0?'Te betalen aan Belastingdienst':'Terug te vragen van Belastingdienst',Math.abs(r.saldo)]
-  ];
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(samenvatting),'Samenvatting');
-
-  // Sheet 2: Verkopen detail
-  const vkRows=[['Datum','Factuur','Klant','Methode','Verkoopprijs','Bruto marge','BTW']];
-  r.vkInQ.forEach(v=>{
-    vkRows.push([
-      fmtD(v.datum),
-      v.factuur||'',
-      v.klantNaam||v.klant_naam||'',
-      v.btwMethode||'marge',
-      Number(v.verkoopprijs)||0,
-      Number(v.brutoMarge)||0,
-      Number(v.btw)||0
-    ]);
-  });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(vkRows),'Verkopen');
-
-  // Sheet 3: Lasten detail
-  const lRows=[['Last','Maand','Bedrag','BTW %','Type','Voorbelasting','Terugkerend']];
-  r.lastDetails.forEach(l=>{
-    lRows.push([
-      l.naam,
-      MN[l._periodeMaand]||'',
-      Number(l.bedrag)||0,
-      l.btwPct||0,
-      l.btwType||'excl',
-      l.btwBedrag,
-      l.terugkerend?'Ja':'Nee'
-    ]);
-  });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lRows),'Lasten');
-
-  const naam=`NB-BTW-Q${r.q}-${r.jr}.xlsx`;
-  XLSX.writeFile(wb,naam);
-  toast(`✅ ${naam} gedownload`);
-}
-
 function _renderDashMain(range){
   const nu=new Date();
   const cur=_calcPeriode(range.van,range.tot);
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
-  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkoopUitgaven,nNaInkoop}=cur;
-  const inkW=beschikbaar.reduce((a,i)=>a+(i.verwacht_vp>0?i.verwacht_vp:i.prijs),0);
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen}=cur;
+  const inkW=beschikbaar.reduce((a,i)=>a+i.prijs,0);
   const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
 
   const kpis=`<div class="mgrid">
@@ -3383,8 +3160,6 @@ function _renderDashMain(range){
     <div class="mc ${netto>=0?'':'red'}"><div class="ml">✅ Netto marge</div><div class="mv" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
     <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">🧾 BTW saldo</div><div class="mv">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
     <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">🏢 Netto na lasten</div><div class="mv" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
-    <div class="mc ${inkoopUitgaven>0?'red':''}"><div class="ml">💸 Inkoop uitgaven</div><div class="mv" style="color:${inkoopUitgaven>0?'var(--rd)':'var(--dk)'}">${eur(inkoopUitgaven)}</div><div class="mt" style="color:var(--gr);font-size:10px">${inkopen.length} inkopen</div></div>
-    <div class="mc ${nNaInkoop>=0?'green':'red'}" style="border-width:2px"><div class="ml" style="font-weight:700">💼 Netto resultaat</div><div class="mv" style="color:${nNaInkoop>=0?'var(--gn)':'var(--rd)'};font-size:22px">${eur(nNaInkoop)}</div><div class="mt" style="color:var(--gr);font-size:10px">na lasten én inkopen</div></div>
     ${afstortVerlies>0?`<div class="mc red"><div class="ml">🚮 Afstortverlies</div><div class="mv">${eur(afstortVerlies)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. stortkosten</div></div>`:''}
     <div class="mc ${openBed>0?'red':'green'}"><div class="ml">📋 Openstaand</div><div class="mv">${eur(openBed)}</div><div class="mt" style="color:var(--gr)">termijnen</div></div>
   </div>`;
@@ -3464,9 +3239,7 @@ function _renderDashMain(range){
     ...(afstortVerlies>0?[{lbl:'− Afstortverlies',val:-afstortVerlies,kleur:'var(--rd)',vet:false}]:[]),
     {lbl:'= Netto marge',     val:netto,               kleur:netto>=0?'var(--gn)':'var(--rd)',       vet:true },
     {lbl:'− Vaste lasten',    val:-lastenP,            kleur:'var(--rd)',                           vet:false},
-    {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true },
-    {lbl:'− Inkoop uitgaven', val:-inkoopUitgaven,     kleur:'var(--rd)',                           vet:false},
-    {lbl:'= Netto resultaat', val:nNaInkoop,           kleur:nNaInkoop>=0?'var(--gn)':'var(--rd)', vet:true }
+    {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true }
   ];
   const maxAbs=Math.max(...stappen.map(s=>Math.abs(s.val)),1);
   const waterval=`<div class="db-card"><div class="db-card-title">💧 Marge-kosten overzicht</div>
@@ -3485,16 +3258,13 @@ function _renderDashMain(range){
       <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv">${inkopen.length}</div></div>
       <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv">${eur(inkBed)}</div></div>
       <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
-      <div class="mc blue"><div class="ml">Verwachte verkoopwaarde</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items in loods</div></div>
+      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items</div></div>
     </div>
   </div>`;
 
   const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'📅 Omzet per week (12 weken)':_periodeType==='jaar'?'📅 Omzet per maand — '+range.jr:'📅 Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
 
-  const btwBlok=`<div class="db-card" id="btw-kwartaal-blok" style="border-left:4px solid var(--bl)"></div>`;
-
-  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+btwBlok+_catAnalyse()+grafiek;
-  _renderBtwBlok();
+  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
 }
 
 function _projectedCard(label,dagNr,totDagen,restDagen,gemDag,projBruto,projNetto,projNaLasten,lasten,salesToGo,GEM_MARGE,gemBron){
@@ -3604,469 +3374,26 @@ function importJSON(evt){
   r.onload=e=>{try{const d=JSON.parse(e.target.result);if(!Array.isArray(d.items))throw new Error('"items" array ontbreekt');['items','verkopen','lasten','balansen','wijzigingen'].forEach(k=>{if(!Array.isArray(d[k]))d[k]=[];});DB=d;slaOp();renderAll();toast('⬆️ Data geïmporteerd','#2563eb');}catch(err){toast('⚠️ Importfout: '+err.message,'#dc2626');}};
   r.readAsText(f);evt.target.value='';
 }
-// ════════════════════════════════════════════════════════════════
-// MAAND-EXPORT — rijke data per maand voor AI/eigen analyse
-// ════════════════════════════════════════════════════════════════
-
-function _vulMaandExportDropdown(){
-  const sel=document.getElementById('maand-export-sel');
-  if(!sel)return;
-  // Verzamel alle maanden waar data in zit (verkopen of inkopen)
-  const maanden=new Set();
-  DB.verkopen.forEach(v=>{if(v.datum){const d=new Date(v.datum);if(!isNaN(d))maanden.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);}});
-  DB.items.forEach(i=>{if(i.datum){const d=new Date(i.datum);if(!isNaN(d))maanden.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);}});
-  // Huidige maand altijd erbij
-  const nu=new Date();
-  maanden.add(`${nu.getFullYear()}-${String(nu.getMonth()+1).padStart(2,'0')}`);
-  // Sorteer nieuwste eerst
-  const lst=[...maanden].sort().reverse();
-  sel.innerHTML=lst.map(m=>{
-    const [jr,mn]=m.split('-');
-    const lbl=`${MN[parseInt(mn)-1]} ${jr}`;
-    return `<option value="${m}">${lbl}</option>`;
-  }).join('');
-}
-
-function _berekenMaandData(jr,mn){
-  // mn is 0-indexed (0=januari)
-  const van=new Date(jr,mn,1);
-  const tot=new Date(jr,mn+1,0,23,59,59,999);
-
-  // Verkopen op leveringsdatum
-  const vkInMnd=DB.verkopen.filter(v=>{
-    if(!v.datum)return false;
-    const d=new Date(v.datum);
-    return !isNaN(d)&&d>=van&&d<=tot;
-  });
-
-  // Services-bedrag per verkoop (helper) — services_json array of fallback op impregneer
-  const _servicesBedrag=v=>{
-    if(Array.isArray(v.services)&&v.services.length){
-      return v.services.reduce((b,s)=>b+(Number(s.bedrag)||0),0);
-    }
-    return Number(v.impregneer)||0;
-  };
-
-  // Inkopen op inkoopdatum
-  const inkInMnd=DB.items.filter(i=>{
-    if(!i.datum)return false;
-    const d=new Date(i.datum);
-    return !isNaN(d)&&d>=van&&d<=tot;
-  });
-
-  // Ontvangen omzet (kasstelsel — betaalde termijnen in deze maand)
-  const ontvangenInMnd=ontvangenOmzet(jr,mn);
-
-  // Geboekte omzet meubels (verkopen op leveringsdatum)
-  const geboektOmzetMeubels=vkInMnd.reduce((a,v)=>a+(Number(v.verkoopprijs)||0),0);
-  // Services omzet (impregneer / extra services)
-  const servicesOmzet=vkInMnd.reduce((a,v)=>a+_servicesBedrag(v),0);
-  const geboektOmzet=geboektOmzetMeubels+servicesOmzet;
-
-  // Marge cijfers
-  const brutoMarge=vkInMnd.reduce((a,v)=>a+(Number(v.brutoMarge)||0),0);
-  const nettoNaBtw=vkInMnd.reduce((a,v)=>a+(Number(v.nettoNaBtw)||0),0);
-  const btwVerkoop=vkInMnd.reduce((a,v)=>a+(Number(v.btw)||0),0);
-
-  // BTW split
-  let btwStandaard=0,btwMarge=0;
-  vkInMnd.forEach(v=>{
-    if(v.btwMethode==='standaard')btwStandaard+=Number(v.btw)||0;
-    else btwMarge+=Number(v.btw)||0;
-  });
-
-  // Inkoop uitgaven
-  const inkoopUitgaven=inkInMnd.reduce((a,i)=>a+(Number(i.prijs)||0),0);
-
-  // Lasten in deze maand (terugkerend = elke maand, eenmalig = aangemaakt_op in maand)
-  const lastenInMnd=[];
-  DB.lasten.filter(l=>l.actief!==false).forEach(l=>{
-    const aangD=l.aangemaaktOp?new Date(l.aangemaaktOp):null;
-    if(!aangD||isNaN(aangD))return;
-    if(l.terugkerend){
-      if(aangD<=tot)lastenInMnd.push(l);
-    } else {
-      if(aangD>=van&&aangD<=tot)lastenInMnd.push(l);
-    }
-  });
-  const lastenTotaal=lastenInMnd.reduce((a,l)=>a+(Number(l.bedrag)||0),0);
-  const voorbelasting=lastenInMnd.reduce((a,l)=>{
-    const bedrag=Number(l.bedrag)||0;
-    const pct=Number(l.btwPct)||0;
-    if(!pct)return a;
-    return a+(l.btwType==='incl'?bedrag-bedrag/(1+pct/100):bedrag*(pct/100));
-  },0);
-
-  // Voorraad op laatste dag van maand (snapshot)
-  // Items die op dat moment beschikbaar/gereserveerd waren = ingekocht voor `tot` en niet verkocht of afgestort voor `tot`
-  const voorraadOpEind=DB.items.filter(i=>{
-    const inkD=i.datum?new Date(i.datum):null;
-    if(!inkD||isNaN(inkD)||inkD>tot)return false;
-    // Was 'ie al verkocht voor einde maand?
-    const vk=DB.verkopen.find(v=>v.itemId===i.id);
-    if(vk&&vk.datum){
-      const vkD=new Date(vk.datum);
-      if(!isNaN(vkD)&&vkD<=tot)return false;
-    }
-    // Was 'ie al afgestort voor einde maand?
-    if(i.afgestortOp){
-      const afD=new Date(i.afgestortOp);
-      if(!isNaN(afD)&&afD<=tot)return false;
-    }
-    return true;
-  });
-  const voorraadInkoopwaarde=voorraadOpEind.reduce((a,i)=>a+(Number(i.prijs)||0),0);
-  const voorraadVerwachteVP=voorraadOpEind.reduce((a,i)=>a+(Number(i.verwacht_vp)>0?Number(i.verwacht_vp):Number(i.prijs)||0),0);
-
-  // Categorie-breakdown van verkopen
-  const catVk={};
-  vkInMnd.forEach(v=>{
-    const i=DB.items.find(x=>x.id===v.itemId);
-    const cat=i?.categorie||'overig';
-    if(!catVk[cat])catVk[cat]={aantal:0,omzet:0,marge:0,totDgnVoorraad:0};
-    catVk[cat].aantal++;
-    catVk[cat].omzet+=Number(v.verkoopprijs)||0;
-    catVk[cat].marge+=Number(v.brutoMarge)||0;
-    if(i?.datum&&v.datum){
-      const dgn=Math.max(0,Math.floor((new Date(v.datum)-new Date(i.datum))/86400000));
-      catVk[cat].totDgnVoorraad+=dgn;
-    }
-  });
-  const categorieBreakdown=Object.entries(catVk).map(([cat,d])=>({
-    categorie:cat, aantal:d.aantal, omzet:Math.round(d.omzet*100)/100,
-    marge:Math.round(d.marge*100)/100,
-    marge_pct:d.omzet>0?Math.round((d.marge/d.omzet)*1000)/10:0,
-    gem_dagen_in_voorraad:d.aantal>0?Math.round(d.totDgnVoorraad/d.aantal):0
-  }));
-
-  // Gemiddelde doorlooptijd verkochte items deze maand
-  let totDgn=0,nDgn=0;
-  vkInMnd.forEach(v=>{
-    const i=DB.items.find(x=>x.id===v.itemId);
-    if(i?.datum&&v.datum){
-      const dgn=Math.max(0,Math.floor((new Date(v.datum)-new Date(i.datum))/86400000));
-      totDgn+=dgn;nDgn++;
-    }
-  });
-  const gemDoorlooptijd=nDgn>0?Math.round(totDgn/nDgn):0;
-
-  // Verkopen detail
-  const verkopenDetail=vkInMnd.map(v=>{
-    const i=DB.items.find(x=>x.id===v.itemId);
-    const dgn=(i?.datum&&v.datum)?Math.max(0,Math.floor((new Date(v.datum)-new Date(i.datum))/86400000)):null;
-    const svcBedrag=_servicesBedrag(v);
-    const svcLijst=Array.isArray(v.services)&&v.services.length
-      ? v.services.map(s=>`${s.naam}: €${(Number(s.bedrag)||0).toFixed(2)}`).join(', ')
-      : (Number(v.impregneer)>0?`Impregneerbehandeling: €${Number(v.impregneer).toFixed(2)}`:'');
-    return {
-      datum:v.datum,
-      factuur:v.factuur||'',
-      artikelnummer:i?.artikelnummer||'',
-      naam:i?.naam||'',
-      categorie:i?.categorie||'',
-      stof:i?.stof||'',
-      inkoopprijs:Number(i?.prijs)||0,
-      verkoopprijs:Number(v.verkoopprijs)||0,
-      services_bedrag:Math.round(svcBedrag*100)/100,
-      services_omschrijving:svcLijst,
-      factuur_totaal:Math.round((Number(v.verkoopprijs)+svcBedrag)*100)/100,
-      bruto_marge:Number(v.brutoMarge)||0,
-      btw:Number(v.btw)||0,
-      btw_methode:v.btwMethode||'marge',
-      netto_na_btw:Number(v.nettoNaBtw)||0,
-      dagen_in_voorraad:dgn,
-      verkoop_type:v.type||'volledig'
-    };
-  });
-
-  // Inkopen detail
-  const inkopenDetail=inkInMnd.map(i=>({
-    datum:i.datum,
-    artikelnummer:i.artikelnummer||'',
-    naam:i.naam||'',
-    categorie:i.categorie||'',
-    stof:i.stof||'',
-    inkoopprijs:Number(i.prijs)||0,
-    verwacht_vp:Number(i.verwacht_vp)||0,
-    locatie:i.locatie||''
-  }));
-
-  // Lasten detail
-  const lastenDetail=lastenInMnd.map(l=>{
-    const bedrag=Number(l.bedrag)||0;
-    const pct=Number(l.btwPct)||0;
-    const btwBedrag=pct>0?(l.btwType==='incl'?bedrag-bedrag/(1+pct/100):bedrag*(pct/100)):0;
-    return {
-      naam:l.naam,
-      bedrag:bedrag,
-      btw_pct:pct,
-      btw_type:l.btwType||'excl',
-      btw_bedrag:Math.round(btwBedrag*100)/100,
-      terugkerend:!!l.terugkerend,
-      type_kosten:l.typeKosten||'vast'
-    };
-  });
-
-  // Netto resultaat (zelfde logica als dashboard)
-  const nettoResultaat=nettoNaBtw-lastenTotaal-inkoopUitgaven;
-
-  return {
-    periode:{jaar:jr,maand:mn+1,maand_naam:MN[mn],van:`${van.getFullYear()}-${String(van.getMonth()+1).padStart(2,'0')}-${String(van.getDate()).padStart(2,'0')}`,tot:`${tot.getFullYear()}-${String(tot.getMonth()+1).padStart(2,'0')}-${String(tot.getDate()).padStart(2,'0')}`},
-    omzet:{
-      geboekt:Math.round(geboektOmzet*100)/100,
-      geboekt_meubels:Math.round(geboektOmzetMeubels*100)/100,
-      services_omzet:Math.round(servicesOmzet*100)/100,
-      ontvangen:Math.round(ontvangenInMnd*100)/100
-    },
-    marge:{
-      bruto:Math.round(brutoMarge*100)/100,
-      netto_na_btw:Math.round(nettoNaBtw*100)/100,
-      btw_op_verkopen:Math.round(btwVerkoop*100)/100,
-      btw_standaard:Math.round(btwStandaard*100)/100,
-      btw_marge_regeling:Math.round(btwMarge*100)/100,
-      marge_pct_van_omzet:geboektOmzetMeubels>0?Math.round((brutoMarge/geboektOmzetMeubels)*1000)/10:0,
-      _toelichting_netto_na_btw:'netto_na_btw = bruto_marge + services_omzet - btw (services tellen mee als omzet)'
-    },
-    inkoop:{
-      aantal:inkInMnd.length,
-      totaal_uitgaven:Math.round(inkoopUitgaven*100)/100
-    },
-    lasten:{
-      aantal:lastenInMnd.length,
-      totaal:Math.round(lastenTotaal*100)/100,
-      voorbelasting:Math.round(voorbelasting*100)/100
-    },
-    btw_aangifte:{
-      af_te_dragen:Math.round(btwVerkoop*100)/100,
-      voorbelasting:Math.round(voorbelasting*100)/100,
-      saldo:Math.round((btwVerkoop-voorbelasting)*100)/100,
-      saldo_richting:btwVerkoop-voorbelasting>=0?'te_betalen':'terug_te_vragen'
-    },
-    netto_resultaat:Math.round(nettoResultaat*100)/100,
-    voorraad_einde_maand:{
-      aantal:voorraadOpEind.length,
-      inkoopwaarde:Math.round(voorraadInkoopwaarde*100)/100,
-      verwachte_verkoopwaarde:Math.round(voorraadVerwachteVP*100)/100
-    },
-    doorlooptijd:{
-      gemiddeld_dagen:gemDoorlooptijd,
-      aantal_verkocht:vkInMnd.length
-    },
-    categorie_breakdown:categorieBreakdown,
-    verkopen_detail:verkopenDetail,
-    inkopen_detail:inkopenDetail,
-    lasten_detail:lastenDetail
-  };
-}
-
-function exportMaand(formaat){
-  const sel=document.getElementById('maand-export-sel');
-  if(!sel||!sel.value){toast('⚠️ Geen maand geselecteerd','#dc2626');return;}
-  const [jrStr,mnStr]=sel.value.split('-');
-  const jr=parseInt(jrStr),mn=parseInt(mnStr)-1;
-  const data=_berekenMaandData(jr,mn);
-  const pfx=`nijhof-${jrStr}-${mnStr}`;
-
+function aiExport(periode,formaat){
+  const nu=new Date(),jr=nu.getFullYear(),mn=nu.getMonth(),isYTD=periode==='ytd';
+  const df=v=>{const d=new Date(v.datum||v.aangemaaktOp||'');return isNaN(d)?false:isYTD?d.getFullYear()===jr:d.getFullYear()===jr&&d.getMonth()===mn;};
+  const vkSel=DB.verkopen.filter(df),inkSel=DB.items.filter(df);
+  const besch=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
+  const ontvTot=isYTD?jaarOntvangenOmzet(jr):ontvangenOmzet(jr,mn);
+  const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
+  const achtBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald&&new Date(t.vervaldatum)<nu).reduce((b,t)=>b+t.bedrag,a),0);
+  const lastTot=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
+  const pfx=isYTD?`nijhof-ai-${jr}-ytd`:`nijhof-ai-${jr}-${pad(mn+1)}-mtd`;
   if(formaat==='json'){
-    const json={
-      meta:{
-        bedrijf:'Nijhof Brothers Furniture',
-        periode:`${data.periode.maand_naam} ${data.periode.jaar}`,
-        gegenereerd:new Date().toISOString(),
-        valuta:'EUR',
-        btw_regime:'NL (21% standaard + margeregeling tweedehands)'
-      },
-      analyse_hints:[
-        'Bekijk marge_pct_van_omzet vs vorige maanden voor prijsstrategie',
-        'Vergelijk categorie_breakdown om te zien welke meubelsoort het beste loopt',
-        'Controleer doorlooptijd.gemiddeld_dagen — hoger dan 45 = liquiditeitsrisico',
-        'Netto_resultaat is na lasten EN inkopen (cashflow-view, niet boekhoudkundig)',
-        'BTW_aangifte saldo is op factuurmoment, niet kasstelsel',
-        'Voorraad_einde_maand.verwachte_verkoopwaarde minus inkoopwaarde = potentiële marge in voorraad',
-        'omzet.services_omzet bevat impregneer en andere extra services apart van meubels',
-        'marge.bruto is alleen op meubels; netto_na_btw is inclusief services en is de echte totale winst voor lasten'
-      ],
-      ...data
-    };
-    dlBlob(new Blob([JSON.stringify(json,null,2)],{type:'application/json'}),pfx+'.json');
-  }
-
-  else if(formaat==='csv'){
-    // Eén CSV met verkopen-detail (meest bruikbaar voor eigen analyse)
-    let csv='Datum;Factuur;Artikelnummer;Naam;Categorie;Stof;Inkoopprijs;Verkoopprijs;Services bedrag;Services omschrijving;Factuur totaal;Bruto marge;BTW;BTW methode;Netto na btw;Dagen in voorraad;Type\n';
-    const q=s=>String(s==null?'':s).replace(/;/g,',').replace(/"/g,'""');
-    data.verkopen_detail.forEach(v=>{
-      csv+=`${q(v.datum)};${q(v.factuur)};${q(v.artikelnummer)};${q(v.naam)};${q(v.categorie)};${q(v.stof)};${v.inkoopprijs};${v.verkoopprijs};${v.services_bedrag};${q(v.services_omschrijving)};${v.factuur_totaal};${v.bruto_marge};${v.btw};${q(v.btw_methode)};${v.netto_na_btw};${v.dagen_in_voorraad??''};${q(v.verkoop_type)}\n`;
-    });
-    csv+='\n\n# INKOPEN DETAIL\n';
-    csv+='Datum;Artikelnummer;Naam;Categorie;Stof;Inkoopprijs;Verwacht VP;Locatie\n';
-    data.inkopen_detail.forEach(i=>{
-      csv+=`${q(i.datum)};${q(i.artikelnummer)};${q(i.naam)};${q(i.categorie)};${q(i.stof)};${i.inkoopprijs};${i.verwacht_vp};${q(i.locatie)}\n`;
-    });
-    csv+='\n\n# LASTEN DETAIL\n';
-    csv+='Naam;Bedrag;BTW %;BTW type;BTW bedrag;Terugkerend;Type\n';
-    data.lasten_detail.forEach(l=>{
-      csv+=`${q(l.naam)};${l.bedrag};${l.btw_pct};${q(l.btw_type)};${l.btw_bedrag};${l.terugkerend?'Ja':'Nee'};${q(l.type_kosten)}\n`;
-    });
+    dlBlob(new Blob([JSON.stringify({meta:{bedrijf:'Nijhof Brothers Furniture',periode:isYTD?`${jr} YTD`:`${MN[mn]} ${jr}`,gegenereerd:new Date().toISOString()},omzet:{geboekt:vkSel.reduce((a,v)=>a+v.verkoopprijs,0),ontvangen:ontvTot,openstaand:openBed,achterstallig:achtBed},marge:{bruto:vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),netto_na_btw:vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0),btw:vkSel.reduce((a,v)=>a+(v.btw||0),0)},inkopen:{aantal:inkSel.length,totaal:inkSel.reduce((a,i)=>a+i.prijs,0)},voorraad:{aantal:besch.length,inkoopwaarde:besch.reduce((a,i)=>a+i.prijs,0),verwachte_vp:besch.reduce((a,i)=>a+(i.verwacht_vp||0),0)},lasten:{maandelijks:lastTot},verkopen_detail:vkSel.map(v=>{const i=DB.items.find(x=>x.id===v.itemId);return{naam:i?.naam,artikelnummer:i?.artikelnummer,categorie:i?.categorie,inkoop:i?.prijs,verkoop:v.verkoopprijs,marge:v.brutoMarge||0,datum:v.datum,type:v.type};})},null,2)],{type:'application/json'}),pfx+'.json');
+  } else if(formaat==='csv'){
+    let csv='Artikelnummer,Naam,Categorie,Inkoopprijs,Verkoopprijs,Bruto marge,Datum,Type\n';
+    vkSel.forEach(v=>{const i=DB.items.find(x=>x.id===v.itemId);const q=s=>`"${String(s||'').replace(/"/g,'""')}"`;csv+=`${q(i?.artikelnummer)},${q(i?.naam)},${q(i?.categorie)},${i?.prijs||0},${v.verkoopprijs||0},${v.brutoMarge||0},${q(v.datum)},${q(v.type||'volledig')}\n`;});
     dlBlob(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}),pfx+'.csv');
+  } else {
+    const brt=vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),ntt=vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0);
+    dlBlob(new Blob([[`NIJHOF BROTHERS FURNITURE — AI ANALYSE EXPORT`,'='.repeat(50),`Periode: ${isYTD?jr+' jaar tot nu':MN[mn]+' '+jr}`,`Gegenereerd: ${fmtDT(nu)}`,'','--- OMZET ---',`Ontvangen: ${eur(ontvTot)}`,`Openstaand: ${eur(openBed)}`,`Achterstallig: ${eur(achtBed)}`,'','--- MARGE ---',`Bruto: ${eur(brt)}`,`Netto na BTW: ${eur(ntt)}`,`Marge %: ${ontvTot>0?Math.round((ntt/ontvTot)*100):0}%`,'','--- INKOPEN ---',`Aantal: ${inkSel.length}`,`Totaal: ${eur(inkSel.reduce((a,i)=>a+i.prijs,0))}`,'','--- VOORRAAD ---',`Items: ${besch.length}`,`Inkoopwaarde: ${eur(besch.reduce((a,i)=>a+i.prijs,0))}`,'','--- VASTE LASTEN ---',`Maandelijks: ${eur(lastTot)}`].join('\n')],{type:'text/plain;charset=utf-8'}),`nijhof-ai-samenvatting-${isYTD?jr+'-ytd':`${jr}-${pad(mn+1)}-mtd`}.txt`);
   }
-
-  else if(formaat==='xlsx'){
-    const wb=XLSX.utils.book_new();
-
-    // Sheet 1: Samenvatting
-    const sam=[
-      ['Bedrijf','Nijhof Brothers Furniture'],
-      ['Periode',`${data.periode.maand_naam} ${data.periode.jaar}`],
-      ['Gegenereerd',new Date().toLocaleString('nl-NL')],
-      [],
-      ['OMZET'],
-      ['Omzet meubels (leveringsdatum)',data.omzet.geboekt_meubels],
-      ['Services omzet (impregneer e.d.)',data.omzet.services_omzet],
-      ['Totale geboekte omzet',data.omzet.geboekt],
-      ['Ontvangen omzet (kasstelsel)',data.omzet.ontvangen],
-      [],
-      ['MARGE'],
-      ['Bruto marge (op meubels)',data.marge.bruto],
-      ['Netto na BTW (incl services)',data.marge.netto_na_btw],
-      ['Marge % van meubel-omzet',data.marge.marge_pct_van_omzet+'%'],
-      [],
-      ['INKOOP'],
-      ['Aantal inkopen',data.inkoop.aantal],
-      ['Totaal uitgaven',data.inkoop.totaal_uitgaven],
-      [],
-      ['LASTEN'],
-      ['Aantal lasten',data.lasten.aantal],
-      ['Totaal lasten',data.lasten.totaal],
-      ['Voorbelasting',data.lasten.voorbelasting],
-      [],
-      ['BTW AANGIFTE'],
-      ['Af te dragen',data.btw_aangifte.af_te_dragen],
-      [' - waarvan standaard 21%',data.marge.btw_standaard],
-      [' - waarvan margeregeling',data.marge.btw_marge_regeling],
-      ['Voorbelasting',data.btw_aangifte.voorbelasting],
-      ['Saldo ('+data.btw_aangifte.saldo_richting+')',Math.abs(data.btw_aangifte.saldo)],
-      [],
-      ['NETTO RESULTAAT (na lasten + inkopen)',data.netto_resultaat],
-      [],
-      ['VOORRAAD EINDE MAAND'],
-      ['Aantal items in loods',data.voorraad_einde_maand.aantal],
-      ['Inkoopwaarde voorraad',data.voorraad_einde_maand.inkoopwaarde],
-      ['Verwachte verkoopwaarde',data.voorraad_einde_maand.verwachte_verkoopwaarde],
-      [],
-      ['DOORLOOPTIJD'],
-      ['Gem. dagen in voorraad (verkochte items)',data.doorlooptijd.gemiddeld_dagen],
-      ['Aantal verkocht deze maand',data.doorlooptijd.aantal_verkocht]
-    ];
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sam),'Samenvatting');
-
-    // Sheet 2: Categorie breakdown
-    if(data.categorie_breakdown.length){
-      const cat=[['Categorie','Aantal','Omzet','Marge','Marge %','Gem dagen voorraad']];
-      data.categorie_breakdown.forEach(c=>cat.push([c.categorie,c.aantal,c.omzet,c.marge,c.marge_pct+'%',c.gem_dagen_in_voorraad]));
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cat),'Categorieen');
-    }
-
-    // Sheet 3: Verkopen detail
-    if(data.verkopen_detail.length){
-      const vk=[['Datum','Factuur','Artikelnr','Naam','Categorie','Stof','Inkoop','Verkoop','Services','Services oms','Fact. totaal','Marge','BTW','BTW methode','Netto na btw','Dagen voorraad','Type']];
-      data.verkopen_detail.forEach(v=>vk.push([v.datum,v.factuur,v.artikelnummer,v.naam,v.categorie,v.stof,v.inkoopprijs,v.verkoopprijs,v.services_bedrag,v.services_omschrijving,v.factuur_totaal,v.bruto_marge,v.btw,v.btw_methode,v.netto_na_btw,v.dagen_in_voorraad,v.verkoop_type]));
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(vk),'Verkopen');
-    }
-
-    // Sheet 4: Inkopen detail
-    if(data.inkopen_detail.length){
-      const ink=[['Datum','Artikelnr','Naam','Categorie','Stof','Inkoopprijs','Verwacht VP','Locatie']];
-      data.inkopen_detail.forEach(i=>ink.push([i.datum,i.artikelnummer,i.naam,i.categorie,i.stof,i.inkoopprijs,i.verwacht_vp,i.locatie]));
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ink),'Inkopen');
-    }
-
-    // Sheet 5: Lasten detail
-    if(data.lasten_detail.length){
-      const lst=[['Last','Bedrag','BTW %','BTW type','BTW bedrag','Terugkerend','Type']];
-      data.lasten_detail.forEach(l=>lst.push([l.naam,l.bedrag,l.btw_pct,l.btw_type,l.btw_bedrag,l.terugkerend?'Ja':'Nee',l.type_kosten]));
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lst),'Lasten');
-    }
-
-    XLSX.writeFile(wb,pfx+'.xlsx');
-  }
-
-  else if(formaat==='txt'){
-    const fmtE=v=>'€ '+Number(v||0).toFixed(2).replace('.',',');
-    const lines=[
-      `NIJHOF BROTHERS FURNITURE — MAANDOVERZICHT`,
-      '='.repeat(55),
-      `Periode: ${data.periode.maand_naam} ${data.periode.jaar}`,
-      `Gegenereerd: ${new Date().toLocaleString('nl-NL')}`,
-      ``,
-      `▶ OMZET`,
-      `  Meubels (leveringsdatum):   ${fmtE(data.omzet.geboekt_meubels)}`,
-      `  Services (impregneer e.d.): ${fmtE(data.omzet.services_omzet)}`,
-      `  Totaal geboekt:            ${fmtE(data.omzet.geboekt)}`,
-      `  Ontvangen (kasstelsel):    ${fmtE(data.omzet.ontvangen)}`,
-      ``,
-      `▶ MARGE`,
-      `  Bruto marge:               ${fmtE(data.marge.bruto)}  (${data.marge.marge_pct_van_omzet}% van omzet)`,
-      `  Netto na BTW:              ${fmtE(data.marge.netto_na_btw)}`,
-      `  BTW op verkopen:           ${fmtE(data.marge.btw_op_verkopen)}  (std: ${fmtE(data.marge.btw_standaard)} · marge: ${fmtE(data.marge.btw_marge_regeling)})`,
-      ``,
-      `▶ INKOOP`,
-      `  Aantal:                    ${data.inkoop.aantal}`,
-      `  Totaal uitgaven:           ${fmtE(data.inkoop.totaal_uitgaven)}`,
-      ``,
-      `▶ LASTEN`,
-      `  Aantal:                    ${data.lasten.aantal}`,
-      `  Totaal:                    ${fmtE(data.lasten.totaal)}`,
-      `  Voorbelasting (BTW terug): ${fmtE(data.lasten.voorbelasting)}`,
-      ``,
-      `▶ BTW AANGIFTE (factuurmoment)`,
-      `  Af te dragen:              ${fmtE(data.btw_aangifte.af_te_dragen)}`,
-      `  Voorbelasting:             ${fmtE(data.btw_aangifte.voorbelasting)}`,
-      `  Saldo:                     ${fmtE(Math.abs(data.btw_aangifte.saldo))} ${data.btw_aangifte.saldo_richting==='te_betalen'?'(TE BETALEN)':'(TERUG TE VRAGEN)'}`,
-      ``,
-      `▶ NETTO RESULTAAT`,
-      `  Na lasten + inkopen:       ${fmtE(data.netto_resultaat)}`,
-      ``,
-      `▶ VOORRAAD EINDE ${data.periode.maand_naam.toUpperCase()}`,
-      `  Aantal items in loods:     ${data.voorraad_einde_maand.aantal}`,
-      `  Inkoopwaarde:              ${fmtE(data.voorraad_einde_maand.inkoopwaarde)}`,
-      `  Verwachte verkoopwaarde:   ${fmtE(data.voorraad_einde_maand.verwachte_verkoopwaarde)}`,
-      ``,
-      `▶ DOORLOOPTIJD`,
-      `  Gem. dagen voorraad:       ${data.doorlooptijd.gemiddeld_dagen} dagen`,
-      `  Verkocht deze maand:       ${data.doorlooptijd.aantal_verkocht} items`,
-      ``,
-      `▶ CATEGORIE BREAKDOWN`
-    ];
-    if(data.categorie_breakdown.length){
-      data.categorie_breakdown.forEach(c=>{
-        lines.push(`  ${c.categorie.padEnd(12)} ${String(c.aantal).padStart(3)}× · omzet ${fmtE(c.omzet).padStart(12)} · marge ${fmtE(c.marge).padStart(11)} (${c.marge_pct}%) · gem ${c.gem_dagen_in_voorraad}d`);
-      });
-    } else {
-      lines.push(`  (geen verkopen deze maand)`);
-    }
-    lines.push(``,`▶ VERKOPEN DETAIL`);
-    if(data.verkopen_detail.length){
-      data.verkopen_detail.forEach(v=>{
-        const svc=v.services_bedrag>0?` + svc ${fmtE(v.services_bedrag)}`:'';
-        lines.push(`  ${v.datum} | ${(v.artikelnummer||'').padEnd(8)} | ${(v.naam||'').padEnd(25).slice(0,25)} | in ${fmtE(v.inkoopprijs).padStart(9)} → uit ${fmtE(v.verkoopprijs).padStart(9)}${svc} · marge ${fmtE(v.bruto_marge).padStart(9)} · ${v.dagen_in_voorraad??'?'}d voorraad`);
-      });
-    } else {
-      lines.push(`  (geen verkopen deze maand)`);
-    }
-    lines.push(``,`▶ INKOPEN DETAIL`);
-    if(data.inkopen_detail.length){
-      data.inkopen_detail.forEach(i=>{
-        lines.push(`  ${i.datum} | ${(i.artikelnummer||'').padEnd(8)} | ${(i.naam||'').padEnd(25).slice(0,25)} | ${fmtE(i.inkoopprijs).padStart(9)} · verw ${fmtE(i.verwacht_vp).padStart(9)}`);
-      });
-    } else {
-      lines.push(`  (geen inkopen deze maand)`);
-    }
-    lines.push(``,`──`,`Plak dit in een AI-chat met de vraag wat je wilt analyseren.`,`Bijvoorbeeld: "Analyseer mijn marge per categorie en geef advies."`);
-
-    dlBlob(new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'}),pfx+'.txt');
-  }
-
   toast('📤 Export gedownload');
 }
 async function resetAll(){
@@ -4362,7 +3689,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();_vulMaandExportDropdown();}
+function renderAll(){renderV();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();}
 </script>
 </body>
 </html>
