@@ -3429,7 +3429,9 @@ function _calcPeriode(van,tot){
   const nNaLasten=netto-lastenP;
   const beschikbaar=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
   const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
-  const btwKosten=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
+  const btwKostenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
+  // Voorbelasting op dezelfde periode-schaal als de lasten zelf (week/maand/jaar)
+  const btwKosten=_periodeType==='week'?btwKostenM/4.33:_periodeType==='jaar'?btwKostenM*12:btwKostenM;
   const btwSaldo=btw-btwKosten;
   const inkopen=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
   return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen};
@@ -3457,12 +3459,13 @@ function renderDash(){
 }
 
 function _renderKpiWarns(range){
-  const{beschikbaar,openBed,nNaLasten,lastenP,afstortVerlies}=_calcPeriode(range.van,range.tot);
+  const{beschikbaar,openBed,nNaLasten,lastenP,afstortVerlies,ontvangen,vkSel}=_calcPeriode(range.van,range.tot);
   const warns=[];
   const lang=beschikbaar.filter(i=>dgl(i.datum)>45);
   if(lang.length)warns.push({l:'r',m:`⏰ ${lang.length} item(s) staan langer dan 45 dagen in voorraad`});
   if(openBed>500)warns.push({l:'o',m:`💳 ${eur(openBed)} aan openstaande betalingen`});
-  if(lastenP>0&&nNaLasten<0)warns.push({l:'r',m:`📉 Negatief resultaat: ${eur(nNaLasten)} (lasten: ${eur(lastenP)})`});
+  // Alleen waarschuwen als er in de periode al activiteit was — een net begonnen lege week is geen "negatief resultaat"
+  if(lastenP>0&&nNaLasten<0&&(ontvangen>0||vkSel.length>0))warns.push({l:'r',m:`📉 Negatief resultaat: ${eur(nNaLasten)} (lasten: ${eur(lastenP)})`});
   if(afstortVerlies>0)warns.push({l:'o',m:`🚮 ${eur(afstortVerlies)} verlies door afgestorte items`});
   el('kpi-warns').innerHTML=warns.map(w=>`<div class="kpi-warn kpi-${w.l}">${w.m}</div>`).join('');
 }
