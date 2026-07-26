@@ -4,14 +4,14 @@
   "description": "BI Dashboard voor Nijhof Brothers Furniture",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f4f6",
+  "background_color": "#f1f5f9",
   "theme_color": "#E87722",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23E87722' width='100' height='100' rx='20'/><text y='70' x='50' text-anchor='middle' font-size='60'>🛋️</text></svg>",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "logo.png",
+      "sizes": "500x500",
+      "type": "image/png"
     }
   ]
 }

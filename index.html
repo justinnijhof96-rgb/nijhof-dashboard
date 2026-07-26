@@ -7,17 +7,22 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
 <title>Nijhof Brothers — BI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--or:#E87722;--orl:#FFF4EC;--dk:#1a1a1a;--gr:#6b7280;--gn:#16a34a;--rd:#dc2626;--bl:#2563eb;--bg:#f3f4f6;--wd:#fff;--bd:#e5e7eb}
-#login-scherm{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#FFF4EC 0%,#f3f4f6 100%);padding:20px}
-.login-kaart{background:var(--wd);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(0,0,0,.1);border-top:4px solid var(--or)}
-.login-kaart h1{font-size:22px;font-weight:900;color:var(--or);margin-bottom:4px;text-align:center}
+:root{--or:#E87722;--orl:#FFF4EC;--dk:#0f172a;--gr:#64748b;--gn:#10b981;--rd:#ef4444;--bl:#3b82f6;--bg:#f1f5f9;--wd:#fff;--bd:#e2e8f0;--nav:#1E2F3A;--sbw:248px;--f-head:'Sora',-apple-system,sans-serif;--f-body:'Inter',-apple-system,'Segoe UI',sans-serif}
+#login-scherm{display:flex;align-items:center;justify-content:center;min-height:100vh;background:radial-gradient(130% 150% at 0% 0%,rgba(232,119,34,.10),transparent 55%),radial-gradient(130% 150% at 100% 10%,rgba(30,47,58,.08),transparent 55%),#fff;padding:20px}
+.login-kaart{background:var(--wd);border-radius:16px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 8px 30px rgba(15,23,42,.08);border:1px solid var(--bd)}
+.login-kaart h1{font-size:21px;font-weight:800;color:var(--nav);margin-bottom:4px;text-align:center}
+.login-logo{display:block;margin:0 auto 14px;max-width:170px;height:auto}
 .login-kaart .sub{font-size:13px;color:var(--gr);text-align:center;margin-bottom:24px}
 .login-kaart .fg{margin-bottom:14px}
 .login-kaart .fg label{display:block;font-size:12px;font-weight:600;color:var(--gr);margin-bottom:4px}
@@ -28,17 +33,49 @@
 .login-btn:disabled{opacity:.5;cursor:wait}
 .login-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}
 #app-container{display:none}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--dk);font-size:14px}
-#nav{position:sticky;top:0;z-index:200;background:var(--wd);border-left:4px solid var(--or);box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:54px;gap:8px;flex-wrap:wrap}
-#nav .brand{font-weight:900;font-size:17px;color:var(--or);white-space:nowrap}
-#nav-links{display:flex;gap:2px;flex-wrap:wrap}
-#nav-links a{text-decoration:none;color:var(--dk);font-weight:600;font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap;transition:.15s}
-#nav-links a:hover{background:var(--orl);color:var(--or)}
-#klok{font-size:11px;color:var(--gr);white-space:nowrap}
+body{font-family:var(--f-body);background:var(--bg);color:var(--dk);font-size:14px}
+h1,h2,h3,.mv,#topbar-title,.side-brand{font-family:var(--f-head);letter-spacing:-.01em}
+/* ── APP SHELL: sidebar + topbar ── */
+#sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sbw);background:#f8fafc;color:#334155;z-index:300;display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .25s ease;overflow-y:auto;border-right:1px solid var(--bd)}
+#sidebar.open{transform:none}
+.side-brand{display:flex;align-items:center;justify-content:center;padding:14px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.side-brand img{width:72px;height:auto;display:block;mix-blend-mode:multiply}
+.side-brand .brand-txt{font-weight:800;font-size:16px;color:var(--nav);text-align:center;line-height:1.2}
+.side-brand .brand-txt small{display:block;font-size:8.5px;letter-spacing:3px;color:var(--or);font-weight:600;margin-top:3px}
+#side-nav{flex:1;padding:10px 0}
+.side-group{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#94a3b8;padding:16px 20px 6px}
+.side-link{display:flex;align-items:center;gap:11px;padding:9px 20px;margin:1px 10px;border-radius:8px;color:#334155;text-decoration:none;font-weight:500;font-size:13.5px;cursor:pointer;transition:.12s;user-select:none}
+.side-link .ic{font-size:15px;width:20px;text-align:center;flex-shrink:0;opacity:.85}
+.side-link:hover{background:#eef2f7;color:var(--nav)}
+.side-link.active{background:var(--orl);color:var(--nav);font-weight:700;box-shadow:inset 3px 0 0 var(--or)}
+.side-foot{padding:12px 16px;border-top:1px solid var(--bd);flex-shrink:0}
+.side-foot #klok{display:block;font-size:11px;color:#94a3b8;margin-bottom:8px;text-align:center}
+.side-logout{width:100%;padding:9px;border:1px solid var(--bd);background:#fff;color:#334155;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;transition:.12s}
+.side-logout:hover{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+#backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:250;display:none}
+#backdrop.open{display:block}
+#content-wrap{min-height:100vh;transition:margin-left .25s ease}
+#topbar{position:sticky;top:0;z-index:200;background:var(--wd);border-bottom:1px solid var(--bd);box-shadow:0 2px 8px rgba(0,0,0,.05);display:flex;align-items:center;gap:12px;padding:0 16px;height:56px}
+#hamburger{width:40px;height:40px;border:none;background:transparent;border-radius:8px;font-size:20px;cursor:pointer;color:var(--dk);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#hamburger:hover{background:var(--bg)}
+#topbar-title{font-weight:800;font-size:16px;color:var(--nav)}
+/* views: één sectie tegelijk zichtbaar */
+#app-container .sec{display:none}
+#app-container .sec.view-on{display:block;animation:viewin .2s ease}
+@keyframes viewin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* topbar toont al de titel — sectiekop is dubbel op scherm; alleen bij print tonen */
+#app-container .sec-hdr{display:none}
+.sec-hdr .arr{display:none}
+@media(min-width:961px){
+  #sidebar{transform:none}
+  #content-wrap{margin-left:var(--sbw)}
+  #hamburger{display:none}
+  #backdrop{display:none!important}
+}
 main{max-width:1280px;margin:0 auto;padding:16px}
-.sec{background:var(--wd);border-radius:12px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow:hidden}
-.sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-left:4px solid var(--or);cursor:pointer;user-select:none}
-.sec-hdr h2{font-size:15px;font-weight:700}
+.sec{background:var(--wd);border-radius:12px;margin-bottom:20px;border:1px solid var(--bd);box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #f1f5f9;cursor:pointer;user-select:none}
+.sec-hdr h2{font-size:15px;font-weight:800;color:var(--nav)}
 .sec-hdr .arr{font-size:12px;color:var(--gr);transition:.3s}
 .sec-body{padding:18px}
 .sec.shut .sec-body{display:none}
@@ -55,7 +92,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 .btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;transition:.15s;line-height:1;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .btn-or{background:var(--or);color:#fff}.btn-or:hover{background:#d06b1a}
 .btn-rd{background:var(--rd);color:#fff}.btn-rd:hover{background:#b91c1c}
-.btn-gy{background:#e5e7eb;color:var(--dk)}.btn-gy:hover{background:#d1d5db}
+.btn-gy{background:#fff;color:#334155;border:1px solid var(--bd)}.btn-gy:hover{background:#f8fafc;border-color:#cbd5e1}
 .btn-gn{background:var(--gn);color:#fff}.btn-gn:hover{background:#15803d}
 .btn-bl{background:var(--bl);color:#fff}.btn-bl:hover{background:#1d4ed8}
 .btn-sm{padding:5px 10px;font-size:12px}
@@ -85,11 +122,11 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 .knote{font-size:11px;color:#9ca3af;margin-top:5px;font-style:italic}
 .kacts{display:flex;gap:5px;padding:9px 11px;border-top:1px solid #f3f4f6;flex-wrap:wrap}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
-.mc{background:var(--orl);border-radius:10px;padding:14px;border:1px solid #fde8d0}
-.mc.blue{background:#eff6ff;border-color:#bfdbfe}.mc.green{background:#f0fdf4;border-color:#bbf7d0}
-.mc.red{background:#fff1f2;border-color:#fecdd3}.mc.grey{background:#f9fafb;border-color:#e5e7eb}
-.ml{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gr);margin-bottom:3px}
-.mv{font-size:20px;font-weight:800}.mt{font-size:11px;margin-top:3px}
+.mc{background:var(--wd);border-radius:10px;padding:14px 14px 14px 16px;border:1px solid var(--bd);box-shadow:inset 3px 0 0 var(--or)}
+.mc.blue{box-shadow:inset 3px 0 0 var(--bl)}.mc.green{box-shadow:inset 3px 0 0 var(--gn)}
+.mc.red{box-shadow:inset 3px 0 0 var(--rd)}.mc.grey{box-shadow:inset 3px 0 0 #cbd5e1}
+.ml{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--gr);margin-bottom:4px}
+.mv{font-size:20px;font-weight:700;color:var(--nav)}.mt{font-size:11px;margin-top:3px}
 .tup{color:var(--gn)}.tdn{color:var(--rd)}
 .tbl{width:100%;border-collapse:collapse}
 .tbl th{text-align:left;padding:8px 10px;font-size:11px;color:var(--gr);border-bottom:2px solid var(--bd);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
@@ -124,18 +161,61 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 #cv{position:fixed;inset:0;pointer-events:none;z-index:1}
 .chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
 .chip-gn{background:#dcfce7;color:#15803d}.chip-or{background:#fff7ed;color:#c2410c}
+/* ── DOCUMENTEN: maandgroepen + type-badges ── */
+.mnd{border:1px solid var(--bd);border-radius:12px;background:#fff;margin-bottom:10px;overflow:hidden}
+.mnd summary{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none;list-style:none}
+.mnd summary::-webkit-details-marker{display:none}
+.mnd summary:hover{background:#fafbfc}
+.mnd-t{font-family:var(--f-head);font-weight:700;font-size:14px;color:var(--nav);white-space:nowrap}
+.mnd-info{flex:1;font-size:12px;color:var(--gr)}
+.mnd-chev{color:#94a3b8;font-size:12px;transition:transform .2s}
+.mnd[open]>summary{border-bottom:1px solid #f1f5f9}
+.mnd[open]>summary .mnd-chev{transform:rotate(180deg)}
+.mnd-body{padding:4px 10px 10px}
+.doc-badge{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.2px}
+.doc-f{background:#eff6ff;color:#1d4ed8}
+.doc-c{background:#eef2f7;color:var(--nav)}
 .chip-rd{background:#fee2e2;color:#b91c1c}.chip-gy{background:#f3f4f6;color:#6b7280}
 .chip-bl{background:#dbeafe;color:#1d4ed8}
-.sb-row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
-.sb-lbl{width:34px;font-size:11px;color:var(--gr);text-align:right;flex-shrink:0}
-.sb-wrap{flex:1;background:#f3f4f6;border-radius:4px;height:16px;overflow:hidden}
-.sb-bar{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:5px;font-size:9px;color:#fff;font-weight:700;min-width:0;transition:width .4s}
-.sb-or{background:var(--or)}.sb-dk{background:#c2410c}.sb-gy{background:#d1d5db}
 .kpi-warn{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;font-weight:600}
 .kpi-r{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
 .kpi-o{background:#fff7ed;border:1px solid #fed7aa;color:#c2410c}
-.db-card{background:var(--wd);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
-.db-card-title{font-size:13px;font-weight:700;margin-bottom:8px;border-left:3px solid var(--or);padding-left:7px}
+.db-card{background:var(--wd);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.db-card-title{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--nav);text-transform:uppercase;letter-spacing:.6px;border-left:3px solid var(--or);padding-left:8px}
+/* ── HIGH-END DASHBOARD ── */
+.num{font-variant-numeric:tabular-nums}
+.hero-strip{background:radial-gradient(120% 160% at 0% 0%,rgba(232,119,34,.07),transparent 55%),radial-gradient(120% 160% at 100% 20%,rgba(30,47,58,.06),transparent 55%),#fff;border:1px solid var(--bd);border-radius:14px;padding:20px;margin-bottom:14px}
+.hero-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.hero-head .ht{font-family:var(--f-head);font-weight:800;font-size:17px;color:var(--nav)}
+.hero-head .hs{font-size:12px;color:var(--gr)}
+.ring-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.ring-cell{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 4px;text-align:center}
+.ring-box{position:relative;width:96px;height:96px}
+.ring-box svg{transform:rotate(-90deg);display:block}
+.ring-track{fill:none;stroke:#e9eef4;stroke-width:8}
+.ring-val{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+.ring-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-mid .rv{font-family:var(--f-head);font-weight:700;font-size:19px;color:var(--nav);line-height:1}
+.ring-mid .rs{font-size:9.5px;color:var(--gr);margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.ring-lbl{font-size:12px;font-weight:600;color:#334155;line-height:1.35}
+.ring-sub{font-size:11px;color:var(--gr);margin-top:-4px}
+.kpi-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.delta-pill{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px}
+.delta-up{background:#ecfdf5;color:#047857}
+.delta-dn{background:#fef2f2;color:#b91c1c}
+.seg{display:inline-flex;background:#eef2f6;border-radius:9px;padding:3px;gap:2px;border:1px solid var(--bd)}
+.seg button{padding:6px 16px;border:none;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer;background:transparent;color:var(--gr);transition:.15s;font-family:var(--f-body)}
+.seg button.on{background:#fff;color:var(--nav);font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.wf-row{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.wf-lbl{width:150px;font-size:12px;flex-shrink:0;color:#334155}
+.wf-track{flex:1;background:#f1f5f9;border-radius:5px;height:12px;overflow:hidden}
+.wf-bar{height:100%;border-radius:5px;opacity:.9}
+.wf-val{width:88px;text-align:right;font-size:12.5px;flex-shrink:0}
+.sb-row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.sb-lbl{width:34px;font-size:11px;color:var(--gr);text-align:right;flex-shrink:0}
+.sb-wrap{flex:1;background:#f1f5f9;border-radius:7px;height:14px;overflow:hidden}
+.sb-bar{height:100%;border-radius:7px;display:flex;align-items:center;padding-left:6px;font-size:9px;color:#fff;font-weight:700;min-width:0;transition:width .4s}
+.sb-or{background:var(--or)}.sb-dk{background:var(--nav)}.sb-gy{background:#cbd5e1;color:#334155}
 .foto-zone{border:2px dashed var(--bd);border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:.15s;background:#fafafa}
 .foto-zone:hover{border-color:var(--or);background:var(--orl)}
 .foto-zone.heeft-foto{padding:0;border:1.5px solid var(--bd);background:none;overflow:hidden}
@@ -158,7 +238,10 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 }
 @media(max-width:400px){.mgrid{grid-template-columns:1fr}}
 @media print{
-  #nav,.kacts,.sec-hdr .arr,.btn,#toast,#ov,.modal-bg{display:none!important}
+  #sidebar,#topbar,#backdrop,#hamburger,.kacts,.sec-hdr .arr,.btn,#toast,#ov,.modal-bg{display:none!important}
+  #content-wrap{margin-left:0!important}
+  #app-container .sec{display:block!important}
+  #app-container .sec-hdr{display:flex!important}
   .sec-body,.sec.shut .sec-body{display:block!important}
   body{background:#fff;font-size:11px}
   .kaart{break-inside:avoid;border:1px solid #ccc}
@@ -172,7 +255,8 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 <body>
 <div id="login-scherm">
   <div class="login-kaart">
-    <div style="font-size:40px;text-align:center;margin-bottom:8px">🛋️</div>
+    <img src="logo.png" alt="Nijhof Brothers Furniture" class="login-logo" onerror="this.style.display='none';document.getElementById('login-fallback').style.display='block'">
+    <div id="login-fallback" style="display:none;font-size:40px;text-align:center;margin-bottom:8px">🛋️</div>
     <h1>Nijhof Brothers</h1>
     <div class="sub">Log in om door te gaan</div>
     <div class="login-err" id="login-err"></div>
@@ -191,24 +275,38 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 
 <div id="app-container">
 <div id="ph"><h1>🛋️ Nijhof Brothers — BI Dashboard</h1><p id="ph-d"></p></div>
-<nav id="nav">
-  <div class="brand">🛋️ NB</div>
-  <div id="nav-links">
-    <a href="#s-inkoop">📥 Inkoop</a>
-    <a href="#s-voorraad">📦 Voorraad</a>
-    <a href="#s-status">📊 Hoe staan we ervoor?</a>
-    <a href="#s-lasten">💸 Lasten</a>
-    <a href="#s-debiteuren">📋 Debiteuren</a>
-    <a href="#s-archief">📦 Archief</a>
-    <a href="#s-facturen">🧾 Facturen</a>
-    <a href="#s-contracten">📝 Contracten</a>
-    <a href="#s-dash">📊 Dashboard</a>
-    <a href="#s-export">📤 Export</a>
-    <a href="#s-instellingen">⚙️ Instellingen</a>
+<aside id="sidebar">
+  <div class="side-brand">
+    <img src="logo-mark.png" alt="Nijhof Brothers" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <div class="brand-txt" style="display:none">NB</div>
   </div>
-  <span id="klok"></span>
-  <button class="btn btn-gy btn-xs" onclick="doeUitloggen()" title="Uitloggen">🚪</button>
-</nav>
+  <nav id="side-nav">
+    <div class="side-group">Overzicht</div>
+    <div class="side-link" data-view="s-dash" onclick="showView('s-dash')"><span class="ic">📊</span>Dashboard</div>
+    <div class="side-link" data-view="s-status" onclick="showView('s-status')"><span class="ic">📈</span>Hoe staan we ervoor?</div>
+    <div class="side-group">Operatie</div>
+    <div class="side-link" data-view="s-voorraad" onclick="showView('s-voorraad')"><span class="ic">📦</span>Voorraad</div>
+    <div class="side-link" data-view="s-inkoop" onclick="showView('s-inkoop')"><span class="ic">📥</span>Inkoop</div>
+    <div class="side-link" data-view="s-debiteuren" onclick="showView('s-debiteuren')"><span class="ic">📋</span>Debiteuren</div>
+    <div class="side-link" data-view="s-facturen" onclick="showView('s-facturen')"><span class="ic">🧾</span>Facturen &amp; contracten</div>
+    <div class="side-group">Financieel</div>
+    <div class="side-link" data-view="s-lasten" onclick="showView('s-lasten')"><span class="ic">💸</span>Vaste lasten</div>
+    <div class="side-link" data-view="s-archief" onclick="showView('s-archief')"><span class="ic">🗃️</span>Archief</div>
+    <div class="side-group">Systeem</div>
+    <div class="side-link" data-view="s-export" onclick="showView('s-export')"><span class="ic">📤</span>Export &amp; data</div>
+    <div class="side-link" data-view="s-instellingen" onclick="showView('s-instellingen')"><span class="ic">⚙️</span>Instellingen</div>
+  </nav>
+  <div class="side-foot">
+    <span id="klok"></span>
+    <button class="side-logout" onclick="doeUitloggen()">🚪 Uitloggen</button>
+  </div>
+</aside>
+<div id="backdrop" onclick="closeSidebar()"></div>
+<div id="content-wrap">
+<div id="topbar">
+  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+  <span id="topbar-title">Dashboard</span>
+</div>
 <main>
 
 <div class="sec" id="s-inkoop">
@@ -340,39 +438,28 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   </div>
 </div>
 
-<!-- FACTUREN -->
+<!-- FACTUREN & CONTRACTEN -->
 <div class="sec" id="s-facturen">
-  <div class="sec-hdr" onclick="tog(this)"><h2>🧾 Facturen</h2><span class="arr">▼</span></div>
+  <div class="sec-hdr" onclick="tog(this)"><h2>🧾 Facturen &amp; contracten</h2><span class="arr">▼</span></div>
   <div class="sec-body">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      <input type="text" id="fac-zoek" placeholder="🔍 Zoek op factuurnummer, klant, product..." oninput="renderFacturen()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
-      <select id="fac-status" onchange="renderFacturen()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+      <input type="text" id="doc-zoek" placeholder="🔍 Zoek op nummer, klant of product..." oninput="renderDocumenten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
+      <select id="doc-type" onchange="renderDocumenten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <option value="">Facturen + contracten</option>
+        <option value="factuur">Alleen facturen</option>
+        <option value="contract">Alleen contracten</option>
+      </select>
+      <select id="doc-status" onchange="renderDocumenten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
         <option value="">Alle statussen</option>
         <option value="verzonden">Verzonden</option>
-        <option value="aangemaakt">Aangemaakt (geen mail)</option>
-      </select>
-      <button class="btn btn-gy btn-sm" onclick="laadFacturenUitDB()">↻ Verversen</button>
-    </div>
-    <div id="fac-stats" style="margin-bottom:14px"></div>
-    <div id="fac-lijst"></div>
-  </div>
-</div>
-
-<!-- CONTRACTEN -->
-<div class="sec" id="s-contracten">
-  <div class="sec-hdr" onclick="tog(this)"><h2>📝 Contracten</h2><span class="arr">▼</span></div>
-  <div class="sec-body">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      <input type="text" id="ct-zoek" placeholder="🔍 Zoek op contractnummer, klant, product..." oninput="renderContracten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
-      <select id="ct-status" onchange="renderContracten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
-        <option value="">Alle statussen</option>
+        <option value="opgeslagen">Opgeslagen (geen mail)</option>
         <option value="ondertekend">Ondertekend</option>
         <option value="wachtend">Wacht op tekening</option>
       </select>
-      <button class="btn btn-gy btn-sm" onclick="laadContractenUitDB()">↻ Verversen</button>
+      <button class="btn btn-gy btn-sm" onclick="laadDocumenten()">↻ Verversen</button>
     </div>
-    <div id="ct-stats" style="margin-bottom:14px"></div>
-    <div id="ct-lijst"></div>
+    <div id="doc-stats" style="margin-bottom:14px"></div>
+    <div id="doc-lijst"></div>
   </div>
 </div>
 
@@ -380,10 +467,10 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <div class="sec-hdr" onclick="tog(this)"><h2>📊 Dashboard</h2><span class="arr">▼</span></div>
   <div class="sec-body">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-      <div style="display:flex;background:#f3f4f6;border-radius:8px;padding:3px;gap:2px">
-        <button id="tog-week" onclick="setPeriode('week')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:var(--or);color:#fff;transition:.15s">Week</button>
-        <button id="tog-maand" onclick="setPeriode('maand')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:var(--gr);transition:.15s">Maand</button>
-        <button id="tog-jaar" onclick="setPeriode('jaar')" style="padding:6px 16px;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:var(--gr);transition:.15s">Jaar</button>
+      <div class="seg">
+        <button id="tog-week" class="on" onclick="setPeriode('week')">Week</button>
+        <button id="tog-maand" onclick="setPeriode('maand')">Maand</button>
+        <button id="tog-jaar" onclick="setPeriode('jaar')">Jaar</button>
       </div>
       <button onclick="chPeriode(-1)" class="btn btn-gy btn-sm">◀</button>
       <span id="periode-lbl" style="font-weight:700;font-size:15px;min-width:180px;text-align:center"></span>
@@ -435,6 +522,13 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div class="db-card">
       <div class="db-card-title">📧 Email-instellingen</div>
       <div class="fg" style="margin-bottom:10px">
+        <label>Eigen invoice-adres</label>
+        <input type="email" id="inst-factuur-email" placeholder="facturen@nijhofbrothers.nl">
+        <div style="font-size:11px;color:var(--gr);margin-top:4px">
+          Elke factuur komt hier binnen — óók bij verkopen zonder klantgegevens. Zo mis je nooit een factuur.
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:10px">
         <label>Boekhouder email (optioneel)</label>
         <input type="email" id="inst-boekhoud-email" placeholder="boekhouder@kantoor.nl">
         <div style="font-size:11px;color:var(--gr);margin-top:4px">
@@ -452,6 +546,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 </div>
 
 </main>
+</div><!-- /content-wrap -->
 
 <div id="toast"></div>
 <div id="ov" onclick="ovKlik(event)">
@@ -655,6 +750,7 @@ async function _startApp(){
   await _laadOrgId();
   await laadAllesVanDB();
   renderAll();
+  showView('s-dash'); // start altijd op het Dashboard
 }
 function _toonLogin(){
   el('login-scherm').style.display='flex';
@@ -835,7 +931,49 @@ function updateKlok(){const n=new Date(),s=`${pad(n.getDate())}-${pad(n.getMonth
 updateKlok();setInterval(updateKlok,60000);
 const _fdat=el('f-dat');if(_fdat)_fdat.value=vandaag();
 
-function tog(hdr){hdr.parentElement.classList.toggle('shut');}
+function tog(hdr){/* secties zijn nu losse views — inklappen uitgeschakeld */}
+
+/* ── VIEW-NAVIGATIE (sidebar) ── */
+const VIEW_TITELS = {
+  's-dash':'Dashboard','s-status':'Hoe staan we ervoor?','s-voorraad':'Voorraad',
+  's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-facturen':'Facturen & contracten',
+  's-lasten':'Vaste lasten','s-archief':'Archief',
+  's-export':'Export & data','s-instellingen':'Instellingen'
+};
+function showView(id){
+  if(!VIEW_TITELS[id])id='s-dash';
+  document.querySelectorAll('#app-container .sec').forEach(s=>s.classList.toggle('view-on',s.id===id));
+  document.querySelectorAll('.side-link').forEach(a=>a.classList.toggle('active',a.dataset.view===id));
+  const t=el('topbar-title');if(t)t.textContent=VIEW_TITELS[id];
+  try{localStorage.setItem('nb-view',id);}catch(e){}
+  closeSidebar();
+  window.scrollTo(0,0);
+}
+function toggleSidebar(){
+  el('sidebar').classList.toggle('open');
+  el('backdrop').classList.toggle('open');
+}
+
+/* ── PROGRESS RING (SVG) ── */
+function _ring(pct,{kleur='var(--or)',waarde='',sub='',lbl='',onder=''}={}){
+  const p=Math.max(0,Math.min(100,pct||0));
+  const R=40,C=2*Math.PI*R;
+  return`<div class="ring-cell">
+    <div class="ring-box">
+      <svg width="96" height="96" viewBox="0 0 96 96">
+        <circle class="ring-track" cx="48" cy="48" r="${R}"/>
+        <circle class="ring-val" cx="48" cy="48" r="${R}" stroke="${kleur}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C*(1-p/100)).toFixed(1)}"/>
+      </svg>
+      <div class="ring-mid"><div class="rv num">${waarde}</div>${sub?`<div class="rs">${sub}</div>`:''}</div>
+    </div>
+    <div class="ring-lbl">${lbl}</div>
+    ${onder?`<div class="ring-sub num">${onder}</div>`:''}
+  </div>`;
+}
+function closeSidebar(){
+  el('sidebar').classList.remove('open');
+  el('backdrop').classList.remove('open');
+}
 function openModal(id){el(id).classList.add('open');}
 function sluitModal(id){el(id).classList.remove('open');}
 let _toastT=null;
@@ -1534,7 +1672,8 @@ function openBewerkVerkoop(itemId) {
 function updateBewerkVkPrev(itemId) {
   const item=DB.items.find(x=>x.id===itemId);const prevEl=el('bvk-prev');if(!item||!prevEl)return;
   const vp=fval('bvk-vp'),imp=DB.verkopen.find(v=>v.itemId===itemId)?.impregneer||0;
-  const bruto=vp-item.prijs,netto=bruto+imp,btw=Math.max(0,(vp-item.prijs)/1.21*0.21),nNaBtw=netto-btw;
+  // Marge-BTW over totale winst incl. bijverkopen (services staan samen op de factuur → bijkomende kosten in de marge)
+  const bruto=vp-item.prijs,netto=bruto+imp,btw=Math.max(0,(vp+imp-item.prijs)/1.21*0.21),nNaBtw=netto-btw;
   prevEl.innerHTML=`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd);font-size:13px">
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Bruto marge</span><span style="color:${bruto>=0?'var(--gn)':'var(--rd)'}">${eur(bruto)}</span></div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
@@ -1551,7 +1690,7 @@ function slaVerkKopOp(itemId) {
   const factuurTotaal=vp+imp; // services hangen aan vk.impregneer (oud) of services-array (nieuw)
   const bruto=vp-item.prijs;
   const netto=bruto+imp;
-  const btw=Math.max(0,(vp-item.prijs)/1.21*0.21);
+  const btw=Math.max(0,(factuurTotaal-item.prijs)/1.21*0.21); // marge incl. bijverkopen
   const nNaBtw=netto-btw;
   vk.verkoopprijs=vp;vk.verkooplocatie=val('bvk-loc');
   vk.factuur=val('bvk-fac')||vk.factuur;vk.datum=val('bvk-dat')||vk.datum;
@@ -1896,7 +2035,7 @@ function updateVkPrev(){
   const servicesTot=services.reduce((a,s)=>a+s.bedrag,0);
   const bruto=vp-item.prijs;
   const netto=bruto+servicesTot;
-  const btw=Math.max(0,(vp-item.prijs)/1.21*0.21);
+  const btw=Math.max(0,(vp+servicesTot-item.prijs)/1.21*0.21); // marge incl. bijverkopen
   const nNaBtw=netto-btw;
   const warn=vp>0&&vp<item.prijs?'<div class="alert alert-err" style="margin-bottom:8px">⚠️ Verkoopprijs lager dan inkoopprijs!</div>':'';
   const catVk=DB.verkopen.filter(v=>{const vi=DB.items.find(x=>x.id===v.itemId);return vi&&vi.categorie===item.categorie;});
@@ -1950,10 +2089,10 @@ async function bevestigVk(){
   // Impregneer-veld voor backwards compat met dashboard (oude veld)
   const imp=services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0);
   const btwMethode=(document.querySelector('input[name="vk-btw"]:checked')||{}).value||'marge';
-  // BTW: bij marge = over winstmarge, bij standaard 21% = over factuurtotaal
+  // BTW: bij marge = over totale winst incl. bijverkopen (factuurtotaal − inkoop), bij standaard 21% = over factuurtotaal
   const bruto=vp-item.prijs;
   const netto=bruto+servicesTot;
-  const btw=btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(vp-item.prijs)/1.21*0.21);
+  const btw=btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(factuurTotaal-item.prijs)/1.21*0.21);
   const nNaBtw=netto-btw;
 
   // Klantgegevens uit form
@@ -2016,28 +2155,27 @@ async function bevestigVk(){
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
 
-  // ── FACTUUR FLOW (altijd starten als klantnaam ingevuld — email optioneel) ──
-  if(klantNaam){
-    const klantData={naam:klantNaam,email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
-    const wilContract=(type==='termijn'||type==='aanbetaling') && chk('vk-maak-contract');
-    // Email-checkbox kan alleen aan als klant-email is ingevuld; zonder email → wilEmailen forceren op false
-    const wilEmailenEcht=wilEmailen && klantEmail;
-    _voltooiFactuurFlow({
-      klantData,
-      pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant:klantData,type},
-      wilEmailen:wilEmailenEcht,
-      wilContract
-    }).catch(e=>{
-      console.error('Factuur flow mislukt:',e);
-      toast('⚠️ Verkoop opgeslagen, maar factuur-flow mislukt — check console','#dc2626');
-    });
-  }
+  // ── FACTUUR FLOW: ALTIJD — zonder klantgegevens gaat de factuur naar het eigen invoice-adres ──
+  const heeftKlant=!!klantNaam;
+  const klantData={naam:klantNaam||'Particuliere verkoop',email:klantEmail,telefoon:klantTel,adres:klantAdr,postcode:klantPc,plaats:klantPlts};
+  const wilContract=heeftKlant && (type==='termijn'||type==='aanbetaling') && chk('vk-maak-contract');
+  // Email-checkbox kan alleen aan als klant-email is ingevuld; zonder email → wilEmailen forceren op false
+  const wilEmailenEcht=wilEmailen && klantEmail;
+  _voltooiFactuurFlow({
+    klantData,heeftKlant,
+    pdfData:{item,verkoopId,factuurnr,verkoopDatum,verkoopprijs:vp,impregneer:imp,services,extrasZichtbaar,factuurTotaal,btwMethode,btw,termijnen,klant:klantData,type},
+    wilEmailen:wilEmailenEcht,
+    wilContract
+  }).catch(e=>{
+    console.error('Factuur flow mislukt:',e);
+    toast('⚠️ Verkoop opgeslagen, maar factuur-flow mislukt — check console','#dc2626');
+  });
 }
 
 // ── COMPLETE FACTUUR FLOW: klant + PDF storage + factuur DB + email + optioneel contract ──
-async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen,wilContract}){
-  // 1. Klant opslaan en ID terugkrijgen
-  const klantId=await _slaKlantOp(klantData);
+async function _voltooiFactuurFlow({klantData,heeftKlant=true,pdfData,wilEmailen,wilContract}){
+  // 1. Klant opslaan en ID terugkrijgen (alleen bij echte klantgegevens)
+  const klantId=heeftKlant?await _slaKlantOp(klantData):null;
 
   // 2. PDF maken (1x, hergebruiken voor storage + email)
   const doc=_maakFactuurPDF(pdfData);
@@ -2065,7 +2203,7 @@ async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen,wilContract}){
     console.error('Factuur DB opslaan fout:',e);
   }
 
-  // 5. Optioneel emailen
+  // 5. Emailen: naar klant als gewenst; anders ALTIJD naar het eigen invoice-adres
   if(wilEmailen){
     try{
       await _verstuurFactuurEmail({...pdfData,pdfBase64});
@@ -2073,8 +2211,16 @@ async function _voltooiFactuurFlow({klantData,pdfData,wilEmailen,wilContract}){
       console.error('Email fout:',e);
       toast('⚠️ Email mislukt: '+e.message,'#dc2626');
     }
+  } else if(_orgInstellingen.factuurEmail){
+    try{
+      await _verstuurFactuurEmail({...pdfData,pdfBase64,klant:{...pdfData.klant,email:_orgInstellingen.factuurEmail}});
+      toast('📥 Factuur naar eigen invoice-adres gestuurd','#15803d');
+    }catch(e){
+      console.error('Interne factuurmail fout:',e);
+      toast('⚠️ Kopie naar invoice-adres mislukt: '+e.message,'#c2410c');
+    }
   } else {
-    toast('💾 Factuur opgeslagen (geen email verstuurd)','#15803d');
+    toast('💾 Factuur opgeslagen — stel een invoice-adres in bij ⚙️ Instellingen','#c2410c');
   }
 
   // 6. Optioneel contract opstellen + versturen
@@ -2488,7 +2634,7 @@ async function _verstuurFactuurEmail(data){
       pdfBase64,
       pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
       termijnSchema,
-      extraAdressen:_orgInstellingen.boekhoudEmail?[_orgInstellingen.boekhoudEmail]:[],
+      extraAdressen:[...new Set([_orgInstellingen.boekhoudEmail,_orgInstellingen.factuurEmail].filter(a=>a&&a!==klant.email))],
       testMode:false
     })
   });
@@ -2804,7 +2950,7 @@ async function laadContractenUitDB(){
   try{
     const rows=await dbSelect('contracten','order=aangemaakt_op.desc');
     _contractenCache=rows||[];
-    renderContracten();
+    renderDocumenten();
   }catch(e){
     console.error('Contracten laden mislukt:',e);
   }
@@ -3004,7 +3150,7 @@ function _bevestigImport(){
 }
 
 let _instellingen = { inkoopTarget:3, gemMargeOverride:null };
-let _orgInstellingen = { boekhoudEmail:null, naam:'' };
+let _orgInstellingen = { boekhoudEmail:null, factuurEmail:null, naam:'' };
 
 async function slaInstellingenOp(){
   const uid_user=_getUserId();
@@ -3028,6 +3174,7 @@ async function laadOrgInstellingen(){
     const rows=await dbSelect('organisaties','id=eq.'+encodeURIComponent(org_id));
     if(rows && rows.length>0){
       _orgInstellingen.boekhoudEmail=rows[0].boekhoud_email||null;
+      _orgInstellingen.factuurEmail=rows[0].factuur_email||null;
       _orgInstellingen.naam=rows[0].naam||'';
     }
     renderOrgInstellingen();
@@ -3037,6 +3184,8 @@ async function laadOrgInstellingen(){
 function renderOrgInstellingen(){
   const inp=el('inst-boekhoud-email');
   if(inp)inp.value=_orgInstellingen.boekhoudEmail||'';
+  const inpF=el('inst-factuur-email');
+  if(inpF)inpF.value=_orgInstellingen.factuurEmail||'';
   const info=el('inst-org-info');
   if(info){
     info.innerHTML=`
@@ -3050,20 +3199,21 @@ function renderOrgInstellingen(){
 async function slaInstellingenOrgOp(){
   const org_id=_getOrgId();
   if(!org_id){toast('⚠️ Org niet geladen','#dc2626');return;}
-  const emailRaw=val('inst-boekhoud-email').trim();
+  const boekhoudRaw=val('inst-boekhoud-email').trim();
+  const factuurRaw=val('inst-factuur-email').trim();
   // Validatie: leeg toegestaan, anders moet 'ie een @ bevatten
-  if(emailRaw && !emailRaw.includes('@')){
+  if((boekhoudRaw && !boekhoudRaw.includes('@'))||(factuurRaw && !factuurRaw.includes('@'))){
     toast('⚠️ Email-adres ziet er niet goed uit','#dc2626');
     return;
   }
-  const nieuweWaarde=emailRaw||null;
   try{
     await _rest('PATCH','organisaties?id=eq.'+encodeURIComponent(org_id),{
-      body:{boekhoud_email:nieuweWaarde},
+      body:{boekhoud_email:boekhoudRaw||null,factuur_email:factuurRaw||null},
       prefer:'return=representation'
     });
-    _orgInstellingen.boekhoudEmail=nieuweWaarde;
-    toast(nieuweWaarde?'✅ Boekhouder-email opgeslagen':'✅ Boekhouder-email verwijderd');
+    _orgInstellingen.boekhoudEmail=boekhoudRaw||null;
+    _orgInstellingen.factuurEmail=factuurRaw||null;
+    toast('✅ Email-instellingen opgeslagen');
   }catch(e){
     console.error('Org instellingen opslaan fout:',e);
     toast('⚠️ Opslaan mislukt: '+e.message,'#dc2626');
@@ -3077,17 +3227,18 @@ function getGemMarge(){
   return{waarde:Math.round(marges.reduce((a,b)=>a+b,0)/marges.length),bron:`${marges.length} verkopen`};
 }
 
+function _inkopenInWeek(jr,wk){
+  const ma=maandagVanWeek(jr,wk);
+  const zo=new Date(ma);zo.setUTCDate(ma.getUTCDate()+6);zo.setUTCHours(23,59,59,999);
+  return DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=ma&&d<=zo;}).length;
+}
 function renderInkoopTarget(){
   const TARGET=_instellingen.inkoopTarget||3;
   const nu=new Date();
   const{wk:hWk,jr:hJr}=isoWeek(nu);
-  const maH=maandagVanWeek(hJr,hWk);
-  const zoH=new Date(maH);zoH.setUTCDate(maH.getUTCDate()+6);zoH.setUTCHours(23,59,59,999);
-  const inkopenDW=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=maH&&d<=zoH;}).length;
+  const inkopenDW=_inkopenInWeek(hJr,hWk);
   const{wk:vWk,jr:vJr}=vorigeWeek(hWk,hJr);
-  const maV=maandagVanWeek(vJr,vWk);
-  const zoV=new Date(maV);zoV.setUTCDate(maV.getUTCDate()+6);zoV.setUTCHours(23,59,59,999);
-  const inkopenVW=DB.items.filter(i=>{const d=new Date(i.datum);return!isNaN(d)&&d>=maV&&d<=zoV;}).length;
+  const inkopenVW=_inkopenInWeek(vJr,vWk);
   const dagVW=((nu.getDay()||7)-1);
   const dagenRestW=6-dagVW;
   const haalbaar=inkopenDW>=TARGET||(TARGET-inkopenDW)<=dagenRestW;
@@ -3206,64 +3357,62 @@ function renderStatus(){
 
   // Tile 1: Marge deze maand
   const tile1=`
-    <div class="mc green" style="border-left:4px solid var(--gn)">
-      <div class="ml">💰 Marge deze maand</div>
-      <div class="mv" style="font-size:26px;color:${marge>=0?'var(--gn)':'var(--rd)'}">${eur(marge)}</div>
+    <div class="mc green">
+      <div class="ml">Marge deze maand</div>
+      <div class="mv num" style="font-size:24px;color:${marge>=0?'var(--gn)':'var(--rd)'}">${eur(marge)}</div>
       <div class="mt" style="color:var(--gr)">netto marge</div>
     </div>`;
   // Tile 2: Te gaan
   const tile2=gedekt
-    ? `<div class="mc green" style="border-left:4px solid var(--gn)">
-        <div class="ml">🎯 Te gaan</div>
-        <div class="mv" style="font-size:22px;color:var(--gn)">✅ Gedekt!</div>
-        <div class="mt" style="color:var(--gn)">+${eur(winst)} winst</div>
+    ? `<div class="mc green">
+        <div class="ml">Te gaan</div>
+        <div class="mv" style="font-size:20px;color:var(--gn)">Gedekt</div>
+        <div class="mt num" style="color:var(--gn)">+${eur(winst)} winst</div>
       </div>`
-    : `<div class="mc" style="border-left:4px solid var(--or)">
-        <div class="ml">🎯 Te gaan</div>
-        <div class="mv" style="font-size:26px;color:var(--or)">${eur(teGaan)}</div>
+    : `<div class="mc">
+        <div class="ml">Te gaan</div>
+        <div class="mv num" style="font-size:24px;color:var(--or)">${eur(teGaan)}</div>
         <div class="mt" style="color:var(--gr)">voor lasten gedekt</div>
       </div>`;
   // Tile 3: Ritme
   let tile3;
   if(gedekt){
-    tile3=`<div class="mc green" style="border-left:4px solid var(--gn)">
-      <div class="ml">⏱️ Ritme</div>
-      <div class="mv" style="font-size:20px;color:var(--gn)">Doorlopen</div>
-      <div class="mt" style="color:var(--gr)">${dagenLeft} dagen left</div>
+    tile3=`<div class="mc green">
+      <div class="ml">Ritme</div>
+      <div class="mv" style="font-size:19px;color:var(--gn)">Doorlopen</div>
+      <div class="mt" style="color:var(--gr)">nog ${dagenLeft} dagen</div>
     </div>`;
   } else if(verkopenTeGaan===0){
-    tile3=`<div class="mc" style="border-left:4px solid var(--gr)">
-      <div class="ml">⏱️ Ritme</div>
+    tile3=`<div class="mc grey">
+      <div class="ml">Ritme</div>
       <div class="mv" style="font-size:18px;color:var(--gr)">—</div>
       <div class="mt" style="color:var(--gr)">vul gem. marge in</div>
     </div>`;
   } else {
-    tile3=`<div class="mc" style="border-left:4px solid var(--or)">
-      <div class="ml">⏱️ Ritme nodig</div>
-      <div class="mv" style="font-size:26px;color:var(--or)">~${verkopenTeGaan} verko${verkopenTeGaan===1?'op':'pen'}</div>
+    tile3=`<div class="mc">
+      <div class="ml">Ritme nodig</div>
+      <div class="mv num" style="font-size:24px;color:var(--or)">~${verkopenTeGaan} verko${verkopenTeGaan===1?'op':'pen'}</div>
       <div class="mt" style="color:var(--gr)">in ${dagenLeft} dagen</div>
     </div>`;
   }
-  // Progress bar
-  const barKleur = gedekt?'var(--gn)':progressPct>=66?'var(--gn)':progressPct>=33?'var(--or)':'var(--rd)';
-  const progressText = gedekt
-    ? `✅ Lasten gedekt + ${eur(winst)} winst`
-    : `${progressPct}% richting break-even`;
-  const progressBar=`
-    <div style="margin-top:18px">
-      <div style="height:18px;background:#f3f4f6;border-radius:9px;overflow:hidden;position:relative">
-        <div style="height:100%;width:${Math.min(100,progressPct)}%;background:${barKleur};transition:width .4s ease;border-radius:9px"></div>
-      </div>
-      <div style="text-align:center;font-size:13px;font-weight:600;color:${barKleur};margin-top:6px">${progressText}</div>
-    </div>`;
-
+  // Break-even ring
+  const ringKleur = gedekt?'var(--gn)':progressPct>=66?'var(--gn)':progressPct>=33?'var(--or)':'var(--rd)';
+  const statusRing=_ring(gedekt?100:progressPct,{
+    kleur:ringKleur,
+    waarde:gedekt?'✓':progressPct+'%',
+    sub:gedekt?'':'break-even',
+    lbl:gedekt?'Lasten gedekt':'Richting break-even',
+    onder:gedekt?'+'+eur(winst)+' winst':eur(marge)+' van '+eur(lastenM)
+  });
 
   cont.innerHTML=`
-    <div style="font-size:13px;color:var(--gr);margin-bottom:10px">${MN[mn]} ${jr} — dag ${dagVdMnd} van ${dagenInMnd}</div>
-    <div class="mgrid" style="margin:0">
-      ${tile1}${tile2}${tile3}
+    <div style="font-size:13px;color:var(--gr);margin-bottom:12px">${MN[mn]} ${jr} — dag ${dagVdMnd} van ${dagenInMnd}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center">
+      <div style="flex-shrink:0">${statusRing}</div>
+      <div class="mgrid" style="margin:0;flex:1;min-width:min(100%,300px)">
+        ${tile1}${tile2}${tile3}
+      </div>
     </div>
-    ${progressBar}
   `;
 }
 
@@ -3294,7 +3443,7 @@ function setGemMarge(v){const n=parseFloat(v);_instellingen.gemMargeOverride=(!i
 
 function setPeriode(type){
   _periodeType=type;_periodeOffset=0;
-  ['week','maand','jaar'].forEach(t=>{const b=el('tog-'+t);if(b){b.style.background=t===type?'var(--or)':'transparent';b.style.color=t===type?'#fff':'var(--gr)';}});
+  ['week','maand','jaar'].forEach(t=>{const b=el('tog-'+t);if(b)b.classList.toggle('on',t===type);});
   renderDash();
 }
 function chPeriode(d){_periodeOffset+=d;renderDash();}
@@ -3320,8 +3469,8 @@ function _renderKpiWarns(range){
 
 function _trEur(a,b){
   if(typeof a!=='number'||typeof b!=='number'||isNaN(a)||isNaN(b))return'';
-  if(a>b)return`<span class="tup">▲ +${eur(a-b)}</span>`;
-  if(a<b)return`<span class="tdn">▼ −${eur(b-a)}</span>`;
+  if(a>b)return`<span class="delta-pill delta-up num">▲ +${eur(a-b)}</span>`;
+  if(a<b)return`<span class="delta-pill delta-dn num">▼ −${eur(b-a)}</span>`;
   return'';
 }
 
@@ -3336,20 +3485,44 @@ function _renderDashMain(range){
   const zonderVvp=beschikbaar.filter(i=>!(i.verwacht_vp>0)).length;
   const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
 
+  // ── Hero: bedrijfsgezondheid in ringen ──
+  const lastenPct=lastenP>0?(Math.max(0,netto)/lastenP)*100:(netto>=0?100:0);
+  const lastenKleur=lastenPct>=100?'var(--gn)':lastenPct>=33?'var(--or)':'var(--rd)';
+  const margePct=ontvangen>0?(bruto/ontvangen)*100:0;
+  const margeKleur=margePct>=50?'var(--gn)':margePct>=25?'var(--or)':'var(--rd)';
+  const{wk:hWk,jr:hJr}=isoWeek(nu);
+  const inkTarget=_instellingen.inkoopTarget||3;
+  const inkN=_inkopenInWeek(hJr,hWk);
+  const dagRestW=6-((nu.getDay()||7)-1);
+  const inkKleur=inkN>=inkTarget?'var(--gn)':(inkTarget-inkN)<=dagRestW?'var(--or)':'var(--rd)';
+  const versN=beschikbaar.filter(i=>dgl(i.datum)<=45).length;
+  const versPct=beschikbaar.length?versN/beschikbaar.length*100:100;
+  const versKleur=versPct>=80?'var(--gn)':versPct>=50?'var(--or)':'var(--rd)';
+  const hero=`<div class="hero-strip">
+    <div class="hero-head"><span class="ht">Bedrijfsgezondheid</span><span class="hs">${_periodeLbl(range)}</span></div>
+    <div class="ring-row">
+      ${_ring(lastenPct,{kleur:lastenKleur,waarde:Math.round(lastenPct)+'%',sub:'gedekt',lbl:'Vaste lasten',onder:eur(Math.max(0,netto))+' van '+eur(lastenP)})}
+      ${_ring(margePct,{kleur:margeKleur,waarde:Math.round(margePct)+'%',sub:'marge',lbl:'Bruto marge',onder:'van '+eur(ontvangen)+' omzet'})}
+      ${_ring(inkTarget?inkN/inkTarget*100:0,{kleur:inkKleur,waarde:inkN+'/'+inkTarget,sub:'week '+hWk,lbl:'Inkoop-target',onder:inkN>=inkTarget?'target gehaald':dagRestW+' dag'+(dagRestW!==1?'en':'')+' te gaan'})}
+      ${_ring(versPct,{kleur:versKleur,waarde:String(versN),sub:'≤ 45 dgn',lbl:'Verse voorraad',onder:'van '+beschikbaar.length+' items'})}
+    </div>
+  </div>`;
+
+  const dot=c=>`<span class="kpi-dot" style="background:${c}"></span>`;
   const kpis=`<div class="mgrid">
-    <div class="mc green"><div class="ml">💰 Omzet ontvangen</div><div class="mv">${eur(ontvangen)}</div><div class="mt">${_trEur(ontvangen,prv.ontvangen)}</div></div>
-    <div class="mc"><div class="ml">📈 Bruto marge</div><div class="mv">${eur(bruto)}</div><div class="mt">${ontvangen>0?pct(bruto,ontvangen):''} ${_trEur(bruto,prv.bruto)}</div></div>
-    <div class="mc ${netto>=0?'':'red'}"><div class="ml">✅ Netto marge</div><div class="mv" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
-    <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">🧾 BTW saldo</div><div class="mv">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
-    <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">🏢 Netto na lasten</div><div class="mv" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
-    ${afstortVerlies>0?`<div class="mc red"><div class="ml">🚮 Afstortverlies</div><div class="mv">${eur(afstortVerlies)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. stortkosten</div></div>`:''}
-    <div class="mc ${openBed>0?'red':'green'}"><div class="ml">📋 Openstaand</div><div class="mv">${eur(openBed)}</div><div class="mt" style="color:var(--gr)">termijnen</div></div>
+    <div class="mc green"><div class="ml">${dot('var(--gn)')}Omzet ontvangen</div><div class="mv num">${eur(ontvangen)}</div><div class="mt">${_trEur(ontvangen,prv.ontvangen)}</div></div>
+    <div class="mc"><div class="ml">${dot('var(--or)')}Bruto marge</div><div class="mv num">${eur(bruto)}</div><div class="mt">${ontvangen>0?pct(bruto,ontvangen):''} ${_trEur(bruto,prv.bruto)}</div></div>
+    <div class="mc ${netto>=0?'':'red'}"><div class="ml">${dot(netto>=0?'var(--gn)':'var(--rd)')}Netto marge</div><div class="mv num" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
+    <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">${dot('var(--bl)')}BTW saldo</div><div class="mv num">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
+    <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">${dot(nNaLasten>=0?'var(--gn)':'var(--rd)')}Netto na lasten</div><div class="mv num" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
+    ${afstortVerlies>0?`<div class="mc red"><div class="ml">${dot('var(--rd)')}Afstortverlies</div><div class="mv num">${eur(afstortVerlies)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. stortkosten</div></div>`:''}
+    <div class="mc ${openBed>0?'red':'green'}"><div class="ml">${dot(openBed>0?'var(--rd)':'var(--gn)')}Openstaand</div><div class="mv num">${eur(openBed)}</div><div class="mt" style="color:var(--gr)">termijnen</div></div>
   </div>`;
 
   let projHTML='';
   if(_periodeType==='week'){
     projHTML=`<div class="db-card" style="border-color:#c4b5fd;background:#f5f3ff;text-align:center;padding:18px">
-      <div style="font-size:13px;color:#5b21b6;font-weight:600">🔮 Projected beschikbaar in de <strong>Maand</strong>- en <strong>Jaar</strong>-weergave</div>
+      <div style="font-size:13px;color:#5b21b6;font-weight:600">Projected beschikbaar in de <strong>Maand</strong>- en <strong>Jaar</strong>-weergave</div>
       <button class="btn btn-sm" style="margin-top:8px;background:#7c3aed;color:#fff" onclick="setPeriode('maand')">→ Bekijk maandoverzicht</button>
     </div>`;
   }
@@ -3424,34 +3597,34 @@ function _renderDashMain(range){
     {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true }
   ];
   const maxAbs=Math.max(...stappen.map(s=>Math.abs(s.val)),1);
-  const waterval=`<div class="db-card"><div class="db-card-title">💧 Marge-kosten overzicht</div>
-    ${stappen.map(s=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="width:160px;font-size:12px;flex-shrink:0;font-weight:${s.vet?700:400}">${s.lbl}</span>
-      <div style="flex:1;background:#f3f4f6;border-radius:4px;height:18px;overflow:hidden">
-        <div style="height:100%;border-radius:4px;background:${s.kleur};width:${s.val!==0?Math.max((Math.abs(s.val)/maxAbs)*100,2).toFixed(1):0}%;opacity:.85"></div>
+  const waterval=`<div class="db-card"><div class="db-card-title">Marge-opbouw</div>
+    ${stappen.map(s=>`<div class="wf-row">
+      <span class="wf-lbl" style="font-weight:${s.vet?700:400}">${s.lbl}</span>
+      <div class="wf-track">
+        <div class="wf-bar" style="background:${s.kleur};width:${s.val!==0?Math.max((Math.abs(s.val)/maxAbs)*100,2).toFixed(1):0}%"></div>
       </div>
-      <span style="width:82px;text-align:right;font-size:13px;font-weight:${s.vet?700:400};color:${s.val>=0?'var(--dk)':'var(--rd)'};flex-shrink:0">${s.val>=0?eur(s.val):'−'+eur(-s.val)}</span>
+      <span class="wf-val num" style="font-weight:${s.vet?700:500};color:${s.val>=0?'var(--dk)':'var(--rd)'}">${s.val>=0?eur(s.val):'−'+eur(-s.val)}</span>
     </div>`).join('')}
   </div>`;
 
-  const inkoopBlok=`<div class="db-card" style="border-left:4px solid var(--or)">
-    <div class="db-card-title">📥 Inkoop deze periode</div>
+  const inkoopBlok=`<div class="db-card">
+    <div class="db-card-title">Inkoop deze periode</div>
     <div class="mgrid" style="margin-bottom:0">
-      <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv">${inkopen.length}</div></div>
-      <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv">${eur(inkBed)}</div></div>
-      <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
-      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items${zonderVvp>0?` · ⚠️ ${zonderVvp} zonder VVP`:''}</div></div>
+      <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv num">${inkopen.length}</div></div>
+      <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv num">${eur(inkBed)}</div></div>
+      <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv num">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
+      <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv num">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items${zonderVvp>0?` · ⚠️ ${zonderVvp} zonder VVP`:''}</div></div>
     </div>
   </div>`;
 
-  const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'📅 Omzet per week (12 weken)':_periodeType==='jaar'?'📅 Omzet per maand — '+range.jr:'📅 Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
+  const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'Omzet per week (12 weken)':_periodeType==='jaar'?'Omzet per maand — '+range.jr:'Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
 
-  el('dash-main').innerHTML=kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
+  el('dash-main').innerHTML=hero+kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
 }
 
 function _projectedCard(label,dagNr,totDagen,restDagen,gemDag,projBruto,projNetto,projNaLasten,lasten,salesToGo,GEM_MARGE,gemBron){
   return`<div class="db-card" style="border-color:#c4b5fd;background:#f5f3ff">
-    <div class="db-card-title" style="border-color:#7c3aed;color:#5b21b6">🔮 Projected — ${label}</div>
+    <div class="db-card-title" style="border-color:#7c3aed;color:#5b21b6">Projected — ${label}</div>
     <div style="font-size:11px;color:#6b7280;margin-bottom:10px">Dag ${dagNr} van ${totDagen} · Gem. ${eur(gemDag)}/dag · ${restDagen} dagen resterend</div>
     <div class="mgrid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">
       <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #e9d5ff">
@@ -3522,12 +3695,12 @@ function _catAnalyse(){
   });
   const voorraadCat={};DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd').forEach(i=>{if(!voorraadCat[i.categorie])voorraadCat[i.categorie]=0;voorraadCat[i.categorie]++;});
   const rijen=Object.entries(cats).map(([cat,d])=>({cat,aantalVk:d.verkopen.length,gemDagen:d.dagenArr.length?Math.round(d.dagenArr.reduce((a,b)=>a+b,0)/d.dagenArr.length):null,gemMarge:d.marge.length?Math.round(d.marge.reduce((a,b)=>a+b,0)/d.marge.length):null,inVoorraad:voorraadCat[cat]||0})).filter(r=>r.aantalVk>0||r.inVoorraad>0).sort((a,b)=>{if(a.gemDagen===null&&b.gemDagen===null)return 0;if(a.gemDagen===null)return 1;if(b.gemDagen===null)return-1;return a.gemDagen-b.gemDagen;});
-  if(!rijen.length)return`<div class="db-card"><div class="db-card-title">📦 Categorie analyse</div><div class="alert alert-info">Nog geen verkoopdata beschikbaar.</div></div>`;
+  if(!rijen.length)return`<div class="db-card"><div class="db-card-title">Categorie-analyse</div><div class="alert alert-info">Nog geen verkoopdata beschikbaar.</div></div>`;
   const maxDagen=Math.max(...rijen.filter(r=>r.gemDagen!==null).map(r=>r.gemDagen),1);
   const maxMarge=Math.max(...rijen.filter(r=>r.gemMarge!==null).map(r=>Math.abs(r.gemMarge)),1);
   const snelste=rijen.find(r=>r.gemDagen!==null);
   const besteMarge=[...rijen].filter(r=>r.gemMarge!==null).sort((a,b)=>b.gemMarge-a.gemMarge)[0];
-  return`<div class="db-card"><div class="db-card-title">📦 Categorie analyse</div>
+  return`<div class="db-card"><div class="db-card-title">Categorie-analyse</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${snelste?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px">🏃 <strong>Snelste verkoper:</strong> ${snelste.cat} (gem. ${snelste.gemDagen} dagen)</div>`:''}
       ${besteMarge?`<div style="background:var(--orl);border:1px solid #fde8d0;border-radius:8px;padding:10px 14px;font-size:12px">💰 <strong>Beste marge:</strong> ${besteMarge.cat} (gem. ${eur(besteMarge.gemMarge)})</div>`:''}
@@ -3758,71 +3931,125 @@ async function _wisStorageBucket(bucket){
   }
 }
 
-// ── FACTUREN UI ───────────────────────────────────────────────────
+// ── FACTUREN & CONTRACTEN UI (samengevoegd, per maand uitklapbaar) ─
 let _facturenCache=[];
 
 async function laadFacturenUitDB(){
-  const lijst=el('fac-lijst');if(!lijst)return;
-  lijst.innerHTML='<div style="text-align:center;padding:20px;color:var(--gr)">⏳ Laden...</div>';
   try{
     const rows=await dbSelect('facturen','order=factuurdatum.desc');
     _facturenCache=rows||[];
-    renderFacturen();
+    renderDocumenten();
   }catch(e){
     console.error('Facturen laden mislukt:',e);
-    lijst.innerHTML='<div class="alert alert-err">⚠️ Facturen laden mislukt: '+esc(e.message)+'</div>';
+    const lijst=el('doc-lijst');
+    if(lijst)lijst.innerHTML='<div class="alert alert-err">⚠️ Facturen laden mislukt: '+esc(e.message)+'</div>';
   }
 }
+async function laadDocumenten(){
+  const lijst=el('doc-lijst');
+  if(lijst)lijst.innerHTML='<div style="text-align:center;padding:20px;color:var(--gr)">⏳ Laden...</div>';
+  await Promise.allSettled([laadFacturenUitDB(),laadContractenUitDB()]);
+}
 
-function renderFacturen(){
-  const lijst=el('fac-lijst'),stats=el('fac-stats');
+// Oude namen blijven werken (aangeroepen na verwijderen/versturen)
+function renderFacturen(){renderDocumenten();}
+function renderContracten(){renderDocumenten();}
+
+function _docStatusChip(d){
+  switch(d.status){
+    case 'verzonden':   return '<span class="chip chip-gn">📤 Verzonden</span>';
+    case 'ondertekend': return `<span class="chip chip-gn">✅ Ondertekend</span>${d.raw.ondertekend_op?`<br><span style="font-size:10px;color:var(--gr)">${fmtD(d.raw.ondertekend_op)}</span>`:''}`;
+    case 'wachtend':    return '<span class="chip chip-or">⏳ Wacht op klant</span>';
+    default:            return '<span class="chip chip-or">💾 Opgeslagen</span>';
+  }
+}
+function _docActies(d){
+  const id=esc(d.id);
+  if(d.soort==='factuur'){
+    return `<button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${id}')" title="Bekijk PDF">👁️</button>
+      ${d.email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${id}')" title="Opnieuw versturen">📤</button>`:''}
+      <button class="btn btn-rd btn-xs" onclick="verwijderFactuur('${id}')" title="Verwijder factuur">🗑️</button>`;
+  }
+  const c=d.raw;
+  const tekenUrl=c.ondertekend_token?`${window.location.origin}/teken.html?token=${encodeURIComponent(c.ondertekend_token)}`:'';
+  return `<button class="btn btn-gy btn-xs" onclick="bekijkContractPDF('${id}')" title="Bekijk contract PDF">👁️</button>
+    ${!c.ondertekend&&d.email?`<button class="btn btn-or btn-xs" onclick="verstuurContractOpnieuw('${id}')" title="Opnieuw mailen">📤</button>`:''}
+    ${!c.ondertekend&&tekenUrl?`<button class="btn btn-bl btn-xs" onclick="kopieerTekenLink('${esc(tekenUrl)}')" title="Kopieer klant-link">🔗</button>`:''}`;
+}
+
+function renderDocumenten(){
+  const lijst=el('doc-lijst'),stats=el('doc-stats');
   if(!lijst)return;
-  const zoek=val('fac-zoek').toLowerCase().trim();
-  const statusFlt=val('fac-status');
-  let facs=_facturenCache.slice();
-  if(statusFlt)facs=facs.filter(f=>f.status===statusFlt);
-  if(zoek)facs=facs.filter(f=>
-    (f.factuurnummer||'').toLowerCase().includes(zoek)||
-    (f.klant_naam||'').toLowerCase().includes(zoek)||
-    (f.klant_email||'').toLowerCase().includes(zoek)||
-    (f.product_naam||'').toLowerCase().includes(zoek)
-  );
-  // Stats
-  const totBedrag=_facturenCache.reduce((a,f)=>a+(Number(f.totaal)||0),0);
-  const aantalVerz=_facturenCache.filter(f=>f.status==='verzonden').length;
-  stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
-    <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 Totaal: ${_facturenCache.length} facturen</span>
-    <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">📤 Verzonden: ${aantalVerz}</span>
-    <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">💰 Totaalwaarde: ${eur(totBedrag)}</span>
+  const zoek=val('doc-zoek').toLowerCase().trim();
+  const typeFlt=val('doc-type');
+  const statusFlt=val('doc-status');
+  // Uniforme lijst: factuur + contract in één stroom
+  const docs=[
+    ..._facturenCache.map(f=>({soort:'factuur',id:f.id,nr:f.factuurnummer,datum:f.factuurdatum,
+      klant:f.klant_naam,email:f.klant_email,product:f.product_omschr||f.product_naam,
+      bedrag:Number(f.totaal)||0,status:f.status==='verzonden'?'verzonden':'opgeslagen',raw:f})),
+    ..._contractenCache.map(c=>({soort:'contract',id:c.id,nr:c.contractnummer,datum:c.aangemaakt_op,
+      klant:c.klant_naam,email:c.klant_email,product:c.product_naam,
+      bedrag:Number(c.totaalbedrag)||0,status:c.ondertekend?'ondertekend':'wachtend',raw:c}))
+  ];
+  let sel=docs;
+  if(typeFlt)sel=sel.filter(d=>d.soort===typeFlt);
+  if(statusFlt)sel=sel.filter(d=>d.status===statusFlt);
+  if(zoek)sel=sel.filter(d=>[d.nr,d.klant,d.email,d.product].some(x=>(x||'').toLowerCase().includes(zoek)));
+  // Stats (over alles, niet het filter)
+  const fTot=_facturenCache.reduce((a,f)=>a+(Number(f.totaal)||0),0);
+  const cWacht=_contractenCache.filter(c=>!c.ondertekend).length;
+  if(stats)stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+    <span style="background:#eff6ff;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">🧾 ${_facturenCache.length} facturen · ${eur(fTot)}</span>
+    <span style="background:#eef2f7;color:var(--nav);padding:6px 12px;border-radius:20px;font-weight:600">📝 ${_contractenCache.length} contract${_contractenCache.length===1?'':'en'}</span>
+    ${cWacht>0?`<span style="background:#fff7ed;color:#c2410c;padding:6px 12px;border-radius:20px;font-weight:600">⏳ ${cWacht} wacht op tekening</span>`:''}
   </div>`;
-  if(!facs.length){
-    lijst.innerHTML='<div class="alert alert-info">ℹ️ Nog geen facturen — registreer een verkoop met klantgegevens om je eerste factuur te maken.</div>';
+  if(!sel.length){
+    lijst.innerHTML=(zoek||typeFlt||statusFlt)
+      ?'<div class="alert alert-info">ℹ️ Geen documenten gevonden met dit filter.</div>'
+      :'<div class="alert alert-info">ℹ️ Nog geen facturen of contracten — registreer een verkoop met klantgegevens om je eerste document te maken.</div>';
     return;
   }
-  lijst.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Factuurnr.</th><th>Datum</th><th>Klant</th><th>Product</th><th>Bedrag</th><th>Status</th><th>Acties</th></tr></thead>
-    <tbody>${facs.map(f=>{
-      const status=f.status==='verzonden'
-        ?'<span class="chip chip-gn">📤 Verzonden</span>'
-        :'<span class="chip chip-or">💾 Opgeslagen</span>';
-      const datum=fmtD(f.factuurdatum);
-      const klant=`<strong>${esc(f.klant_naam||'?')}</strong>${f.klant_email?`<br><span style="font-size:11px;color:var(--gr)">${esc(f.klant_email)}</span>`:''}`;
-      const product=esc(f.product_omschr||f.product_naam||'—');
-      const fid=esc(f.id);
-      const acties=`
-        <button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${fid}')" title="Bekijk PDF">👁️</button>
-        ${f.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${fid}')" title="Opnieuw versturen">📤</button>`:''}
-        <button class="btn btn-rd btn-xs" onclick="verwijderFactuur('${fid}')" title="Verwijder factuur">🗑️</button>`;
-      return `<tr>
-        <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(f.factuurnummer)}</span></td>
-        <td>${datum}</td>
-        <td>${klant}</td>
-        <td>${product}</td>
-        <td><strong>${eur(f.totaal||0)}</strong></td>
-        <td>${status}</td>
-        <td style="white-space:nowrap">${acties}</td>
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
+  // Groepeer per maand (nieuwste eerst); bij zoeken/filteren alles open
+  const groepen={};
+  sel.forEach(d=>{
+    const dt=new Date(d.datum);
+    const k=isNaN(dt)?'0000-00':dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+    (groepen[k]=groepen[k]||[]).push(d);
+  });
+  const keys=Object.keys(groepen).sort().reverse();
+  const openAlles=!!(zoek||typeFlt||statusFlt);
+  lijst.innerHTML=keys.map((k,idx)=>{
+    const rows=groepen[k].sort((a,b)=>new Date(b.datum)-new Date(a.datum));
+    const fN=rows.filter(d=>d.soort==='factuur');
+    const cN=rows.filter(d=>d.soort==='contract');
+    const somF=fN.reduce((a,d)=>a+d.bedrag,0);
+    let titel='Zonder datum';
+    if(k!=='0000-00'){
+      const[jr,mn]=k.split('-').map(Number);
+      titel=MN[mn-1].charAt(0).toUpperCase()+MN[mn-1].slice(1)+' '+jr;
+    }
+    const delen=[];
+    if(fN.length)delen.push(`${fN.length} factu${fN.length===1?'ur':'ren'}`);
+    if(cN.length)delen.push(`${cN.length} contract${cN.length===1?'':'en'}`);
+    if(somF>0)delen.push(`<strong class="num" style="color:var(--nav)">${eur(somF)}</strong>`);
+    return `<details class="mnd"${(idx===0||openAlles)?' open':''}>
+      <summary><span class="mnd-t">${titel}</span><span class="mnd-info">${delen.join(' · ')}</span><span class="mnd-chev">▼</span></summary>
+      <div class="mnd-body"><div style="overflow-x:auto"><table class="tbl">
+        <thead><tr><th>Type</th><th>Nummer</th><th>Datum</th><th>Klant</th><th>Product</th><th>Bedrag</th><th>Status</th><th>Acties</th></tr></thead>
+        <tbody>${rows.map(d=>`<tr>
+          <td><span class="doc-badge ${d.soort==='factuur'?'doc-f':'doc-c'}">${d.soort==='factuur'?'Factuur':'Contract'}</span></td>
+          <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(d.nr||'—')}</span></td>
+          <td>${fmtD(d.datum)}</td>
+          <td><strong>${esc(d.klant||'?')}</strong>${d.email?`<br><span style="font-size:11px;color:var(--gr)">${esc(d.email)}</span>`:''}</td>
+          <td>${esc(d.product||'—')}</td>
+          <td><strong class="num">${eur(d.bedrag)}</strong></td>
+          <td>${_docStatusChip(d)}</td>
+          <td style="white-space:nowrap">${_docActies(d)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div></div>
+    </details>`;
+  }).join('');
 }
 
 async function bekijkFactuurPDF(factuurId){
@@ -3916,59 +4143,7 @@ async function verstuurFactuurOpnieuw(factuurId){
   }
 }
 
-// ── CONTRACTEN UI ─────────────────────────────────────────────────
-function renderContracten(){
-  const lijst=el('ct-lijst'),stats=el('ct-stats');
-  if(!lijst)return;
-  const zoek=val('ct-zoek').toLowerCase().trim();
-  const statusFlt=val('ct-status');
-  let cts=_contractenCache.slice();
-  if(statusFlt==='ondertekend')cts=cts.filter(c=>c.ondertekend);
-  else if(statusFlt==='wachtend')cts=cts.filter(c=>!c.ondertekend);
-  if(zoek)cts=cts.filter(c=>
-    (c.contractnummer||'').toLowerCase().includes(zoek)||
-    (c.klant_naam||'').toLowerCase().includes(zoek)||
-    (c.klant_email||'').toLowerCase().includes(zoek)||
-    (c.product_naam||'').toLowerCase().includes(zoek)
-  );
-  const totBedrag=_contractenCache.reduce((a,c)=>a+(Number(c.totaalbedrag)||0),0);
-  const aantalGet=_contractenCache.filter(c=>c.ondertekend).length;
-  const aantalWacht=_contractenCache.length-aantalGet;
-  stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
-    <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 Totaal: ${_contractenCache.length} contracten</span>
-    <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">✅ Ondertekend: ${aantalGet}</span>
-    <span style="background:#fff7ed;color:#c2410c;padding:6px 12px;border-radius:20px;font-weight:600">⏳ Wacht op tekening: ${aantalWacht}</span>
-    <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">💰 Waarde: ${eur(totBedrag)}</span>
-  </div>`;
-  if(!cts.length){
-    lijst.innerHTML='<div class="alert alert-info">ℹ️ Nog geen contracten — bij een verkoop met termijnen/aanbetaling kun je een contract laten opstellen.</div>';
-    return;
-  }
-  lijst.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Contractnr.</th><th>Klant</th><th>Product</th><th>Bedrag</th><th>Status</th><th>Acties</th></tr></thead>
-    <tbody>${cts.map(c=>{
-      const status=c.ondertekend
-        ?`<span class="chip chip-gn">✅ Ondertekend</span><br><span style="font-size:10px;color:var(--gr)">${fmtD(c.ondertekend_op)}</span>`
-        :`<span class="chip chip-or">⏳ Wacht op klant</span>`;
-      const klant=`<strong>${esc(c.klant_naam||'?')}</strong>${c.klant_email?`<br><span style="font-size:11px;color:var(--gr)">${esc(c.klant_email)}</span>`:''}`;
-      const product=esc(c.product_naam||'—');
-      const cid=esc(c.id);
-      const tekenUrl=c.ondertekend_token?`${window.location.origin}/teken.html?token=${encodeURIComponent(c.ondertekend_token)}`:'';
-      const acties=`
-        <button class="btn btn-gy btn-xs" onclick="bekijkContractPDF('${cid}')" title="Bekijk contract PDF">👁️</button>
-        ${!c.ondertekend&&c.klant_email?`<button class="btn btn-or btn-xs" onclick="verstuurContractOpnieuw('${cid}')" title="Opnieuw mailen">📤</button>`:''}
-        ${!c.ondertekend&&tekenUrl?`<button class="btn btn-bl btn-xs" onclick="kopieerTekenLink('${esc(tekenUrl)}')" title="Kopieer klant-link">🔗</button>`:''}`;
-      return `<tr>
-        <td><span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:600">${esc(c.contractnummer)}</span></td>
-        <td>${klant}</td>
-        <td>${product}</td>
-        <td><strong>${eur(c.totaalbedrag||0)}</strong></td>
-        <td>${status}</td>
-        <td style="white-space:nowrap">${acties}</td>
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
-}
-
+// ── CONTRACTEN ACTIES ─────────────────────────────────────────────
 async function bekijkContractPDF(contractId){
   const c=_contractenCache.find(x=>x.id===contractId);
   if(!c){toast('Contract niet gevonden','#dc2626');return;}
@@ -4033,7 +4208,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadFacturenUitDB();laadContractenUitDB();laadOrgInstellingen();}
+function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten();laadOrgInstellingen();}
 </script>
 </body>
 </html>
