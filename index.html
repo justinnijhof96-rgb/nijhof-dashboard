@@ -1177,6 +1177,24 @@ function renderArchief(){
   return _renderVerkocht();
 }
 
+// Groepeer een lijst per maand (nieuwste eerst) — gedeeld door archief-tabs
+function _groepeerPerMaand(lijst,datumVan){
+  const g={};
+  lijst.forEach(x=>{
+    const d=new Date(datumVan(x));
+    const k=isNaN(d)?'0000-00':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    (g[k]=g[k]||[]).push(x);
+  });
+  return Object.keys(g).sort().reverse().map(k=>{
+    let titel='Zonder datum';
+    if(k!=='0000-00'){
+      const[jr,mn]=k.split('-').map(Number);
+      titel=MN[mn-1].charAt(0).toUpperCase()+MN[mn-1].slice(1)+' '+jr;
+    }
+    return{k,titel,rows:g[k]};
+  });
+}
+
 function _renderVerkocht(){
   const cont=el('arch-container');
   if(!cont)return;
@@ -1213,31 +1231,37 @@ function _renderVerkocht(){
     cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--gr)">Geen verkochte items in deze filter</div>';
     return;
   }
-  cont.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Datum</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Verkoop</th><th>Marge</th><th>Factuurnr.</th><th>Acties</th></tr></thead>
-    <tbody>${verkocht.map(x=>{
-      const i=x.item,v=x.verkoop;
-      const datum=fmtD(v.datum);
-      const marge=(v.brutoMarge||0);
-      // Check of factuur bestaat
-      const heeftFactuur=_facturenCache.some(f=>f.verkoop_id===v.id);
-      const factuurBtnLabel=heeftFactuur?'👁️':'📄';
-      const factuurBtnTitle=heeftFactuur?'Bekijk factuur PDF':'Factuur genereren';
-      return `<tr>
-        <td style="font-size:12px;white-space:nowrap">${datum}</td>
-        <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
-        <td style="font-size:12px">${eur(i.prijs)}</td>
-        <td style="font-weight:600">${eur(v.verkoopprijs)}</td>
-        <td style="color:${marge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(marge)}</td>
-        <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
-          <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
-          <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
-        </td>
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
+  const rijHTML=x=>{
+    const i=x.item,v=x.verkoop;
+    const marge=(v.brutoMarge||0);
+    const heeftFactuur=_facturenCache.some(f=>f.verkoop_id===v.id);
+    const factuurBtnLabel=heeftFactuur?'👁️':'📄';
+    const factuurBtnTitle=heeftFactuur?'Bekijk factuur PDF':'Factuur genereren';
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtD(v.datum)}</td>
+      <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
+      <td style="font-size:12px">${eur(i.prijs)}</td>
+      <td style="font-weight:600">${eur(v.verkoopprijs)}</td>
+      <td style="color:${marge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(marge)}</td>
+      <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
+        <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
+        <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
+      </td>
+    </tr>`;
+  };
+  const tabelKop='<thead><tr><th>Datum</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Verkoop</th><th>Marge</th><th>Factuurnr.</th><th>Acties</th></tr></thead>';
+  const openAlles=!!(z||mnd);
+  cont.innerHTML=_groepeerPerMaand(verkocht,x=>x.verkoop.datum).map((grp,idx)=>{
+    const omzet=grp.rows.reduce((a,x)=>a+(x.verkoop.verkoopprijs||0),0);
+    const marge=grp.rows.reduce((a,x)=>a+(x.verkoop.brutoMarge||0),0);
+    return `<details class="mnd"${(idx===0||openAlles)?' open':''}>
+      <summary><span class="mnd-t">${grp.titel}</span><span class="mnd-info">${grp.rows.length} verkocht · <strong class="num" style="color:var(--nav)">${eur(omzet)}</strong> omzet · ${eur(marge)} marge</span><span class="mnd-chev">▼</span></summary>
+      <div class="mnd-body"><div style="overflow-x:auto"><table class="tbl">${tabelKop}<tbody>${grp.rows.map(rijHTML).join('')}</tbody></table></div></div>
+    </details>`;
+  }).join('');
 }
 
 // ── FACTUUR ACTIE VANUIT ARCHIEF ──────────────────────────────────
@@ -1342,22 +1366,28 @@ function _renderAfgestort(){
     cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--gr)">Geen afgestorte items in deze filter</div>';
     return;
   }
-  cont.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Afgestort</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Stortkosten</th><th>Verlies</th><th>Reden</th></tr></thead>
-    <tbody>${afgestort.map(i=>{
-      const datum=fmtD(i.afgestortOp||i.datum);
-      const verlies=i.prijs+(i.stortkosten||0);
-      const reden=(i.del_reden||'—')+(i.del_toel?`<br><span style="font-size:11px;color:var(--gr)">${esc(i.del_toel)}</span>`:'');
-      return `<tr>
-        <td style="font-size:12px;white-space:nowrap">${datum}</td>
-        <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
-        <td style="font-size:12px">${eur(i.prijs)}</td>
-        <td style="font-size:12px">${i.stortkosten?eur(i.stortkosten):'—'}</td>
-        <td style="color:var(--rd);font-weight:600">−${eur(verlies)}</td>
-        <td style="font-size:12px;max-width:200px">${reden}</td>
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
+  const rijHTML=i=>{
+    const verlies=i.prijs+(i.stortkosten||0);
+    const reden=(i.del_reden||'—')+(i.del_toel?`<br><span style="font-size:11px;color:var(--gr)">${esc(i.del_toel)}</span>`:'');
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtD(i.afgestortOp||i.datum)}</td>
+      <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</td>
+      <td style="font-size:12px">${eur(i.prijs)}</td>
+      <td style="font-size:12px">${i.stortkosten?eur(i.stortkosten):'—'}</td>
+      <td style="color:var(--rd);font-weight:600">−${eur(verlies)}</td>
+      <td style="font-size:12px;max-width:200px">${reden}</td>
+    </tr>`;
+  };
+  const tabelKop='<thead><tr><th>Afgestort</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Stortkosten</th><th>Verlies</th><th>Reden</th></tr></thead>';
+  const openAlles=!!(z||mnd);
+  cont.innerHTML=_groepeerPerMaand(afgestort,i=>i.afgestortOp||i.datum).map((grp,idx)=>{
+    const verlies=grp.rows.reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
+    return `<details class="mnd"${(idx===0||openAlles)?' open':''}>
+      <summary><span class="mnd-t">${grp.titel}</span><span class="mnd-info">${grp.rows.length} afgestort · <strong class="num" style="color:var(--rd)">−${eur(verlies)}</strong> verlies</span><span class="mnd-chev">▼</span></summary>
+      <div class="mnd-body"><div style="overflow-x:auto"><table class="tbl">${tabelKop}<tbody>${grp.rows.map(rijHTML).join('')}</tbody></table></div></div>
+    </details>`;
+  }).join('');
 }
 
 // ── EXCEL EXPORT PER MAAND ────────────────────────────────────────
