@@ -1883,7 +1883,9 @@ async function _volgendContractnr(){
 }
 
 function _genToken(){
-  return 'sig-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+  const b=new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return 'sig-'+Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
 }
 
 // ── AFRONDEN — HOOFDFLOW ──────────────────────────────────────────
@@ -1950,16 +1952,30 @@ async function afronden(){
     const heeftKlant=!!(STATE.klant.naam && STATE.klant.email);
     {
       if(heeftKlant){
-        // Klant opslaan
-        klantId=_genId();
+        // Klant opslaan — bestaande klant (zelfde e-mail) hergebruiken i.p.v. dubbel aanmaken.
+        // Eigen invoice-/boekhoud-adres is geen persoonssleutel.
         try{
-          await _restPost('klanten',{
-            id:klantId,user_id:STATE.user.id,org_id:STATE.org_id,
-            naam:STATE.klant.naam,email:STATE.klant.email,
-            telefoon:STATE.klant.tel||null,adres:STATE.klant.adres||null,
-            postcode:STATE.klant.pc||null,plaats:STATE.klant.plts||null,
-            land:'NL',aangemaakt_op:new Date().toISOString()
-          });
+          const eigenAdressen=[STATE.factuurEmail,STATE.boekhoudEmail].filter(Boolean).map(a=>a.toLowerCase());
+          const emailBruikbaar=!eigenAdressen.includes(STATE.klant.email.trim().toLowerCase());
+          const bestaand=emailBruikbaar?await _restGet('klanten?select=id,telefoon,adres,postcode,plaats&email=ilike.'+encodeURIComponent(STATE.klant.email.trim())+'&limit=1'):null;
+          if(bestaand&&bestaand.length){
+            klantId=bestaand[0].id;
+            const patch={};
+            if(STATE.klant.tel&&!bestaand[0].telefoon)patch.telefoon=STATE.klant.tel;
+            if(STATE.klant.adres&&!bestaand[0].adres)patch.adres=STATE.klant.adres;
+            if(STATE.klant.pc&&!bestaand[0].postcode)patch.postcode=STATE.klant.pc;
+            if(STATE.klant.plts&&!bestaand[0].plaats)patch.plaats=STATE.klant.plts;
+            if(Object.keys(patch).length){await _restPatch('klanten?id=eq.'+encodeURIComponent(klantId),patch).catch(e=>console.warn('Klant aanvullen:',e));}
+          } else {
+            klantId=_genId();
+            await _restPost('klanten',{
+              id:klantId,user_id:STATE.user.id,org_id:STATE.org_id,
+              naam:STATE.klant.naam,email:STATE.klant.email,
+              telefoon:STATE.klant.tel||null,adres:STATE.klant.adres||null,
+              postcode:STATE.klant.pc||null,plaats:STATE.klant.plts||null,
+              land:'NL',aangemaakt_op:new Date().toISOString()
+            });
+          }
         }catch(e){console.warn('Klant opslaan:',e);}
       }
 

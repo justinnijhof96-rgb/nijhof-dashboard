@@ -45,7 +45,12 @@ h1,h2,h3,.mv,#topbar-title,.side-brand{font-family:var(--f-head);letter-spacing:
 #side-nav{flex:1;padding:10px 0}
 .side-group{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#94a3b8;padding:16px 20px 6px}
 .side-link{display:flex;align-items:center;gap:11px;padding:9px 20px;margin:1px 10px;border-radius:8px;color:#334155;text-decoration:none;font-weight:500;font-size:13.5px;cursor:pointer;transition:.12s;user-select:none}
-.side-link .ic{font-size:15px;width:20px;text-align:center;flex-shrink:0;opacity:.85}
+.side-link .ic{width:20px;flex-shrink:0;opacity:.75;display:flex;align-items:center;justify-content:center}
+.side-link svg.ic{width:17px;height:17px}
+.side-link.active svg.ic{opacity:1;color:var(--or)}
+.btn svg{width:13px;height:13px;display:block;pointer-events:none}
+#hamburger svg{width:20px;height:20px}
+.side-logout svg{width:14px;height:14px;vertical-align:-2px;margin-right:5px}
 .side-link:hover{background:#eef2f7;color:var(--nav)}
 .side-link.active{background:var(--orl);color:var(--nav);font-weight:700;box-shadow:inset 3px 0 0 var(--or)}
 .side-foot{padding:12px 16px;border-top:1px solid var(--bd);flex-shrink:0}
@@ -285,6 +290,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div class="side-link" data-view="s-voorraad" onclick="showView('s-voorraad')"><span class="ic">📦</span>Voorraad</div>
     <div class="side-link" data-view="s-inkoop" onclick="showView('s-inkoop')"><span class="ic">📥</span>Inkoop</div>
     <div class="side-link" data-view="s-debiteuren" onclick="showView('s-debiteuren')"><span class="ic">📋</span>Debiteuren</div>
+    <div class="side-link" data-view="s-klanten" onclick="showView('s-klanten')"><span class="ic">👥</span>Klanten</div>
     <div class="side-link" data-view="s-facturen" onclick="showView('s-facturen')"><span class="ic">🧾</span>Facturen &amp; contracten</div>
     <div class="side-group">Financieel</div>
     <div class="side-link" data-view="s-lasten" onclick="showView('s-lasten')"><span class="ic">💸</span>Vaste lasten</div>
@@ -295,13 +301,13 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   </nav>
   <div class="side-foot">
     <span id="klok"></span>
-    <button class="side-logout" onclick="doeUitloggen()">🚪 Uitloggen</button>
+    <button class="side-logout" onclick="doeUitloggen()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>Uitloggen</button>
   </div>
 </aside>
 <div id="backdrop" onclick="closeSidebar()"></div>
 <div id="content-wrap">
 <div id="topbar">
-  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>
   <span id="topbar-title">Dashboard</span>
 </div>
 <main>
@@ -416,14 +422,27 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   </div>
 </div>
 
+<!-- KLANTEN -->
+<div class="sec" id="s-klanten">
+  <div class="sec-hdr" onclick="tog(this)"><h2>👥 Klanten</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="kl-zoek" placeholder="🔍 Zoek op naam, e-mail of telefoon..." oninput="renderKlanten()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
+      <button class="btn btn-gy btn-sm" onclick="laadKlantenUitDB()">↻ Verversen</button>
+    </div>
+    <div id="kl-stats" style="margin-bottom:14px"></div>
+    <div id="kl-lijst"></div>
+  </div>
+</div>
+
 <!-- ARCHIEF (verkochte items) -->
 <div class="sec" id="s-archief">
   <div class="sec-hdr" onclick="tog(this)"><h2>📦 Archief</h2><span class="arr">▼</span></div>
   <div class="sec-body">
     <!-- TABS -->
     <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:2px solid var(--bd)">
-      <button class="arch-tab on" id="arch-tab-verkocht" onclick="setArchTab('verkocht')" style="background:transparent;border:none;padding:10px 16px;font-weight:700;color:var(--nav);cursor:pointer;border-bottom:3px solid var(--or);margin-bottom:-2px">✅ Verkocht</button>
-      <button class="arch-tab" id="arch-tab-afgestort" onclick="setArchTab('afgestort')" style="background:transparent;border:none;padding:10px 16px;font-weight:600;color:var(--gr);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px">🚮 Afgestort</button>
+      <button class="arch-tab on" id="arch-tab-verkocht" onclick="setArchTab('verkocht')" style="background:transparent;border:none;padding:10px 16px;font-weight:700;color:var(--nav);cursor:pointer;border-bottom:3px solid var(--or);margin-bottom:-2px">Verkocht</button>
+      <button class="arch-tab" id="arch-tab-afgestort" onclick="setArchTab('afgestort')" style="background:transparent;border:none;padding:10px 16px;font-weight:600;color:var(--gr);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px">Afgestort</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <input type="text" id="arch-z" placeholder="🔍 Zoek op naam, artikelnr, factuurnr..." oninput="renderArchief()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;flex:1;min-width:200px;background:var(--wd);color:var(--dk);outline:none">
@@ -581,6 +600,11 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <button class="modal-close" onclick="sluitModal('m-last')">✕</button>
   <h3 id="m-last-titel">💸 Vaste last</h3>
   <div id="m-last-body"></div>
+</div></div>
+<div class="modal-bg" id="m-klant"><div class="modal" style="max-width:460px">
+  <button class="modal-close" onclick="sluitModal('m-klant')">✕</button>
+  <h3>✏️ Klant bewerken</h3>
+  <div id="m-klant-body"></div>
 </div></div>
 <div class="modal-bg" id="m-betaaldat"><div class="modal" style="max-width:380px">
   <button class="modal-close" onclick="sluitModal('m-betaaldat')">✕</button>
@@ -759,6 +783,7 @@ _sb.auth.onAuthStateChange((event,session)=>{
 });
 
 document.addEventListener('DOMContentLoaded',()=>{
+  _initSideIcons();
   ['login-email','login-ww'].forEach(id=>{
     const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')doeLogin();});
   });
@@ -932,7 +957,7 @@ function tog(hdr){/* secties zijn nu losse views — inklappen uitgeschakeld */}
 /* ── VIEW-NAVIGATIE (sidebar) ── */
 const VIEW_TITELS = {
   's-dash':'Dashboard','s-status':'Hoe staan we ervoor?','s-voorraad':'Voorraad',
-  's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-facturen':'Facturen & contracten',
+  's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-klanten':'Klanten','s-facturen':'Facturen & contracten',
   's-lasten':'Vaste lasten','s-archief':'Archief',
   's-export':'Export & data','s-instellingen':'Instellingen'
 };
@@ -948,6 +973,40 @@ function showView(id){
 function toggleSidebar(){
   el('sidebar').classList.toggle('open');
   el('backdrop').classList.toggle('open');
+}
+
+/* ── SVG-ICONEN (lucide-stijl, consistent op elk apparaat) ── */
+const ICONS={
+  dashboard:'<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="12" rx="1"/>',
+  activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  package:'<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/>',
+  inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  clipboard:'<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  filetext:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  banknote:'<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+  archive:'<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  settings:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  eye:'<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  send:'<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  pencil:'<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  fileplus:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/>',
+  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>'
+};
+function ic(naam,maat=14,cls=''){
+  return `<svg class="${cls}" width="${maat}" height="${maat}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[naam]||''}</svg>`;
+}
+const SIDE_ICONS={'s-dash':'dashboard','s-status':'activity','s-voorraad':'package','s-inkoop':'inbox','s-debiteuren':'clipboard','s-klanten':'users','s-facturen':'filetext','s-lasten':'banknote','s-archief':'archive','s-export':'upload','s-instellingen':'settings'};
+function _initSideIcons(){
+  document.querySelectorAll('.side-link').forEach(a=>{
+    const n=SIDE_ICONS[a.dataset.view];
+    const sp=a.querySelector('.ic');
+    if(n&&sp)sp.outerHTML=ic(n,17,'ic');
+  });
 }
 
 /* ── PROGRESS RING (SVG) ── */
@@ -1235,7 +1294,7 @@ function _renderVerkocht(){
     const i=x.item,v=x.verkoop;
     const marge=(v.brutoMarge||0);
     const heeftFactuur=_facturenCache.some(f=>f.verkoop_id===v.id);
-    const factuurBtnLabel=heeftFactuur?'👁️':'📄';
+    const factuurBtnLabel=heeftFactuur?ic('eye'):ic('fileplus');
     const factuurBtnTitle=heeftFactuur?'Bekijk factuur PDF':'Factuur genereren';
     return `<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtD(v.datum)}</td>
@@ -1247,8 +1306,8 @@ function _renderVerkocht(){
       <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
-        <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">✏️</button>
-        <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">↩️</button>
+        <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">${ic('pencil')}</button>
+        <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">${ic('undo')}</button>
       </td>
     </tr>`;
   };
@@ -2344,12 +2403,38 @@ async function _slaFactuurOpInDB({pdfData,klantId,pdfUrl,wilEmailen}){
   }
 }
 
-// ── KLANT OPSLAAN ─────────────────────────────────────────────────
+// ── KLANT OPSLAAN (met dedupe: bestaande klant hergebruiken i.p.v. dubbel aanmaken) ──
+async function _zoekBestaandeKlant(klant){
+  // Match op e-mail (sterkste sleutel); zonder e-mail op naam+telefoon.
+  // Eigen invoice-/boekhoud-adres is GEEN persoonssleutel (staat bij meerdere klanten ingevuld).
+  const eigenAdressen=[_orgInstellingen.factuurEmail,_orgInstellingen.boekhoudEmail].filter(Boolean).map(a=>a.toLowerCase());
+  const emailBruikbaar=klant.email&&klant.email.includes('@')&&!eigenAdressen.includes(klant.email.trim().toLowerCase());
+  try{
+    if(emailBruikbaar){
+      const rows=await dbSelect('klanten','email=ilike.'+encodeURIComponent(klant.email.trim())+'&limit=1');
+      if(rows&&rows.length)return rows[0];
+    }
+    if(!emailBruikbaar&&klant.naam&&klant.telefoon){
+      const rows=await dbSelect('klanten','naam=ilike.'+encodeURIComponent(klant.naam.trim())+'&telefoon=eq.'+encodeURIComponent(klant.telefoon.trim())+'&limit=1');
+      if(rows&&rows.length)return rows[0];
+    }
+  }catch(e){console.warn('Klant zoeken:',e);}
+  return null;
+}
 async function _slaKlantOp(klant){
   const uid_user=_getUserId();
   const org_id=_getOrgId();
   if(!uid_user||!org_id)return null;
   try{
+    const bestaand=await _zoekBestaandeKlant(klant);
+    if(bestaand){
+      // Aanvullen wat we nu wél weten en toen niet
+      const patch={};
+      ['telefoon','adres','postcode','plaats'].forEach(k=>{if(klant[k]&&!bestaand[k])patch[k]=klant[k];});
+      if(klant.email&&!bestaand.email)patch.email=klant.email;
+      if(Object.keys(patch).length){await dbUpdate('klanten',bestaand.id,patch).catch(e=>console.warn('Klant aanvullen:',e));}
+      return bestaand.id;
+    }
     const rows=await dbUpsert('klanten',[{
       id:uid(),
       user_id:uid_user,
@@ -2365,6 +2450,134 @@ async function _slaKlantOp(klant){
     }]);
     return rows&&rows.length?rows[0].id:null;
   }catch(e){console.error('Klant opslaan fout:',e);return null;}
+}
+
+// ── KLANTEN-PAGINA (mini-CRM) ─────────────────────────────────────
+let _klantenCache=[];
+async function laadKlantenUitDB(){
+  try{
+    const rows=await dbSelect('klanten','order=aangemaakt_op.desc');
+    _klantenCache=rows||[];
+    renderKlanten();
+  }catch(e){console.error('Klanten laden mislukt:',e);}
+}
+
+function _klantFacturen(k){
+  const eigen=[_orgInstellingen.factuurEmail,_orgInstellingen.boekhoudEmail].filter(Boolean).map(a=>a.toLowerCase());
+  const kMail=(k.email||'').trim().toLowerCase();
+  const mailBruikbaar=kMail&&kMail.includes('@')&&!eigen.includes(kMail);
+  return _facturenCache.filter(f=>f.klant_id===k.id||(mailBruikbaar&&(f.klant_email||'').trim().toLowerCase()===kMail));
+}
+function _klantOpenstaand(facturen){
+  let open=0;
+  facturen.forEach(f=>{
+    const vk=DB.verkopen.find(v=>v.id===f.verkoop_id);
+    if(vk)(vk.termijnen||[]).filter(t=>!t.betaald).forEach(t=>{open+=t.bedrag;});
+  });
+  return open;
+}
+
+function renderKlanten(){
+  const lijst=el('kl-lijst'),stats=el('kl-stats');
+  if(!lijst)return;
+  const zoek=val('kl-zoek').toLowerCase().trim();
+  // Verrijk elke klant met aankoop-historie
+  const verrijkt=_klantenCache.map(k=>{
+    const facs=_klantFacturen(k);
+    const totaal=facs.reduce((a,f)=>a+(Number(f.totaal)||0),0);
+    const open=_klantOpenstaand(facs);
+    const laatste=facs.length?facs.map(f=>f.factuurdatum).sort().reverse()[0]:null;
+    return{k,facs,totaal,open,laatste};
+  });
+  let sel=verrijkt;
+  if(zoek)sel=sel.filter(x=>[x.k.naam,x.k.email,x.k.telefoon].some(v=>(v||'').toLowerCase().includes(zoek)));
+  // Sorteer: meest recente aankoop eerst, klanten zonder aankopen onderaan
+  sel.sort((a,b)=>(b.laatste||'').localeCompare(a.laatste||''));
+  if(stats){
+    const metAankoop=verrijkt.filter(x=>x.facs.length).length;
+    const omzet=verrijkt.reduce((a,x)=>a+x.totaal,0);
+    const top=verrijkt.slice().sort((a,b)=>b.totaal-a.totaal)[0];
+    stats.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
+      <span style="background:#eef2f7;color:var(--nav);padding:6px 12px;border-radius:20px;font-weight:600">${_klantenCache.length} klanten</span>
+      <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">${metAankoop} met aankopen · ${eur(omzet)}</span>
+      ${top&&top.totaal>0?`<span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">Beste klant: ${esc(top.k.naam)} (${eur(top.totaal)})</span>`:''}
+    </div>`;
+  }
+  if(!sel.length){
+    lijst.innerHTML='<div class="alert alert-info">ℹ️ Geen klanten gevonden.</div>';
+    return;
+  }
+  lijst.innerHTML=sel.map(x=>{
+    const k=x.k;
+    const contact=[k.email,k.telefoon].filter(Boolean).map(esc).join(' · ')||'<span style="color:#9ca3af">geen contactgegevens</span>';
+    const adres=[k.adres,[k.postcode,k.plaats].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const histRows=x.facs.sort((a,b)=>(b.factuurdatum||'').localeCompare(a.factuurdatum||'')).map(f=>`<tr>
+      <td>${fmtD(f.factuurdatum)}</td>
+      <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600">${esc(f.factuurnummer)}</span></td>
+      <td>${esc(f.product_omschr||f.product_naam||'—')}</td>
+      <td><strong class="num">${eur(f.totaal||0)}</strong></td>
+      <td><button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${esc(f.id)}')" title="Bekijk PDF">${ic('eye')}</button></td>
+    </tr>`).join('');
+    return `<details class="mnd">
+      <summary>
+        <span class="mnd-t">${esc(k.naam||'?')}</span>
+        <span class="mnd-info">${contact}${x.facs.length?` · ${x.facs.length} aank${x.facs.length===1?'oop':'open'} · <strong class="num" style="color:var(--nav)">${eur(x.totaal)}</strong>`:''}${x.open>0?` · <strong class="num" style="color:var(--rd)">${eur(x.open)} open</strong>`:''}</span>
+        <span class="mnd-chev">▼</span>
+      </summary>
+      <div class="mnd-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 6px">
+          <span style="font-size:12px;color:var(--gr)">${adres?esc(adres):'Geen adres bekend'} · klant sinds ${fmtD(k.aangemaakt_op)}</span>
+          <span>
+            <button class="btn btn-gy btn-xs" onclick="openKlantBewerk('${esc(k.id)}')" title="Bewerk klant">${ic('pencil')} Bewerken</button>
+            ${x.facs.length===0?`<button class="btn btn-rd btn-xs" onclick="verwijderKlant('${esc(k.id)}')" title="Verwijder klant">${ic('trash')}</button>`:''}
+          </span>
+        </div>
+        ${x.facs.length?`<div style="overflow-x:auto"><table class="tbl">
+          <thead><tr><th>Datum</th><th>Factuur</th><th>Product</th><th>Bedrag</th><th></th></tr></thead>
+          <tbody>${histRows}</tbody>
+        </table></div>`:'<div style="padding:6px;font-size:12px;color:var(--gr)">Nog geen aankopen gekoppeld.</div>'}
+      </div>
+    </details>`;
+  }).join('');
+}
+
+function openKlantBewerk(id){
+  const k=_klantenCache.find(x=>x.id===id);
+  if(!k)return;
+  el('m-klant-body').innerHTML=`
+    <div class="fgrid" style="grid-template-columns:1fr 1fr">
+      <div class="fg" style="grid-column:1/-1"><label class="r">Naam</label><input id="mk-naam" value="${esc(k.naam||'')}"></div>
+      <div class="fg" style="grid-column:1/-1"><label>E-mail</label><input type="email" id="mk-email" value="${esc(k.email||'')}"></div>
+      <div class="fg"><label>Telefoon</label><input id="mk-tel" value="${esc(k.telefoon||'')}"></div>
+      <div class="fg"><label>Adres</label><input id="mk-adres" value="${esc(k.adres||'')}"></div>
+      <div class="fg"><label>Postcode</label><input id="mk-pc" value="${esc(k.postcode||'')}"></div>
+      <div class="fg"><label>Plaats</label><input id="mk-plaats" value="${esc(k.plaats||'')}"></div>
+    </div>
+    <button class="btn btn-or" style="margin-top:14px" onclick="slaKlantBewerkOp('${esc(id)}')">💾 Opslaan</button>`;
+  openModal('m-klant');
+}
+async function slaKlantBewerkOp(id){
+  const naam=val('mk-naam').trim();
+  if(!naam){toast('Naam is verplicht','#dc2626');return;}
+  const email=val('mk-email').trim();
+  if(email&&!email.includes('@')){toast('E-mailadres ziet er niet goed uit','#dc2626');return;}
+  try{
+    await dbUpdate('klanten',id,{naam,email:email||null,telefoon:val('mk-tel').trim()||null,adres:val('mk-adres').trim()||null,postcode:val('mk-pc').trim()||null,plaats:val('mk-plaats').trim()||null});
+    sluitModal('m-klant');
+    toast('✅ Klant bijgewerkt','#15803d');
+    laadKlantenUitDB();
+  }catch(e){toast('⚠️ Opslaan mislukt: '+e.message,'#dc2626');}
+}
+async function verwijderKlant(id){
+  const k=_klantenCache.find(x=>x.id===id);
+  if(!k)return;
+  if(_klantFacturen(k).length){toast('Klant heeft facturen — verwijderen niet mogelijk','#dc2626');return;}
+  if(!confirm(`Klant "${k.naam}" verwijderen?`))return;
+  try{
+    await dbDelete('klanten','id=eq.'+encodeURIComponent(id));
+    toast('✅ Klant verwijderd','#15803d');
+    laadKlantenUitDB();
+  }catch(e){toast('⚠️ Verwijderen mislukt: '+e.message,'#dc2626');}
 }
 
 // ── FACTUUR PDF GENEREREN ─────────────────────────────────────────
@@ -2677,9 +2890,11 @@ async function _verstuurFactuurEmail(data){
 // CONTRACT FLOW
 // ════════════════════════════════════════════════════════════════
 
-// Genereer uniek ondertekenings-token (klant-link)
+// Genereer uniek ondertekenings-token (klant-link) — cryptografisch veilig
 function _genContractToken(){
-  return 'sig-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+  const b=new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return 'sig-'+Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
 }
 
 // Contract nummer: NB-CT-YYYYMMDD-N (oplopend per dag)
@@ -3982,15 +4197,15 @@ function _docStatusChip(d){
 function _docActies(d){
   const id=esc(d.id);
   if(d.soort==='factuur'){
-    return `<button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${id}')" title="Bekijk PDF">👁️</button>
-      ${d.email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${id}')" title="Opnieuw versturen">📤</button>`:''}
-      <button class="btn btn-rd btn-xs" onclick="verwijderFactuur('${id}')" title="Verwijder factuur">🗑️</button>`;
+    return `<button class="btn btn-gy btn-xs" onclick="bekijkFactuurPDF('${id}')" title="Bekijk PDF">${ic('eye')}</button>
+      ${d.email?`<button class="btn btn-or btn-xs" onclick="verstuurFactuurOpnieuw('${id}')" title="Opnieuw versturen">${ic('send')}</button>`:''}
+      <button class="btn btn-rd btn-xs" onclick="verwijderFactuur('${id}')" title="Verwijder factuur">${ic('trash')}</button>`;
   }
   const c=d.raw;
   const tekenUrl=c.ondertekend_token?`${window.location.origin}/teken.html?token=${encodeURIComponent(c.ondertekend_token)}`:'';
-  return `<button class="btn btn-gy btn-xs" onclick="bekijkContractPDF('${id}')" title="Bekijk contract PDF">👁️</button>
-    ${!c.ondertekend&&d.email?`<button class="btn btn-or btn-xs" onclick="verstuurContractOpnieuw('${id}')" title="Opnieuw mailen">📤</button>`:''}
-    ${!c.ondertekend&&tekenUrl?`<button class="btn btn-bl btn-xs" onclick="kopieerTekenLink('${esc(tekenUrl)}')" title="Kopieer klant-link">🔗</button>`:''}`;
+  return `<button class="btn btn-gy btn-xs" onclick="bekijkContractPDF('${id}')" title="Bekijk contract PDF">${ic('eye')}</button>
+    ${!c.ondertekend&&d.email?`<button class="btn btn-or btn-xs" onclick="verstuurContractOpnieuw('${id}')" title="Opnieuw mailen">${ic('send')}</button>`:''}
+    ${!c.ondertekend&&tekenUrl?`<button class="btn btn-bl btn-xs" onclick="kopieerTekenLink('${esc(tekenUrl)}')" title="Kopieer klant-link">${ic('link')}</button>`:''}`;
 }
 
 function renderDocumenten(){
@@ -4224,7 +4439,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten();laadOrgInstellingen();}
+function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten().then(()=>laadKlantenUitDB());laadOrgInstellingen();}
 </script>
 </body>
 </html>
