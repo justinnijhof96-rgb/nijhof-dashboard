@@ -3739,6 +3739,49 @@ function _renderDashMain(range){
     </div>
   </div>`;
 
+  // ── Verwachte betalingen: achterstallig / deze maand / volgende maand ──
+  const vandaag=new Date();vandaag.setHours(0,0,0,0);
+  const mnd0=nu.getMonth(),jr0=nu.getFullYear();
+  let mn1=mnd0+1,jr1=jr0;if(mn1>11){mn1=0;jr1++;}
+  const openTermijnen=[];
+  DB.verkopen.forEach(vk=>{
+    const it=DB.items.find(x=>x.id===vk.itemId);
+    const fac=_facturenCache.find(f=>f.verkoop_id===vk.id);
+    (vk.termijnen||[]).filter(t=>!t.betaald&&t.vervaldatum).forEach(t=>{
+      const d=new Date(t.vervaldatum);
+      if(isNaN(d))return;
+      openTermijnen.push({d,bedrag:t.bedrag,item:it?.naam||'?',klant:fac?.klant_naam||''});
+    });
+  });
+  openTermijnen.sort((a,b)=>a.d-b.d);
+  const bAcht=openTermijnen.filter(x=>x.d<vandaag);
+  const bDeze=openTermijnen.filter(x=>x.d>=vandaag&&x.d.getFullYear()===jr0&&x.d.getMonth()===mnd0);
+  const bVolg=openTermijnen.filter(x=>x.d.getFullYear()===jr1&&x.d.getMonth()===mn1);
+  const betKolom=(titel,rows,kleur)=>{
+    const som=rows.reduce((a,x)=>a+x.bedrag,0);
+    return `<div style="flex:1;min-width:220px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${kleur}">${titel}</span>
+        <strong class="num" style="font-family:var(--f-head);font-size:16px;color:${rows.length?kleur:'var(--gr)'}">${eur(som)}</strong>
+      </div>
+      ${rows.length?rows.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="num" style="color:var(--gr)">${pad(x.d.getDate())}-${pad(x.d.getMonth()+1)}</span> · ${esc(x.item)}${x.klant?` <span style="color:var(--gr)">— ${esc(x.klant)}</span>`:''}</span>
+        <strong class="num" style="flex-shrink:0">${eur(x.bedrag)}</strong>
+      </div>`).join(''):'<div style="font-size:12px;color:#9ca3af;padding:4px 0">Geen termijnen</div>'}
+    </div>`;
+  };
+  const betalingen=openTermijnen.length?`<div class="db-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div class="db-card-title" style="margin-bottom:0">Verwachte betalingen</div>
+      <span class="side-link" style="margin:0;padding:4px 10px;font-size:12px;color:var(--bl)" onclick="showView('s-debiteuren')">Naar debiteuren →</span>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px">
+      ${bAcht.length?betKolom('Achterstallig',bAcht,'var(--rd)'):''}
+      ${betKolom(MN[mnd0].charAt(0).toUpperCase()+MN[mnd0].slice(1)+' (deze maand)',bDeze,'var(--or)')}
+      ${betKolom(MN[mn1].charAt(0).toUpperCase()+MN[mn1].slice(1),bVolg,'var(--bl)')}
+    </div>
+  </div>`:'';
+
   const dot=c=>`<span class="kpi-dot" style="background:${c}"></span>`;
   const kpis=`<div class="mgrid">
     <div class="mc green"><div class="ml">${dot('var(--gn)')}Omzet ontvangen</div><div class="mv num">${eur(ontvangen)}</div><div class="mt">${_trEur(ontvangen,prv.ontvangen)}</div></div>
@@ -3850,7 +3893,7 @@ function _renderDashMain(range){
 
   const grafiek=`<div class="db-card"><div class="db-card-title">${_periodeType==='week'?'Omzet per week (12 weken)':_periodeType==='jaar'?'Omzet per maand — '+range.jr:'Omzet per maand (12 maanden)'}</div>${_periodeType==='week'?_staafWeek(range):_staafMaand(range)}</div>`;
 
-  el('dash-main').innerHTML=hero+kpis+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
+  el('dash-main').innerHTML=hero+kpis+betalingen+projHTML+waterval+inkoopBlok+_catAnalyse()+grafiek;
 }
 
 function _projectedCard(label,dagNr,totDagen,restDagen,gemDag,projBruto,projNetto,projNaLasten,lasten,salesToGo,GEM_MARGE,gemBron){
@@ -4439,7 +4482,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten().then(()=>laadKlantenUitDB());laadOrgInstellingen();}
+function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten().then(()=>{renderDash();laadKlantenUitDB();});laadOrgInstellingen();}
 </script>
 </body>
 </html>
