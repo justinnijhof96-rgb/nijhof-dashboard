@@ -847,6 +847,7 @@ async function laadAllesVanDB(){
       btwMethode:r.btw_methode||'marge',
       brutoMarge:Number(r.bruto_marge)||0, nettoMarge:Number(r.netto_marge)||0,
       btw:Number(r.btw)||0, nettoNaBtw:Number(r.netto_na_btw)||0,
+      laatsteHerinnering:r.laatste_herinnering||null,
       datum_registratie:r.datum_registratie,
       termijnen:(termMap[r.id]||[]).sort((a,b)=>a.nr-b.nr)
     }));
@@ -3271,19 +3272,82 @@ function renderDebiteuren(){
   if(!rows.length){el('deb-lijst').innerHTML='<div class="alert alert-ok">✓ Geen openstaande betalingen</div>';return;}
   rows.sort((a,b)=>b.dtl-a.dtl);
   el('deb-lijst').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Item</th><th>Omschrijving</th><th>Bedrag</th><th>Vervaldatum</th><th>Status</th><th>✓</th></tr></thead>
+    <thead><tr><th>Item</th><th>Omschrijving</th><th>Bedrag</th><th>Vervaldatum</th><th>Status</th><th>Herinnering</th><th>✓</th></tr></thead>
     <tbody>${rows.map(r=>{
       const kl=r.dtl>30?'chip-rd':r.dtl>0?'chip-or':'chip-bl';
       const st=r.dtl>0?`${r.dtl}d te laat`:'openstaand';
       const lbl=r.t.label||`Termijn ${r.t.nr}`;
+      const fac=_facturenCache.find(f=>f.verkoop_id===r.vk.id);
+      const kanMailen=!!(fac&&fac.klant_email&&fac.klant_email.includes('@'));
+      const herinnering=kanMailen
+        ?`<button class="btn btn-or btn-xs" onclick="stuurHerinnering('${esc(r.vk.id)}')" title="Stuur betalingsherinnering naar ${esc(fac.klant_email)}">${ic('send')} Herinner</button>${r.vk.laatsteHerinnering?`<br><span style="font-size:10px;color:var(--gr)">laatst: ${fmtD(r.vk.laatsteHerinnering)}</span>`:''}`
+        :'<span style="font-size:11px;color:#9ca3af" title="Geen klant-e-mail bekend bij deze verkoop">geen e-mail</span>';
       return`<tr>
         <td><strong>${esc(r.item?.naam||'?')}</strong>${r.item?.artikelnummer?`<br><span style="font-size:10px;color:#9ca3af;font-family:ui-monospace,monospace">${esc(r.item.artikelnummer)}</span>`:''}</td>
         <td>${r.t.label==='Restbetaling bij levering'?'🚚 ':''}${esc(lbl)}${r.t.notitie?`<br><span style="font-size:11px;color:var(--gr);font-style:italic">📝 ${esc(r.t.notitie)}</span>`:''}</td>
         <td>${eur(r.t.bedrag)}</td><td>${fmtD(r.t.vervaldatum)}</td>
         <td><span class="chip ${kl}">${st}</span></td>
+        <td style="white-space:nowrap">${herinnering}</td>
         <td style="text-align:center"><input type="checkbox" onchange="toggleTermijn('${esc(r.vk.id)}','${esc(r.t.id)}')" title="Markeer als betaald"></td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
+}
+
+// ── BETALINGSHERINNERING ──────────────────────────────────────────
+async function stuurHerinnering(vkId){
+  const vk=DB.verkopen.find(v=>v.id===vkId);
+  if(!vk){toast('Verkoop niet gevonden','#dc2626');return;}
+  const fac=_facturenCache.find(f=>f.verkoop_id===vkId);
+  if(!fac||!fac.klant_email){toast('Geen klant-e-mail bekend','#dc2626');return;}
+  const nu=new Date();
+  const open=(vk.termijnen||[]).filter(t=>!t.betaald).map(t=>{
+    const vd=new Date(t.vervaldatum);
+    return{label:t.label||`Termijn ${t.nr}`,bedrag:t.bedrag,vervaldatum:fmtD(t.vervaldatum),teLaat:!isNaN(vd)&&vd<nu};
+  });
+  if(!open.length){toast('Geen openstaande termijnen voor deze verkoop','#6b7280');return;}
+  const totaal=open.reduce((a,t)=>a+t.bedrag,0);
+  if(!confirm(`Betalingsherinnering sturen naar ${fac.klant_email}?\n\nFactuur ${fac.factuurnummer} — ${open.length} openstaande termijn(en), totaal ${eur(totaal)}.\nJullie invoice-adres krijgt een kopie.`))return;
+  toast('📤 Herinnering versturen...','#2563eb');
+  try{
+    // Factuur-PDF als bijlage meesturen (best effort)
+    let pdfBase64=null;
+    if(fac.pdf_url){
+      try{
+        const{data:blob}=await _sb.storage.from('facturen-pdf').download(fac.pdf_url);
+        if(blob){
+          pdfBase64=await new Promise((resolve,reject)=>{
+            const rd=new FileReader();
+            rd.onload=()=>resolve(rd.result.split(',')[1]);
+            rd.onerror=()=>reject(rd.error);
+            rd.readAsDataURL(blob);
+          });
+        }
+      }catch(e){console.warn('PDF voor herinnering:',e);}
+    }
+    const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-herinnering',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        klantEmail:fac.klant_email,
+        klantNaam:fac.klant_naam||'klant',
+        factuurnummer:fac.factuurnummer,
+        productNaam:fac.product_omschr||fac.product_naam||'',
+        termijnen:open,
+        pdfBase64,
+        pdfBestandsnaam:`factuur-${fac.factuurnummer}.pdf`
+      })
+    });
+    const json=await res.json();
+    if(!res.ok||!json.success)throw new Error(json.error||'onbekende fout');
+    const stamp=new Date().toISOString();
+    vk.laatsteHerinnering=stamp;
+    await dbUpdate('verkopen',vkId,{laatste_herinnering:stamp}).catch(e=>console.warn('Herinnering-stempel:',e));
+    renderDebiteuren();
+    toast(`✅ Herinnering verstuurd naar ${fac.klant_email}`,'#15803d');
+  }catch(e){
+    console.error('Herinnering fout:',e);
+    toast('⚠️ Herinnering mislukt: '+e.message,'#dc2626');
+  }
 }
 
 let _lastenEditId=null;
@@ -4482,7 +4546,7 @@ function kopieerTekenLink(url){
   });
 }
 
-function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten().then(()=>{renderDash();laadKlantenUitDB();});laadOrgInstellingen();}
+function renderAll(){renderV();renderStatus();renderLasten();renderDebiteuren();renderInkoopTarget();setPeriode('week');laadDocumenten().then(()=>{renderDash();renderDebiteuren();laadKlantenUitDB();});laadOrgInstellingen();}
 </script>
 </body>
 </html>
