@@ -181,6 +181,23 @@ Deno.serve(async (req: Request) => {
     const prod = data.productSet.product;
     const variantNode = prod?.variants?.edges?.[0]?.node;
 
+    // Publiceer naar het Marktplaats Pro-kanaal (of haal eraf bij verwijderen).
+    // Niet fataal: als dit faalt staat het product er nog en kan het handmatig.
+    const mpPub = Deno.env.get("SHOPIFY_MARKTPLAATS_PUBLICATION_ID") || "gid://shopify/Publication/345553371475";
+    try {
+      if (isVerwijderen) {
+        await shopify(
+          `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishableUnpublish(id: $id, input: $pubs) { userErrors { field message } } }`,
+          { id: prod.id, pubs: [{ publicationId: mpPub }] },
+        );
+      } else {
+        await shopify(
+          `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishablePublish(id: $id, input: $pubs) { userErrors { field message } } }`,
+          { id: prod.id, pubs: [{ publicationId: mpPub }] },
+        );
+      }
+    } catch (_e) { /* kanaal-publicatie niet fataal */ }
+
     const nieuweStatus = isVerwijderen ? "verwijderd"
       : isVerkocht ? "verkocht"
       : isReserveren ? "gereserveerd"
