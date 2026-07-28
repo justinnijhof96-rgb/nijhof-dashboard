@@ -52,11 +52,12 @@ Deno.serve(async (req: Request) => {
     if (!advertentie_id) return json({ error: "advertentie_id ontbreekt" }, 400);
 
     const store = Deno.env.get("SHOPIFY_STORE");
-    const token = Deno.env.get("SHOPIFY_ADMIN_TOKEN");
+    const clientId = Deno.env.get("SHOPIFY_CLIENT_ID");
+    const clientSecret = Deno.env.get("SHOPIFY_CLIENT_SECRET");
     const apiVersion = Deno.env.get("SHOPIFY_API_VERSION") || "2025-01";
     const locationId = Deno.env.get("SHOPIFY_LOCATION_ID") || "gid://shopify/Location/121363857747";
-    if (!store || !token) {
-      return json({ error: "SHOPIFY_STORE of SHOPIFY_ADMIN_TOKEN niet ingesteld in Supabase secrets" }, 500);
+    if (!store || !clientId || !clientSecret) {
+      return json({ error: "SHOPIFY_STORE, SHOPIFY_CLIENT_ID of SHOPIFY_CLIENT_SECRET niet ingesteld in Supabase secrets" }, 500);
     }
 
     const supabase = createClient(
@@ -70,10 +71,28 @@ Deno.serve(async (req: Request) => {
     const { data: item } = await supabase
       .from("items").select("*").eq("id", adv.item_id).single();
 
+    // Dev Dashboard custom app: wissel client-ID + secret in voor een access token
+    // (client credentials grant; token is ~24u geldig). Per invocatie eenmaal opgehaald.
+    let _token: string | null = null;
+    const getToken = async () => {
+      if (_token) return _token;
+      const tr = await fetch(`https://${store}/admin/oauth/access_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" }),
+      });
+      const tj = await tr.json().catch(() => ({}));
+      if (!tr.ok || !tj.access_token) {
+        throw new Error("Shopify auth mislukt: " + JSON.stringify(tj).slice(0, 300));
+      }
+      _token = tj.access_token as string;
+      return _token;
+    };
     const shopify = async (query: string, variables: unknown) => {
+      const tok = await getToken();
       const r = await fetch(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
         method: "POST",
-        headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+        headers: { "X-Shopify-Access-Token": tok, "Content-Type": "application/json" },
         body: JSON.stringify({ query, variables }),
       });
       const j = await r.json();

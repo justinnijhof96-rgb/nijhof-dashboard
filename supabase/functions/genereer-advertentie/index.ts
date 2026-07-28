@@ -1,10 +1,14 @@
 // Supabase Edge Function: genereer-advertentie
 // Genereert titel + advertentietekst voor een advertentie op basis van de foto's,
-// afmetingen, gegevens en het categorie-sjabloon. Gebruikt de Anthropic (Claude) API.
+// afmetingen, gegevens en het categorie-sjabloon.
 //
-// Vereiste secrets (Supabase -> Project Settings -> Edge Functions -> Secrets):
-//   ANTHROPIC_API_KEY   (verplicht)
-//   ANTHROPIC_MODEL     (optioneel, standaard 'claude-sonnet-5')
+// AI-provider is omschakelbaar via de secret AI_PROVIDER ('openai' of 'anthropic').
+// Standaard: openai.
+//
+// Vereiste secrets (Supabase -> Edge Functions -> Secrets):
+//   AI_PROVIDER        (optioneel, standaard 'openai')
+//   OpenAI:    OPENAI_API_KEY   (verplicht) + OPENAI_MODEL   (optioneel, standaard 'gpt-4o')
+//   Anthropic: ANTHROPIC_API_KEY (verplicht) + ANTHROPIC_MODEL (optioneel, standaard 'claude-sonnet-5')
 // SUPABASE_URL en SUPABASE_SERVICE_ROLE_KEY worden automatisch geleverd.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -51,7 +55,7 @@ Deno.serve(async (req: Request) => {
     const fotos = Array.isArray(adv.fotos) ? adv.fotos : [];
     let imageUrls: string[] = fotos.map((f: any) => f?.url).filter(Boolean);
     if (imageUrls.length === 0 && item?.foto_url) imageUrls = [item.foto_url];
-    imageUrls = imageUrls.slice(0, 8); // max 8 foto's naar het model
+    imageUrls = imageUrls.slice(0, 8);
 
     const maten = adv.maten && typeof adv.maten === "object" ? adv.maten : {};
     const matenText = Object.entries(maten)
@@ -71,10 +75,6 @@ Deno.serve(async (req: Request) => {
       `NIET vermelden: ${adv.niet_vermelden ?? "-"}`,
     ].join("\n");
 
-    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!apiKey) return json({ error: "ANTHROPIC_API_KEY niet ingesteld in Supabase secrets" }, 500);
-    const model = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5";
-
     const systemPrompt =
 `Je bent een ervaren tekstschrijver voor tweedehands meubeladvertenties op Marktplaats, voor meubelhandel Nijhof Brothers.
 ${sjab?.ai_instructie ?? "Schrijf een wervende maar eerlijke Nederlandse advertentie."}
@@ -83,38 +83,53 @@ Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, v
 Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst eromheen:
 {"titel":"...","beschrijving":"..."}`;
 
-    const content: any[] = [{
-      type: "text",
-      text: `Feiten over dit meubel:\n${feiten}\n\nBekijk de foto's en schrijf de titel en beschrijving.`,
-    }];
-    for (const url of imageUrls) content.push({ type: "image", source: { type: "url", url } });
+    const userText = `Feiten over dit meubel:\n${feiten}\n\nBekijk de foto's en schrijf de titel en beschrijving.`;
 
-    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1200,
-        system: systemPrompt,
-        messages: [{ role: "user", content }],
-      }),
-    });
+    const provider = (Deno.env.get("AI_PROVIDER") || "openai").toLowerCase();
+    let rawText = "";
 
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      await supabase.from("advertenties")
-        .update({ laatste_fout: `AI-fout ${aiRes.status}: ${t.slice(0, 300)}` })
-        .eq("id", advertentie_id);
-      return json({ error: `AI-fout ${aiRes.status}`, detail: t.slice(0, 500) }, 502);
+    if (provider === "anthropic") {
+      const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+      if (!apiKey) return json({ error: "ANTHROPIC_API_KEY niet ingesteld in Supabase secrets" }, 500);
+      const model = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5";
+      const content: any[] = [{ type: "text", text: userText }];
+      for (const url of imageUrls) content.push({ type: "image", source: { type: "url", url } });
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model, max_tokens: 1200, system: systemPrompt, messages: [{ role: "user", content }] }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        await supabase.from("advertenties").update({ laatste_fout: `AI-fout ${r.status}: ${t.slice(0, 300)}` }).eq("id", advertentie_id);
+        return json({ error: `AI-fout ${r.status}`, detail: t.slice(0, 500) }, 502);
+      }
+      const j = await r.json();
+      rawText = (j.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("").trim();
+    } else {
+      // OpenAI (standaard)
+      const apiKey = Deno.env.get("OPENAI_API_KEY");
+      if (!apiKey) return json({ error: "OPENAI_API_KEY niet ingesteld in Supabase secrets" }, 500);
+      const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o";
+      const userContent: any[] = [{ type: "text", text: userText }];
+      for (const url of imageUrls) userContent.push({ type: "image_url", image_url: { url } });
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        await supabase.from("advertenties").update({ laatste_fout: `AI-fout ${r.status}: ${t.slice(0, 300)}` }).eq("id", advertentie_id);
+        return json({ error: `AI-fout ${r.status}`, detail: t.slice(0, 500) }, 502);
+      }
+      const j = await r.json();
+      rawText = (j.choices?.[0]?.message?.content || "").trim();
     }
-
-    const aiJson = await aiRes.json();
-    const rawText = (aiJson.content || [])
-      .filter((c: any) => c.type === "text").map((c: any) => c.text).join("").trim();
 
     let parsed: any = null;
     try { parsed = JSON.parse(rawText); }
@@ -131,7 +146,6 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
     blokken = blokken.replace(/\{\{artikelnummer\}\}/g, item?.artikelnummer || "");
     const volledige = `${intro}${beschrijving}\n\n${blokken}`.trim();
 
-    // Status niet terugzetten als de advertentie al live/gereserveerd/verkocht is
     const behoudStatus = ["live", "gereserveerd", "verkocht"].includes(adv.status);
     const nieuweStatus = behoudStatus ? adv.status : "gegenereerd";
 
