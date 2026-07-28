@@ -181,19 +181,21 @@ Deno.serve(async (req: Request) => {
     const prod = data.productSet.product;
     const variantNode = prod?.variants?.edges?.[0]?.node;
 
-    // Publiceer naar het Marktplaats Pro-kanaal (of haal eraf bij verwijderen).
-    // Niet fataal: als dit faalt staat het product er nog en kan het handmatig.
+    // Publiceer naar het Marktplaats Pro-kanaal én de Webshop (voor de productpagina
+    // met WhatsApp-knop), of haal eraf bij verwijderen. Niet fataal.
     const mpPub = Deno.env.get("SHOPIFY_MARKTPLAATS_PUBLICATION_ID") || "gid://shopify/Publication/345553371475";
+    const webshopPub = Deno.env.get("SHOPIFY_WEBSHOP_PUBLICATION_ID") || "gid://shopify/Publication/340813676883";
+    const pubs = [{ publicationId: mpPub }, { publicationId: webshopPub }];
     try {
       if (isVerwijderen) {
         await shopify(
           `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishableUnpublish(id: $id, input: $pubs) { userErrors { field message } } }`,
-          { id: prod.id, pubs: [{ publicationId: mpPub }] },
+          { id: prod.id, pubs },
         );
       } else {
         await shopify(
           `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishablePublish(id: $id, input: $pubs) { userErrors { field message } } }`,
-          { id: prod.id, pubs: [{ publicationId: mpPub }] },
+          { id: prod.id, pubs },
         );
       }
     } catch (_e) { /* kanaal-publicatie niet fataal */ }
