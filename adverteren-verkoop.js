@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  var ADV = { lijst: [], huidig: null, fotos: [] };
+  var ADV = { lijst: [], huidig: null, fotos: [], verkochtItems: [], verkochtOpen: false };
   window._ADV = ADV;
 
   function E(id) { return document.getElementById(id); }
@@ -158,6 +158,15 @@
     for (var i = 0; i < ADV.lijst.length; i++) if (ADV.lijst[i].item_id === itemId) return ADV.lijst[i];
     return null;
   }
+  // Verkochte items apart laden (staan niet in STATE.items, die alleen 'beschikbaar' bevat)
+  function laadVerkocht() {
+    return _restGet("items?select=*&status=eq.verkocht&order=aangemaakt_op.desc&limit=300").then(function (rows) {
+      ADV.verkochtItems = rows || [];
+      return ADV.verkochtItems;
+    }).catch(function (e) { console.warn("Verkochte items laden mislukt", e); ADV.verkochtItems = []; return []; });
+  }
+  // Beschikbaar + verkocht samen (voor het openen van een item-formulier)
+  function alleItems() { return (STATE.items || []).concat(ADV.verkochtItems || []); }
 
   function advStart() {
     injectAll();
@@ -165,7 +174,7 @@
     toonPaneel("lijst");
     E("adv-items").innerHTML = '<p style="color:var(--gr);padding:8px">Laden…</p>';
     var pre = (STATE.items && STATE.items.length) ? Promise.resolve() : (typeof laadVoorraad === "function" ? laadVoorraad() : Promise.resolve());
-    pre.then(laadAdvertenties).then(renderAdvLijst).catch(function (e) {
+    pre.then(laadAdvertenties).then(laadVerkocht).then(renderAdvLijst).catch(function (e) {
       E("adv-items").innerHTML = '<div class="alert alert-err">⚠️ Laden mislukt: ' + X(e.message || e) + '</div>';
     });
   }
@@ -187,35 +196,58 @@
 
   function advZoek() { renderAdvLijst(); }
 
+  function advMatch(it, zk) {
+    if (!zk) return true;
+    return (it.naam || "").toLowerCase().indexOf(zk) >= 0 ||
+      (it.artikelnummer || "").toLowerCase().indexOf(zk) >= 0 ||
+      (it.categorie || "").toLowerCase().indexOf(zk) >= 0;
+  }
+  function advRowHtml(it, verkocht) {
+    var a = advVoorItem(it.id);
+    var st = verkocht ? ["Verkocht", "#7c3aed"]
+      : (a ? (STATUS_LABEL[a.status] || ["?", "#6b7280"]) : ["Nog geen advertentie", "#94a3b8"]);
+    var foto = (a && Array.isArray(a.fotos) && a.fotos[0] && a.fotos[0].url) || it.foto_url || "";
+    var thumb = foto ? '<img class="adv-thumb" src="' + X(foto) + '">' : '<div class="adv-thumb">📦</div>';
+    return '<div class="adv-item"' + (verkocht ? ' style="opacity:.72"' : '') + ' onclick="advOpenItem(\'' + X(it.id) + '\')">' + thumb +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(it.naam || "?") + '</div>' +
+      '<div style="font-size:12px;color:var(--gr);margin-top:3px">' +
+      (it.artikelnummer ? '<span style="background:var(--orl);color:var(--or);padding:2px 8px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace">' + X(it.artikelnummer) + '</span>' : "") +
+      (it.categorie ? ' · ' + X(it.categorie) : "") + '</div>' +
+      '<div style="margin-top:6px"><span class="adv-badge" style="background:' + st[1] + '">' + X(st[0]) + '</span></div>' +
+      '</div>' +
+      '<div style="color:var(--gr);font-size:22px">›</div>' +
+      '</div>';
+  }
   function renderAdvLijst() {
     var wrap = E("adv-items"); if (!wrap) return;
     var zk = (val("adv-zoek") || "").toLowerCase().trim();
-    var items = (STATE.items || []).filter(function (i) {
-      if (!zk) return true;
-      return (i.naam || "").toLowerCase().indexOf(zk) >= 0 ||
-        (i.artikelnummer || "").toLowerCase().indexOf(zk) >= 0 ||
-        (i.categorie || "").toLowerCase().indexOf(zk) >= 0;
-    });
-    if (!items.length) {
-      wrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--gr);padding:30px">' + (zk ? 'Geen items voor "' + X(zk) + '"' : "Geen voorraad om te adverteren") + '</div>';
-      return;
+    var besch = (STATE.items || []).filter(function (i) { return advMatch(i, zk); });
+    var verk = (ADV.verkochtItems || []).filter(function (i) { return advMatch(i, zk); });
+    var html = "";
+    if (besch.length) {
+      html += besch.map(function (it) { return advRowHtml(it, false); }).join("");
+    } else {
+      html += '<div class="empty" style="text-align:center;color:var(--gr);padding:24px">' +
+        (zk ? 'Geen beschikbare items voor "' + X(zk) + '"' : "Geen voorraad om te adverteren") + '</div>';
     }
-    wrap.innerHTML = items.map(function (it) {
-      var a = advVoorItem(it.id);
-      var st = a ? (STATUS_LABEL[a.status] || ["?", "#6b7280"]) : ["Nog geen advertentie", "#94a3b8"];
-      var foto = (a && Array.isArray(a.fotos) && a.fotos[0] && a.fotos[0].url) || it.foto_url || "";
-      var thumb = foto ? '<img class="adv-thumb" src="' + X(foto) + '">' : '<div class="adv-thumb">📦</div>';
-      return '<div class="adv-item" onclick="advOpenItem(\'' + X(it.id) + '\')">' + thumb +
-        '<div style="flex:1;min-width:0">' +
-        '<div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(it.naam || "?") + '</div>' +
-        '<div style="font-size:12px;color:var(--gr);margin-top:3px">' +
-        (it.artikelnummer ? '<span style="background:var(--orl);color:var(--or);padding:2px 8px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace">' + X(it.artikelnummer) + '</span>' : "") +
-        (it.categorie ? ' · ' + X(it.categorie) : "") + '</div>' +
-        '<div style="margin-top:6px"><span class="adv-badge" style="background:' + st[1] + '">' + X(st[0]) + '</span></div>' +
-        '</div>' +
-        '<div style="color:var(--gr);font-size:22px">›</div>' +
-        '</div>';
-    }).join("");
+    // Uitklapbaar 'Verkocht'-kopje — verkochte items blijven zo bewaard/zichtbaar.
+    if (verk.length) {
+      html += '<div style="margin-top:16px;border-top:1px solid var(--bd);padding-top:4px">' +
+        '<div onclick="advToggleVerkocht()" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:12px 4px;font-weight:700;color:var(--nav)">' +
+        '<span id="adv-verkocht-caret" style="display:inline-block;transition:.15s' + (ADV.verkochtOpen ? ";transform:rotate(90deg)" : "") + '">▸</span>' +
+        '✓ Verkocht <span style="color:var(--gr);font-weight:500">(' + verk.length + ')</span></div>' +
+        '<div id="adv-verkocht-lijst" style="display:' + (ADV.verkochtOpen ? "block" : "none") + '">' +
+        verk.map(function (it) { return advRowHtml(it, true); }).join("") +
+        '</div></div>';
+    }
+    wrap.innerHTML = html;
+  }
+  function advToggleVerkocht() {
+    ADV.verkochtOpen = !ADV.verkochtOpen;
+    var l = E("adv-verkocht-lijst"), c = E("adv-verkocht-caret");
+    if (l) l.style.display = ADV.verkochtOpen ? "block" : "none";
+    if (c) c.style.transform = ADV.verkochtOpen ? "rotate(90deg)" : "";
   }
 
   /* ---- Formulier ---- */
@@ -240,7 +272,7 @@
 
   function advOpenItem(itemId) {
     injectAll();
-    var it = (STATE.items || []).find(function (x) { return x.id === itemId; });
+    var it = alleItems().find(function (x) { return x.id === itemId; });
     if (!it) { T("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it, bestaatInDb: !!a.id };
@@ -475,9 +507,13 @@
       }
       T("🚀 " + (d.status || actie));
       var na = laadAdvertenties();
-      // Voorraad herladen als de item-status is meegewijzigd, zodat de lijst klopt.
-      if ((actie === "verkocht" || actie === "terug_online") && typeof laadVoorraad === "function") {
-        na = na.then(function () { return laadVoorraad(); }).then(renderAdvLijst, renderAdvLijst);
+      // Voorraad + verkocht-lijst herladen als de item-status is meegewijzigd, zodat
+      // het item netjes tussen 'beschikbaar' en het 'Verkocht'-kopje verschuift.
+      if (actie === "verkocht" || actie === "terug_online") {
+        na = na
+          .then(function () { return (typeof laadVoorraad === "function") ? laadVoorraad() : null; })
+          .then(laadVerkocht)
+          .then(renderAdvLijst, renderAdvLijst);
       }
       return na;
     }).catch(function (e) {
@@ -490,6 +526,7 @@
   window.advStart = advStart;
   window.advTerug = advTerug;
   window.advZoek = advZoek;
+  window.advToggleVerkocht = advToggleVerkocht;
   window.advOpenItem = advOpenItem;
   window.advRubriekWijzig = advRubriekWijzig;
   window.advOpslaan = advOpslaan;
