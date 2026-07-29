@@ -27,6 +27,52 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+// Nette labels + welke maten in cm zijn (voor de {{specificaties}}-lijst)
+const MAAT_LABELS: Record<string, string> = {
+  breedte: "Breedte", diepte: "Diepte", diepte_lounge: "Diepte lounge",
+  zitdiepte: "Zitdiepte", zitdiepte_lounge: "Zitdiepte lounge",
+  zithoogte: "Zithoogte", hoogte: "Hoogte", zitplaatsen: "Aantal zitplaatsen",
+  hoek: "Hoek", deuren: "Aantal deuren", planken: "Aantal planken/lades",
+  vorm: "Vorm", lengte: "Lengte", diameter: "Diameter", matrasmaat: "Matrasmaat",
+};
+const CM_KEYS = new Set([
+  "breedte", "diepte", "diepte_lounge", "zitdiepte", "zitdiepte_lounge",
+  "zithoogte", "hoogte", "lengte", "diameter",
+]);
+
+// Vult placeholders ({{breedte}}, {{materiaal}}, {{specificaties}}, ...) in de vaste
+// sjabloon-tekst en verwijdert specificatie-regels die leeg blijven (niet ingevuld).
+function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<string, unknown>): string {
+  if (!tekst) return "";
+  const map: Record<string, string> = {
+    artikelnummer: String(item?.artikelnummer ?? ""),
+    materiaal: String(adv?.materiaal ?? ""),
+    kleur: String(adv?.kleur ?? ""),
+    merk: String(adv?.merk ?? ""),
+    staat: String(adv?.staat ?? ""),
+    bijzonderheden: String(adv?.notitie ?? ""),
+    vraagprijs: adv?.vraagprijs != null ? String(adv.vraagprijs) : "",
+    type: String(adv?.rubriek ?? item?.categorie ?? ""),
+    naam: String(item?.naam ?? ""),
+  };
+  for (const [k, v] of Object.entries(maten)) map[k] = v == null ? "" : String(v);
+
+  // {{specificaties}}: alle ingevulde maten als "Label: waarde cm"
+  const specLines: string[] = [];
+  for (const [k, v] of Object.entries(maten)) {
+    if (v == null || String(v).trim() === "") continue;
+    const label = MAAT_LABELS[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+    specLines.push(`${label}: ${String(v).trim()}${CM_KEYS.has(k) ? " cm" : ""}`);
+  }
+  map["specificaties"] = specLines.join("\n");
+
+  let out = tekst.replace(/\{\{(\w+)\}\}/g, (_m, k) => (k in map ? map[k] : ""));
+  // Verwijder lege specificatie-regels: "Label:" (evt. gevolgd door 'cm') zonder waarde
+  out = out.split("\n").filter((line) => !/^\s*[^:\n]+:\s*(cm)?\s*$/i.test(line)).join("\n");
+  out = out.replace(/\n{3,}/g, "\n\n");
+  return out;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -79,7 +125,7 @@ Deno.serve(async (req: Request) => {
 `Je bent een ervaren tekstschrijver voor tweedehands meubeladvertenties op Marktplaats, voor meubelhandel Nijhof Brothers.
 ${sjab?.ai_instructie ?? "Schrijf een wervende maar eerlijke Nederlandse advertentie."}
 ${sjab?.titel_hint ? "Titelinstructie: " + sjab.titel_hint : "Titel: maximaal 60 tekens, type + merk + kleur/materiaal + sterk verkooppunt."}
-Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, verzin niets. Schrijf de beschrijving in prettig leesbare korte alinea's. Neem de afmetingen op in de beschrijving. Sluit de beschrijving NIET af met contactgegevens, bezorging of prijs (dat staat al in de vaste tekst).
+Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, verzin niets. Schrijf de beschrijving in prettig leesbare korte alinea's en varieer de formuleringen per meubel (niet elke keer dezelfde zinnen). Neem in de beschrijving GEEN afmetingen, specificaties, bezorging, prijs of contactgegevens op — die staan al in de vaste tekst van de advertentie.
 Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst eromheen:
 {"titel":"...","beschrijving":"..."}`;
 
@@ -141,10 +187,10 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
     const titel = String(parsed.titel).slice(0, 60);
     const beschrijving = String(parsed.beschrijving || "");
 
-    const intro = sjab?.vaste_intro ? String(sjab.vaste_intro).trim() + "\n\n" : "";
-    let blokken = sjab?.vaste_blokken ? String(sjab.vaste_blokken) : "";
-    blokken = blokken.replace(/\{\{artikelnummer\}\}/g, item?.artikelnummer || "");
-    const volledige = `${intro}${beschrijving}\n\n${blokken}`.trim();
+    const intro = fillPlaceholders(sjab?.vaste_intro ? String(sjab.vaste_intro) : "", adv, item, maten).trim();
+    const blokken = fillPlaceholders(sjab?.vaste_blokken ? String(sjab.vaste_blokken) : "", adv, item, maten).trim();
+    const introDeel = intro ? intro + "\n\n" : "";
+    const volledige = `${introDeel}${beschrijving.trim()}\n\n${blokken}`.trim();
 
     const behoudStatus = ["live", "gereserveerd", "verkocht"].includes(adv.status);
     const nieuweStatus = behoudStatus ? adv.status : "gegenereerd";

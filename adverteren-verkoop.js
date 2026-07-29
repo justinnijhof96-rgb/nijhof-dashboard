@@ -49,7 +49,7 @@
   function profielVoorRubriek(r) { return profielVoorGroep(RUBRIEK_GROEP[r] || ""); }
 
   var PROFIEL_MATEN = {
-    zitmeubel: [["breedte", "Breedte (cm)"], ["diepte", "Diepte (cm)"], ["hoogte", "Hoogte (cm)"], ["zithoogte", "Zithoogte (cm)"], ["zitplaatsen", "Aantal zitplaatsen"], ["hoek", "Hoek (links / rechts / n.v.t.)"]],
+    zitmeubel: [["breedte", "Breedte (cm)"], ["diepte_lounge", "Diepte lounge (cm)"], ["zitdiepte_lounge", "Zitdiepte lounge (cm)"], ["zithoogte", "Zithoogte (cm)"], ["zitdiepte", "Zitdiepte (cm)"]],
     kast: [["breedte", "Breedte (cm)"], ["diepte", "Diepte (cm)"], ["hoogte", "Hoogte (cm)"], ["deuren", "Aantal deuren"], ["planken", "Aantal planken/lades"]],
     tafel: [["vorm", "Vorm (rond / rechthoek / ovaal)"], ["lengte", "Lengte / diameter (cm)"], ["breedte", "Breedte (cm)"], ["hoogte", "Hoogte (cm)"]],
     bed: [["lengte", "Lengte (cm)"], ["breedte", "Breedte (cm)"], ["hoogte", "Hoogte (cm)"], ["matrasmaat", "Matrasmaat (bv. 140x200)"]],
