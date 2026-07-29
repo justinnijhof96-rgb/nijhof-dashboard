@@ -1947,6 +1947,21 @@ async function afronden(){
     // 2. Item status → verkocht
     await _restPatch(`items?id=eq.${encodeURIComponent(item.id)}`,{status:'verkocht'});
 
+    // 2b. Advertentie automatisch offline halen (Marktplaats + webshop). Alleen als het
+    //     meubel ook echt online staat/stond (shopify_product_id gezet). Niet-blokkerend:
+    //     een verkoop mag nooit falen omdat het offline halen misgaat.
+    try{
+      const advs=await _restGet(`advertenties?select=id,shopify_product_id&item_id=eq.${encodeURIComponent(item.id)}&limit=1`);
+      const a=advs&&advs[0];
+      if(a&&a.shopify_product_id){
+        await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+          body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
+        });
+      }
+    }catch(e){console.warn('Advertentie offline halen mislukt:',e);}
+
     // 3. Factuur wordt ALTIJD gemaakt — klant opslaan en contract alleen bij ingevulde klantgegevens
     let factuurId=null,contractId=null,klantId=null;
     const heeftKlant=!!(STATE.klant.naam && STATE.klant.email);

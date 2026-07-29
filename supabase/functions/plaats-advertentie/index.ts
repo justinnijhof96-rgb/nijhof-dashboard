@@ -108,7 +108,11 @@ Deno.serve(async (req: Request) => {
     const baseTitel = adv.ai_titel || item?.naam || "Meubel";
     const titel = isReserveren ? ("GERESERVEERD - " + baseTitel).slice(0, 255) : baseTitel;
     const qty = (isVerkocht || isVerwijderen) ? 0 : 1;
-    const shopifyStatus = isVerwijderen ? "DRAFT" : "ACTIVE";
+    // Verkocht en verwijderen halen het product offline (DRAFT + van de kanalen af):
+    // een verkocht meubel mag geen klikken/CPC meer kosten en hoort niet meer op de
+    // webshop. De records (advertentie + item) blijven wel gewoon bestaan.
+    const offline = isVerwijderen || isVerkocht;
+    const shopifyStatus = offline ? "DRAFT" : "ACTIVE";
 
     const tags = ["marktplaats"];
     if (adv.merk) tags.push(String(adv.merk));
@@ -187,7 +191,7 @@ Deno.serve(async (req: Request) => {
     const webshopPub = Deno.env.get("SHOPIFY_WEBSHOP_PUBLICATION_ID") || "gid://shopify/Publication/340813676883";
     const pubs = [{ publicationId: mpPub }, { publicationId: webshopPub }];
     try {
-      if (isVerwijderen) {
+      if (offline) {
         await shopify(
           `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishableUnpublish(id: $id, input: $pubs) { userErrors { field message } } }`,
           { id: prod.id, pubs },
