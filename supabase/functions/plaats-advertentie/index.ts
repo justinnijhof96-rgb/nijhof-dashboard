@@ -215,7 +215,20 @@ Deno.serve(async (req: Request) => {
       gepubliceerd_op: adv.gepubliceerd_op || new Date().toISOString(),
     }).eq("id", advertentie_id);
 
-    return json({ ok: true, status: nieuweStatus, shopify_product_id: prod.id, handle: prod.handle });
+    // Voorraad-item meesyncen met de advertentie-actie:
+    //  verkocht     -> item op 'verkocht' (verdwijnt uit de voorraad/verkoop-lijst)
+    //  terug_online -> item terug op 'beschikbaar' (maakt 'verkocht' omkeerbaar)
+    // Overige acties laten de item-status ongemoeid.
+    let itemStatus: string | null = null;
+    if (isVerkocht) itemStatus = "verkocht";
+    else if (actie === "terug_online") itemStatus = "beschikbaar";
+    if (itemStatus && adv.item_id) {
+      try {
+        await supabase.from("items").update({ status: itemStatus }).eq("id", adv.item_id);
+      } catch (_e) { /* voorraad-sync niet fataal voor de advertentie-actie */ }
+    }
+
+    return json({ ok: true, status: nieuweStatus, item_status: itemStatus, shopify_product_id: prod.id, handle: prod.handle });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }

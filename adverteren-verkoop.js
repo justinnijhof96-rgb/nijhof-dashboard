@@ -468,9 +468,18 @@
     advOpslaan(true).then(function (saved) {
       return roepFunctie("plaats-advertentie", { advertentie_id: saved.id, actie: actie });
     }).then(function (d) {
-      if (st) { st.style.color = "#15803d"; st.innerHTML = "Gelukt — status: <strong>" + X(d.status || "") + "</strong>" + (d.handle ? " · " + X(d.handle) : ""); }
+      if (st) {
+        st.style.color = "#15803d";
+        st.innerHTML = "Gelukt — status: <strong>" + X(d.status || "") + "</strong>" + (d.handle ? " · " + X(d.handle) : "") +
+          (d.item_status ? '<br><span style="color:var(--gr)">Voorraad: item op <strong>' + X(d.item_status) + "</strong> gezet</span>" : "");
+      }
       T("🚀 " + (d.status || actie));
-      return laadAdvertenties();
+      var na = laadAdvertenties();
+      // Voorraad herladen als de item-status is meegewijzigd, zodat de lijst klopt.
+      if ((actie === "verkocht" || actie === "terug_online") && typeof laadVoorraad === "function") {
+        na = na.then(function () { return laadVoorraad(); }).then(renderAdvLijst, renderAdvLijst);
+      }
+      return na;
     }).catch(function (e) {
       if (st) { st.style.color = "#dc2626"; st.textContent = (e.message || e) + " — vaak: Shopify-secrets nog niet ingesteld."; }
       T("Actie mislukt", "#dc2626");
