@@ -79,6 +79,7 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 .empty{text-align:center;padding:40px 20px;color:var(--gr);font-size:14px}
 .alert{padding:12px 14px;border-radius:10px;margin-bottom:12px;font-size:13px}
 .alert-err{background:#fff1f2;border:1px solid #fecdd3;color:#b91c1c}
+.alert-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
 
 /* SEGMENTED BUTTONS */
 .btn-seg{flex:1;border:1.5px solid var(--bd);background:#fff;color:var(--nav);padding:13px 8px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;min-height:48px}
@@ -150,8 +151,51 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <span>Inkoop</span>
         <span style="font-size:12px;font-weight:400;opacity:.8">Nieuw item toevoegen</span>
       </button>
+      <button onclick="kiesActie('bonnetje')" style="background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(180,83,9,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">🧾</span>
+        <span>Bonnetje</span>
+        <span style="font-size:12px;font-weight:400;opacity:.9">Foto van een bon → PDF naar invoice@</span>
+      </button>
     </div>
   </main>
+</div>
+
+<!-- BONNETJE: foto → PDF → mail naar invoice@ -->
+<div id="screen-bonnetje" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="terugNaarKeuze()" title="Terug">←</button>
+    <div class="logo">BONNETJE <small>NIJHOF BROTHERS</small></div>
+    <span style="width:36px"></span>
+  </div>
+  <main>
+    <h1>Bonnetje insturen</h1>
+    <h2>Maak een foto, wij mailen 'm als PDF naar invoice@</h2>
+    <div class="card">
+      <div class="fg">
+        <label>Foto van de bon</label>
+        <div id="bon-foto-zone" onclick="document.getElementById('bon-foto-input').click()" style="border:2px dashed var(--bd);border-radius:12px;padding:20px;text-align:center;cursor:pointer;background:#fafbfc">
+          <div id="bon-foto-leeg">
+            <div style="font-size:38px;opacity:.4">📷</div>
+            <div style="font-size:14px;color:var(--gr);margin-top:6px;font-weight:600">Tik om een foto te maken</div>
+          </div>
+          <img id="bon-foto-preview" style="display:none;max-width:100%;max-height:280px;border-radius:8px" alt="Bonnetje">
+        </div>
+        <input type="file" id="bon-foto-input" accept="image/*" capture="environment" style="display:none" onchange="bonKiesFoto(event)">
+      </div>
+      <div class="fg">
+        <label>Datum op de bon</label>
+        <input type="date" id="bon-datum">
+      </div>
+      <div class="fg">
+        <label>Omschrijving</label>
+        <input id="bon-omschr" placeholder="bijv. Tankbeurt bus / schoonmaakmiddelen Action">
+      </div>
+      <div id="bon-status"></div>
+    </div>
+  </main>
+  <div class="bot">
+    <button class="btn btn-or" id="bon-verstuur" onclick="verstuurBonnetje()">📤 Naar invoice@</button>
+  </div>
 </div>
 
 <div id="screen-inkoop" class="view">
@@ -685,6 +729,105 @@ function kiesActie(actie){
   } else if(actie==='inkoop'){
     toonScherm('screen-inkoop');
     herstartInkoop();
+  } else if(actie==='bonnetje'){
+    herstartBonnetje();
+    toonScherm('screen-bonnetje');
+  }
+}
+
+/* ── BONNETJE: foto → PDF → mail naar invoice@ ── */
+let _bonFotoBlob=null;
+function herstartBonnetje(){
+  _bonFotoBlob=null;
+  const inp=$('bon-foto-input');if(inp)inp.value='';
+  $('bon-foto-preview').style.display='none';
+  $('bon-foto-leeg').style.display='';
+  $('bon-datum').value=new Date().toISOString().slice(0,10);
+  $('bon-omschr').value='';
+  $('bon-status').innerHTML='';
+  const btn=$('bon-verstuur');btn.disabled=false;btn.textContent='📤 Naar invoice@';
+}
+async function bonKiesFoto(ev){
+  const file=ev.target.files&&ev.target.files[0];
+  if(!file)return;
+  try{
+    _bonFotoBlob=await _compressInkFoto(file,1600,0.88);
+    const url=await _blobNaarDataUrl(_bonFotoBlob);
+    const img=$('bon-foto-preview');
+    img.src=url;img.style.display='block';
+    $('bon-foto-leeg').style.display='none';
+  }catch(e){
+    $('bon-status').innerHTML=`<div class="alert alert-err">⚠️ Foto verwerken mislukt: ${esc(e.message)}</div>`;
+  }
+}
+function _maakBonPDF({dataUrl,datum,omschrijving}){
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  // Header in huisstijl
+  doc.setFillColor(30,47,58);doc.rect(0,0,210,26,'F');
+  doc.setFillColor(232,119,34);doc.rect(0,26,210,1.5,'F');
+  doc.setTextColor(232,119,34);doc.setFontSize(16);doc.setFont('helvetica','bold');
+  doc.text('NIJHOF BROTHERS',15,12);
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('FURNITURE — BONNETJE',15,19);
+  // Gegevens
+  doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Datum:',15,38);doc.text('Omschrijving:',15,45);
+  doc.setFont('helvetica','normal');
+  const d=new Date(datum);
+  doc.text(isNaN(d)?datum:`${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`,50,38);
+  const omsLines=doc.splitTextToSize(omschrijving,140);
+  doc.text(omsLines,50,45);
+  // Foto passend schalen binnen A4-marges
+  const startY=50+omsLines.length*5;
+  const img=new Image();
+  return new Promise((resolve,reject)=>{
+    img.onload=()=>{
+      try{
+        const maxW=180,maxH=280-startY-10;
+        let w=maxW,h=(img.height/img.width)*maxW;
+        if(h>maxH){h=maxH;w=(img.width/img.height)*maxH;}
+        doc.addImage(dataUrl,'JPEG',15,startY,w,h);
+        resolve(doc);
+      }catch(e){reject(e);}
+    };
+    img.onerror=()=>reject(new Error('Foto laden voor PDF mislukt'));
+    img.src=dataUrl;
+  });
+}
+async function verstuurBonnetje(){
+  const datum=$('bon-datum').value;
+  const omschrijving=$('bon-omschr').value.trim();
+  const status=$('bon-status');
+  if(!_bonFotoBlob){status.innerHTML='<div class="alert alert-err">⚠️ Maak eerst een foto van de bon</div>';return;}
+  if(!datum){status.innerHTML='<div class="alert alert-err">⚠️ Vul de datum in</div>';return;}
+  if(!omschrijving){status.innerHTML='<div class="alert alert-err">⚠️ Vul een korte omschrijving in</div>';return;}
+  const btn=$('bon-verstuur');
+  btn.disabled=true;btn.textContent='⏳ Versturen...';
+  status.innerHTML='<div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">⏳ PDF maken en mailen...</div>';
+  try{
+    const dataUrl=await _blobNaarDataUrl(_bonFotoBlob);
+    const doc=await _maakBonPDF({dataUrl,datum,omschrijving});
+    const pdfBase64=doc.output('datauristring').split(',')[1];
+    const fotoBase64=dataUrl.split(',')[1];
+    const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-bonnetje',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+(_getStoredAuth()?.access_token||SUPABASE_ANON),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        datum,omschrijving,
+        pdfBase64,pdfBestandsnaam:`bonnetje-${datum}.pdf`,
+        fotoBase64,fotoBestandsnaam:`bonnetje-${datum}-foto.jpg`
+      })
+    });
+    const json=await res.json();
+    if(!res.ok||!json.success)throw new Error(json.error||'versturen mislukt');
+    status.innerHTML='<div class="alert alert-ok">✅ Bonnetje verstuurd naar invoice@nijhofbrothers.nl</div>';
+    btn.textContent='✅ Verstuurd';
+    setTimeout(()=>{herstartBonnetje();terugNaarKeuze();},1800);
+  }catch(e){
+    console.error('Bonnetje fout:',e);
+    status.innerHTML=`<div class="alert alert-err">⚠️ Mislukt: ${esc(e.message)}</div>`;
+    btn.disabled=false;btn.textContent='📤 Naar invoice@';
   }
 }
 
