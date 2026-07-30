@@ -663,16 +663,15 @@ function herstart(){
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
   STATE.type='volledig';
   STATE.termijnen=[];
+  STATE.wilEmailen=false;
+  STATE.wilContract=false;
+  const s4=$('s4-status');if(s4)s4.innerHTML='';
   // UI: zorg dat steps + bottom bar weer zichtbaar zijn (succes-screen verbergt ze)
   document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
   // Klaar-screen verbergen indien zichtbaar
   const klaar=$('stap-klaar');if(klaar)klaar.classList.remove('show');
   toonStap(1);
   renderItems();
-}
-
-function afronden(){
-  toast('⚙️ Afronden komt in fase 5','#c2410c');
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────
@@ -2034,6 +2033,20 @@ function _genToken(){
 // ── AFRONDEN — HOOFDFLOW ──────────────────────────────────────────
 async function afronden(){
   const btn=$('btn-next');
+  // Vangnet: zonder gekozen item kan er niets afgerond worden (kwam voor bij snelle 2e verkoop)
+  if(!STATE.gekozen||!STATE.gekozen.id){
+    $('s4-status').innerHTML='<div class="alert alert-err">⚠️ Geen meubel gekozen — ga terug naar stap 1 en kies het item opnieuw.</div>';
+    btn.disabled=false;
+    return;
+  }
+  if(!STATE.org_id){
+    try{await laadOrgId();}catch(e){}
+    if(!STATE.org_id){
+      $('s4-status').innerHTML='<div class="alert alert-err">⚠️ Organisatie niet geladen — controleer je verbinding en probeer opnieuw.</div>';
+      btn.disabled=false;
+      return;
+    }
+  }
   btn.disabled=true;
   $('s4-status').innerHTML='<div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">⏳ Verkoop wordt verwerkt...</div>';
 
@@ -2296,16 +2309,19 @@ async function afronden(){
     toonScherm('screen-app');
     $('stap-4').classList.remove('show');
     $('stap-klaar').classList.add('show');
+    // Knop + status herstellen zodat een volgende verkoop schoon start
+    $('s4-status').innerHTML='';
+    btn.disabled=false;
 
   } catch(e){
     console.error('Afronden fout:',e);
-    $('s4-status').innerHTML=`<div class="alert alert-err">⚠️ ${esc(e.message)}</div>`;
+    $('s4-status').innerHTML=`<div class="alert alert-err">⚠️ Verkoop afronden mislukt: ${esc(e.message)}<br><span style="font-size:12px;color:var(--gr)">Controleer bij twijfel in het dashboard of de verkoop tóch is opgeslagen voordat je opnieuw probeert.</span></div>`;
     btn.disabled=false;
   }
 }
 
-function nieuweVerkoop(){
-  // Reset alles
+async function nieuweVerkoop(){
+  // Reset alles — óók opties die van de vorige verkoop bleven staan
   STATE.gekozen=null;
   STATE.prijs=0;
   STATE.services=[];
@@ -2313,11 +2329,17 @@ function nieuweVerkoop(){
   STATE.type='volledig';
   STATE.termijnen=[];
   STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
-  // UI reset
+  STATE.wilEmailen=false;
+  STATE.wilContract=false;
+  // UI reset: statusmeldingen en knop van de vorige ronde wissen
+  $('s4-status').innerHTML='';
+  const btn=$('btn-next');btn.disabled=false;
   document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
   $('stap-klaar').classList.remove('show');
   toonStap(1);
-  laadVoorraad();
+  // WACHT op verse voorraad vóórdat er gekozen kan worden — een late
+  // re-render midden in de flow gaf rare situaties bij verkoop #2
+  try{await laadVoorraad();}catch(e){console.warn('Voorraad verversen:',e);}
 }
 
 
