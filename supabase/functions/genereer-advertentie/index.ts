@@ -73,6 +73,58 @@ function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<stri
   return out;
 }
 
+// ── MarktMonitor: realtime populaire zoektermen van Marktplaats ──────────────
+// Scrapet de server-side gerenderde Nuxt-payload van de publieke MarktMonitor
+// (marktmonitor.marktplaatszakelijk.nl) en haalt de gerelateerde zoektermen
+// met zoekvolume eruit. Fail-soft: bij elke fout gewoon een lege lijst.
+type MMTerm = { keyword: string; volume: number; trend: number };
+
+function _devalueResolve(arr: any[], i: number, d = 0): any {
+  if (d > 14 || typeof i !== "number" || i < 0 || i >= arr.length) return null;
+  const TAGS = new Set(["ShallowReactive", "Reactive", "Ref", "ShallowRef"]);
+  const v = arr[i];
+  if (Array.isArray(v)) {
+    if (v.length === 2 && typeof v[0] === "string" && TAGS.has(v[0])) return _devalueResolve(arr, v[1], d + 1);
+    return v.map((x) => (typeof x === "number" ? _devalueResolve(arr, x, d + 1) : x));
+  }
+  if (v && typeof v === "object") {
+    const o: any = {};
+    for (const [k, ix] of Object.entries(v)) o[k] = _devalueResolve(arr, ix as number, d + 1);
+    return o;
+  }
+  return v;
+}
+
+async function haalMarktMonitorTermen(zoekwoord: string, timeoutMs = 6000): Promise<MMTerm[]> {
+  const woord = (zoekwoord || "").trim().toLowerCase();
+  if (!woord) return [];
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(
+      `https://marktmonitor.marktplaatszakelijk.nl/detail/${encodeURIComponent(woord)}`,
+      { headers: { "User-Agent": "Mozilla/5.0 (compatible; NijhofBrothers-advertentie)" }, signal: ctrl.signal },
+    );
+    clearTimeout(t);
+    if (!r.ok) return [];
+    const html = await r.text();
+    const m = html.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!m) return [];
+    const root = _devalueResolve(JSON.parse(m[1]), 0);
+    for (const [k, v] of Object.entries((root?.data as Record<string, any>) || {})) {
+      if (k.includes("related%2Fsearch") && Array.isArray((v as any)?.data)) {
+        return ((v as any).data as any[])
+          .map((x) => ({ keyword: String(x?.keyword || ""), volume: Number(x?.cumulative) || 0, trend: Number(x?.trend) || 0 }))
+          .filter((x) => x.keyword)
+          .slice(0, 10);
+      }
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -108,6 +160,30 @@ Deno.serve(async (req: Request) => {
       .filter(([, v]) => v !== "" && v != null)
       .map(([k, v]) => `${k}: ${v}`).join(", ") || "niet opgegeven";
 
+    // Realtime MarktMonitor-zoektermen (type + merk), parallel en fail-soft.
+    // Rubrieken met "|" (Marktplaats-notatie) zijn geen zoektermen — dan de eigen categorie.
+    const zoekBasis = [
+      item?.categorie ?? "",
+      adv.rubriek && !String(adv.rubriek).includes("|") ? adv.rubriek : "",
+      adv.merk ?? "",
+    ]
+      .map((s: string) => String(s).trim().toLowerCase())
+      .filter((s: string, i: number, a: string[]) => s && a.indexOf(s) === i);
+    const mmResultaten = await Promise.all(zoekBasis.map((w: string) => haalMarktMonitorTermen(w)));
+    const mmTermen: MMTerm[] = [];
+    for (const lijst of mmResultaten) {
+      for (const t of lijst) {
+        if (!mmTermen.some((x) => x.keyword === t.keyword)) mmTermen.push(t);
+      }
+    }
+    mmTermen.sort((a, b) => b.volume - a.volume);
+    const topTermen = mmTermen.slice(0, 10);
+    const mmBlok = topTermen.length
+      ? `\nActuele populaire zoektermen op Marktplaats voor dit type meubel (zoekvolume afgelopen 12 maanden, vandaag opgehaald):\n` +
+        topTermen.map((t) => `- ${t.keyword} (${t.volume.toLocaleString("nl-NL")}${t.trend > 5 ? ", stijgend" : t.trend < -5 ? ", dalend" : ""})`).join("\n") +
+        `\nVerwerk de best passende zoekterm(en) natuurlijk in de titel en beschrijving, maar UITSLUITEND als ze feitelijk kloppen met dit meubel (schrijf geen "leer" bij een stoffen bank). Geen keyword-stapeling.`
+      : "";
+
     const feiten = [
       `Interne naam: ${item?.naam ?? ""}`,
       `Marktplaats-rubriek: ${adv.rubriek ?? item?.categorie ?? ""}`,
@@ -125,7 +201,7 @@ Deno.serve(async (req: Request) => {
 `Je bent een ervaren tekstschrijver voor tweedehands meubeladvertenties op Marktplaats, voor meubelhandel Nijhof Brothers.
 ${sjab?.ai_instructie ?? "Schrijf een wervende maar eerlijke Nederlandse advertentie."}
 ${sjab?.titel_hint ? "Titelinstructie: " + sjab.titel_hint : "Titel: maximaal 60 tekens, type + merk + kleur/materiaal + sterk verkooppunt."}
-Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, verzin niets. Schrijf de beschrijving in prettig leesbare korte alinea's en varieer de formuleringen per meubel (niet elke keer dezelfde zinnen). Neem in de beschrijving GEEN afmetingen, specificaties, bezorging, prijs of contactgegevens op — die staan al in de vaste tekst van de advertentie.
+Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, verzin niets. Schrijf de beschrijving in prettig leesbare korte alinea's en varieer de formuleringen per meubel (niet elke keer dezelfde zinnen). Neem in de beschrijving GEEN afmetingen, specificaties, bezorging, prijs of contactgegevens op — die staan al in de vaste tekst van de advertentie.${mmBlok}
 Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst eromheen:
 {"titel":"...","beschrijving":"..."}`;
 
@@ -203,7 +279,7 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       laatste_fout: null,
     }).eq("id", advertentie_id);
 
-    return json({ ok: true, titel, beschrijving, volledige_tekst: volledige });
+    return json({ ok: true, titel, beschrijving, volledige_tekst: volledige, zoektermen_gebruikt: topTermen });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }
