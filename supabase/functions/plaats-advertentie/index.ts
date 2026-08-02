@@ -192,19 +192,25 @@ Deno.serve(async (req: Request) => {
     const mpPub = Deno.env.get("SHOPIFY_MARKTPLAATS_PUBLICATION_ID") || "gid://shopify/Publication/345553371475";
     const webshopPub = Deno.env.get("SHOPIFY_WEBSHOP_PUBLICATION_ID") || "gid://shopify/Publication/340813676883";
     const pubs = [{ publicationId: mpPub }, { publicationId: webshopPub }];
+    // Niet fataal voor het product zelf, maar fouten worden WEL zichtbaar gemaakt:
+    // zonder scope write_publications faalde dit eerder stil en stond het product nergens.
+    let pubWaarschuwing: string | null = null;
     try {
-      if (offline) {
-        await shopify(
-          `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishableUnpublish(id: $id, input: $pubs) { userErrors { field message } } }`,
-          { id: prod.id, pubs },
-        );
-      } else {
-        await shopify(
-          `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishablePublish(id: $id, input: $pubs) { userErrors { field message } } }`,
-          { id: prod.id, pubs },
-        );
-      }
-    } catch (_e) { /* kanaal-publicatie niet fataal */ }
+      const pubData = offline
+        ? await shopify(
+            `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishableUnpublish(id: $id, input: $pubs) { userErrors { field message } } }`,
+            { id: prod.id, pubs },
+          )
+        : await shopify(
+            `mutation($id: ID!, $pubs: [PublicationInput!]!) { publishablePublish(id: $id, input: $pubs) { userErrors { field message } } }`,
+            { id: prod.id, pubs },
+          );
+      const pubUe = (pubData?.publishablePublish?.userErrors || pubData?.publishableUnpublish?.userErrors || []);
+      if (pubUe.length) pubWaarschuwing = "Kanaal-publicatie: " + JSON.stringify(pubUe).slice(0, 300);
+    } catch (e) {
+      pubWaarschuwing = "Kanaal-publicatie mislukt: " + String((e as Error)?.message || e).slice(0, 300) +
+        " — check of de Shopify-app de scope write_publications heeft.";
+    }
 
     const nieuweStatus = isVerwijderen ? "verwijderd"
       : isVerkocht ? "verkocht"
@@ -217,7 +223,7 @@ Deno.serve(async (req: Request) => {
       shopify_inventory_item_id: variantNode?.inventoryItem?.id || adv.shopify_inventory_item_id || null,
       shopify_handle: prod.handle,
       status: nieuweStatus,
-      laatste_fout: null,
+      laatste_fout: pubWaarschuwing,
       gepubliceerd_op: adv.gepubliceerd_op || new Date().toISOString(),
     }).eq("id", advertentie_id);
 
@@ -234,7 +240,7 @@ Deno.serve(async (req: Request) => {
       } catch (_e) { /* voorraad-sync niet fataal voor de advertentie-actie */ }
     }
 
-    return json({ ok: true, status: nieuweStatus, item_status: itemStatus, shopify_product_id: prod.id, handle: prod.handle });
+    return json({ ok: true, status: nieuweStatus, item_status: itemStatus, shopify_product_id: prod.id, handle: prod.handle, publicatie_waarschuwing: pubWaarschuwing });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }
