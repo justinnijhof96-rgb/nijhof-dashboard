@@ -142,13 +142,15 @@ Deno.serve(async (req: Request) => {
       tags,
       status: shopifyStatus,
       variants: [variant],
+      // Shopify eist productOptions zodra variants meegaan — óók bij updates
+      // ("Product options input is required when updating variants")
+      productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
     };
 
     const isCreate = !adv.shopify_product_id;
     const handle = slugify(`${artikelnr || ""}-${baseTitel}`);
     if (isCreate) {
       input.handle = handle;
-      input.productOptions = [{ name: "Title", values: [{ name: "Default Title" }] }];
       const fotos = Array.isArray(adv.fotos) ? adv.fotos : [];
       let urls: string[] = fotos.map((f: any) => f?.url).filter(Boolean);
       if (urls.length === 0 && item?.foto_url) urls = [item.foto_url];
