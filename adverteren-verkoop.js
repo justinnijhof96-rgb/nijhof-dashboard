@@ -113,10 +113,67 @@
     if (!box) return;
     var btn = document.createElement("button");
     btn.id = "keuze-adverteren";
-    btn.onclick = advStart;
+    btn.onclick = advMenu;
     btn.setAttribute("style", "background:linear-gradient(135deg,#0ea5a3,#0b7d7b);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(14,165,163,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px");
-    btn.innerHTML = '<span style="font-size:54px;line-height:1">📣</span><span>Adverteren</span><span style="font-size:12px;font-weight:400;opacity:.9">Zet een meubel op Marktplaats</span>';
+    btn.innerHTML = '<span style="font-size:54px;line-height:1">📣</span><span>Adverteren</span><span style="font-size:12px;font-weight:400;opacity:.9">Adverteren of advertentiecentrum</span>';
     box.appendChild(btn);
+  }
+
+  // Tussenmenu: kies tussen een advertentie plaatsen of het advertentiecentrum
+  function injectMenu() {
+    if (E("screen-adv-menu")) return;
+    var sc = document.createElement("div");
+    sc.id = "screen-adv-menu";
+    sc.className = "view";
+    sc.innerHTML =
+      '<div class="top">' +
+      '<button class="btn-icon" id="advmenu-terug" title="Terug">←</button>' +
+      '<div class="logo">ADVERTEREN <small>NIJHOF BROTHERS</small></div>' +
+      '<span style="width:36px"></span>' +
+      '</div>' +
+      '<main style="padding-top:30px"><div style="display:flex;flex-direction:column;gap:16px;max-width:480px;margin:0 auto">' +
+      '<button id="advmenu-nieuw" style="background:linear-gradient(135deg,#0ea5a3,#0b7d7b);color:#fff;border:none;border-radius:16px;padding:34px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(14,165,163,.25);min-height:132px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">' +
+      '<span style="font-size:50px;line-height:1">📣</span><span>Adverteren</span><span style="font-size:12px;font-weight:400;opacity:.9">Zet een meubel op Marktplaats</span></button>' +
+      '<button id="advmenu-centrum" style="background:linear-gradient(135deg,#1e2f3a,#16242c);color:#fff;border:none;border-radius:16px;padding:34px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(30,47,58,.25);min-height:132px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">' +
+      '<span style="font-size:50px;line-height:1">📊</span><span>Advertentiecentrum</span><span style="font-size:12px;font-weight:400;opacity:.85">Beheer al je advertenties</span></button>' +
+      '</div></main>';
+    document.body.appendChild(sc);
+    E("advmenu-terug").onclick = function () { toonScherm("screen-keuze"); };
+    E("advmenu-nieuw").onclick = advStart;
+    E("advmenu-centrum").onclick = advCentrum;
+  }
+
+  // Advertentiecentrum — placeholder, wordt hierna uitgewerkt
+  function injectCentrum() {
+    if (E("screen-adv-centrum")) return;
+    var sc = document.createElement("div");
+    sc.id = "screen-adv-centrum";
+    sc.className = "view";
+    sc.innerHTML =
+      '<div class="top">' +
+      '<button class="btn-icon" id="advcentrum-terug" title="Terug">←</button>' +
+      '<div class="logo">ADVERTENTIECENTRUM <small>NIJHOF BROTHERS</small></div>' +
+      '<span style="width:36px"></span>' +
+      '</div>' +
+      '<main><div id="advcentrum-body"></div></main>';
+    document.body.appendChild(sc);
+    E("advcentrum-terug").onclick = advMenu;
+  }
+
+  function advMenu() {
+    injectAll();
+    toonScherm("screen-adv-menu");
+  }
+  function advCentrum() {
+    injectAll();
+    toonScherm("screen-adv-centrum");
+    E("advcentrum-body").innerHTML =
+      '<div style="text-align:center;padding:48px 20px;color:var(--gr)">' +
+      '<div style="font-size:52px;margin-bottom:14px">📊</div>' +
+      '<h1 style="margin-bottom:6px">Advertentiecentrum</h1>' +
+      '<h2 style="font-weight:500">Beheer van al je advertenties komt hier</h2>' +
+      '<p style="max-width:360px;margin:14px auto 0;font-size:14px">Overzicht van live, gereserveerde en verkochte advertenties, met status, statistieken en snelle acties. Wordt binnenkort toegevoegd.</p>' +
+      '</div>';
   }
 
   function injectScherm() {
@@ -145,7 +202,7 @@
     document.body.appendChild(sc);
   }
 
-  function injectAll() { injectCss(); injectKeuzeKnop(); injectScherm(); }
+  function injectAll() { injectCss(); injectKeuzeKnop(); injectMenu(); injectCentrum(); injectScherm(); }
 
   /* ---- Data ---- */
   function laadAdvertenties() {
@@ -184,7 +241,7 @@
       toonPaneel("lijst");
       renderAdvLijst();
     } else {
-      toonScherm("screen-keuze");
+      toonScherm("screen-adv-menu");
     }
   }
 
@@ -523,6 +580,8 @@
   }
 
   /* ---- globals voor inline handlers ---- */
+  window.advMenu = advMenu;
+  window.advCentrum = advCentrum;
   window.advStart = advStart;
   window.advTerug = advTerug;
   window.advZoek = advZoek;
