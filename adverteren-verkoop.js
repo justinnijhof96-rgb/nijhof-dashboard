@@ -100,7 +100,17 @@
       "#screen-adverteren .adv-badge{display:inline-block;font-size:11px;font-weight:700;color:#fff;border-radius:999px;padding:3px 9px}" +
       "#screen-adverteren .adv-item{display:flex;gap:12px;align-items:center;padding:12px;cursor:pointer;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:10px;border:2px solid transparent}" +
       "#screen-adverteren .adv-item:active{border-color:var(--or)}" +
-      "#screen-adverteren .adv-thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;background:#f1f5f9;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px}";
+      "#screen-adverteren .adv-thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;background:#f1f5f9;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px}" +
+      // Advertentiecentrum: header vast + inhoud intern scrollen, en dezelfde component-stijlen
+      // (zonder deze regels kregen de foto's/rijen geen breedte -> horizontale overflow op mobiel)
+      "#screen-adv-centrum.view.show{display:flex;flex-direction:column;height:100vh;height:100dvh}" +
+      "#screen-adv-centrum > main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden}" +
+      "#screen-adv-centrum #advcentrum-body{max-width:100%}" +
+      "#screen-adv-centrum .adv-card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:12px;max-width:100%;box-sizing:border-box}" +
+      "#screen-adv-centrum .adv-item{display:flex;gap:12px;align-items:center;padding:12px;cursor:pointer;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:10px;border:2px solid transparent;max-width:100%;box-sizing:border-box}" +
+      "#screen-adv-centrum .adv-item:active{border-color:var(--or)}" +
+      "#screen-adv-centrum .adv-thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;background:#f1f5f9;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px}" +
+      "#screen-adv-centrum .adv-badge{display:inline-block;font-size:11px;font-weight:700;color:#fff;border-radius:999px;padding:3px 9px}";
     document.head.appendChild(s);
   }
 
