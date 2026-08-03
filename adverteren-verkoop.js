@@ -164,16 +164,80 @@
     injectAll();
     toonScherm("screen-adv-menu");
   }
+  var MP_DASHBOARD_URL = "https://admarkt.marktplaats.nl/";
+
   function advCentrum() {
     injectAll();
     toonScherm("screen-adv-centrum");
-    E("advcentrum-body").innerHTML =
-      '<div style="text-align:center;padding:48px 20px;color:var(--gr)">' +
-      '<div style="font-size:52px;margin-bottom:14px">📊</div>' +
-      '<h1 style="margin-bottom:6px">Advertentiecentrum</h1>' +
-      '<h2 style="font-weight:500">Beheer van al je advertenties komt hier</h2>' +
-      '<p style="max-width:360px;margin:14px auto 0;font-size:14px">Overzicht van live, gereserveerde en verkochte advertenties, met status, statistieken en snelle acties. Wordt binnenkort toegevoegd.</p>' +
+    E("advcentrum-body").innerHTML = '<p style="color:var(--gr);padding:8px">Laden…</p>';
+    var pre = (STATE.items && STATE.items.length) ? Promise.resolve() : (typeof laadVoorraad === "function" ? laadVoorraad() : Promise.resolve());
+    pre.then(laadAdvertenties).then(laadVerkocht).then(renderCentrum).catch(function (e) {
+      E("advcentrum-body").innerHTML = '<div class="alert alert-err">⚠️ Laden mislukt: ' + X(e.message || e) + '</div>';
+    });
+  }
+
+  function renderCentrum() {
+    var body = E("advcentrum-body"); if (!body) return;
+    var ads = ADV.lijst || [];
+    var live = ads.filter(function (a) { return a.status === "live"; });
+    var gereserveerd = ads.filter(function (a) { return a.status === "gereserveerd"; });
+    var concept = ads.filter(function (a) { return a.status === "concept" || a.status === "gegenereerd"; });
+    var verkocht = ads.filter(function (a) { return a.status === "verkocht"; });
+    var onlineWaarde = live.concat(gereserveerd).reduce(function (s, a) { return s + (Number(a.vraagprijs) || 0); }, 0);
+
+    function tile(label, waarde, kleur, sub) {
+      return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bd);border-radius:12px;padding:12px 14px;box-shadow:inset 3px 0 0 ' + kleur + '">' +
+        '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--gr)">' + label + '</div>' +
+        '<div style="font-size:22px;font-weight:700;color:var(--nav);margin-top:3px">' + waarde + '</div>' +
+        (sub ? '<div style="font-size:11px;color:var(--gr);margin-top:2px">' + sub + '</div>' : '') + '</div>';
+    }
+
+    var kpis = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+      tile("Live", String(live.length), "#15803d", live.length ? eur(onlineWaarde) + " online" : "") +
+      tile("Gereserveerd", String(gereserveerd.length), "#b45309", "") +
+      tile("Concept", String(concept.length), "#2563eb", "nog niet online") +
+      tile("Verkocht", String(verkocht.length), "#7c3aed", "") +
       '</div>';
+
+    // Knop naar het Marktplaats Admarkt-dashboard
+    var mpKnop = '<a href="' + MP_DASHBOARD_URL + '" target="_blank" rel="noopener" ' +
+      'style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#e87722,#d36b1f);color:#fff;text-decoration:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-bottom:14px;box-shadow:0 4px 12px rgba(232,119,34,.25)">' +
+      '📊 Open Marktplaats-dashboard <span style="font-size:13px;opacity:.9">↗</span></a>';
+
+    // Marktplaats-prestaties (placeholder tot de Admarkt-API-koppeling er is)
+    function stat(label, val) {
+      return '<div style="flex:1;min-width:110px"><div style="font-size:12px;color:var(--gr)">' + label + '</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#cbd5e1">' + val + '</div></div>';
+    }
+    var prestaties = '<div class="adv-card" style="padding:16px;margin-bottom:14px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="font-weight:700;color:var(--nav)">📈 Marktplaats-prestaties</div>' +
+      '<span style="font-size:11px;background:#fff7ed;color:#c2410c;padding:3px 9px;border-radius:20px;font-weight:600">Koppeling met Marktplaats vereist</span></div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+      stat("Besteed", "€ –") + stat("Kliks", "–") + stat("Websitekliks", "–") + stat("Gem. CPC", "€ –") + stat("Impressies", "–") + stat("CTR", "– %") +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--gr);margin-top:12px">Zodra de Admarkt-API is gekoppeld, verschijnen hier automatisch je live cijfers (besteed budget, kliks, websitekliks, gemiddelde CPC, impressies en CTR). Voorlopig zie je ze via de knop hierboven op het Marktplaats-dashboard.</div>' +
+      '</div>';
+
+    // Advertentie-overzicht: alle items mét een advertentie, nieuwste eerst
+    var alle = alleItems();
+    var metAd = ads.slice().sort(function (a, b) {
+      var rang = { live: 0, gereserveerd: 1, gegenereerd: 2, concept: 3, verkocht: 4, verwijderd: 5 };
+      return (rang[a.status] || 9) - (rang[b.status] || 9);
+    });
+    var lijstHtml = "";
+    if (metAd.length) {
+      lijstHtml = metAd.map(function (a) {
+        var it = alle.find(function (x) { return x.id === a.item_id; });
+        if (!it) return "";
+        return advRowHtml(it, a.status === "verkocht");
+      }).join("");
+    } else {
+      lijstHtml = '<div style="text-align:center;color:var(--gr);padding:24px">Nog geen advertenties aangemaakt. Ga naar Adverteren om je eerste advertentie te plaatsen.</div>';
+    }
+    var lijst = '<div style="font-weight:700;color:var(--nav);margin:4px 0 8px">Al je advertenties <span style="color:var(--gr);font-weight:500">(' + metAd.length + ')</span></div>' + lijstHtml;
+
+    body.innerHTML = kpis + mpKnop + prestaties + lijst;
   }
 
   function injectScherm() {
@@ -393,6 +457,7 @@
     renderFotos();
     if (a.laatste_fout) E("adv-status").innerHTML = '<span style="color:#dc2626">Laatste fout: ' + X(a.laatste_fout) + '</span>';
     if (!isLive) { /* concept: laat alle knoppen staan, geen extra melding */ }
+    toonScherm("screen-adverteren"); // ook vanuit het advertentiecentrum naar het formulier
     toonPaneel("form");
   }
 
