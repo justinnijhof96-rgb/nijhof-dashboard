@@ -576,6 +576,34 @@ function toonScherm(id){
     v.classList.remove('show');
   });
   $(id).classList.add('show');
+  _onthoudScherm(id);
+}
+
+// ── Onthoud het huidige scherm, zodat een pagina-reload je niet naar het keuzescherm gooit ──
+const _SCHERM_KEY='nb-verkoop-scherm';
+function _onthoudScherm(id){
+  // Alleen top-level secties onthouden; login en half-ingevulde flows (verkoop) niet.
+  const bewaar=['screen-keuze','screen-adverteren','screen-adv-menu','screen-adv-centrum','screen-inkoop','screen-bonnetje'];
+  try{ if(bewaar.indexOf(id)>=0) localStorage.setItem(_SCHERM_KEY,id); }catch(e){}
+}
+function _herstelScherm(){
+  let id='screen-keuze';
+  try{ id=localStorage.getItem(_SCHERM_KEY)||'screen-keuze'; }catch(e){}
+  // Adverteren-schermen komen uit adverteren-verkoop.js dat iets later laadt → kort wachten tot de functie bestaat.
+  const advFn={ 'screen-adverteren':'advStart', 'screen-adv-menu':'advMenu', 'screen-adv-centrum':'advCentrum' };
+  if(advFn[id]){
+    let n=0;
+    (function probeer(){
+      const fn=window[advFn[id]];
+      if(typeof fn==='function'){ fn(); }
+      else if(n++<25){ setTimeout(probeer,120); } // max ~3s
+      else { toonScherm('screen-keuze'); }
+    })();
+    return;
+  }
+  if(id==='screen-inkoop'){ kiesActie('inkoop'); return; }
+  if(id==='screen-bonnetje'){ kiesActie('bonnetje'); return; }
+  toonScherm('screen-keuze');
 }
 
 function toonInkStap(n){
@@ -682,6 +710,52 @@ function _getStoredAuth(){
   }catch(e){return null;}
 }
 
+// Sessie consistent bewaren (bewaart de nieuwste refresh_token bij rotatie)
+function _bewaarSessie(data){
+  const oud=_getStoredAuth()||{};
+  localStorage.setItem(AUTH_KEY,JSON.stringify({
+    access_token:data.access_token,
+    refresh_token:data.refresh_token||oud.refresh_token,
+    user:data.user||oud.user,
+    expires_at:Date.now()+((data.expires_in||3600)*1000)
+  }));
+}
+
+// Nieuw access_token halen met de bewaarde refresh_token — houdt je ingelogd zonder wachtwoord
+let _bezigMetRefresh=null;
+async function _refreshSession(){
+  if(_bezigMetRefresh)return _bezigMetRefresh; // niet dubbel tegelijk
+  const auth=_getStoredAuth();
+  if(!auth||!auth.refresh_token)return false;
+  _bezigMetRefresh=(async()=>{
+    try{
+      const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Content-Type':'application/json'},
+        body:JSON.stringify({refresh_token:auth.refresh_token})
+      });
+      const data=await res.json();
+      if(!res.ok||!data.access_token)return false;
+      _bewaarSessie(data);
+      STATE.user=data.user||auth.user;
+      return true;
+    }catch(e){console.warn('Sessie verversen mislukt:',e);return false;}
+    finally{_bezigMetRefresh=null;}
+  })();
+  return _bezigMetRefresh;
+}
+
+// Verversen inplannen net vóór het token verloopt, zodat de sessie tijdens gebruik niet omvalt
+let _refreshTimer=null;
+function _planRefresh(){
+  if(_refreshTimer)clearTimeout(_refreshTimer);
+  const auth=_getStoredAuth();
+  if(!auth||!auth.expires_at)return;
+  const marge=2*60*1000; // 2 minuten voor verloop
+  const wacht=Math.max(20000, auth.expires_at-Date.now()-marge);
+  _refreshTimer=setTimeout(async()=>{ await _refreshSession(); _planRefresh(); }, wacht);
+}
+
 async function doeLogin(){
   const email=$('login-email').value.trim();
   const pw=$('login-pw').value;
@@ -699,14 +773,10 @@ async function doeLogin(){
       throw new Error(data.error_description||data.msg||'Inloggen mislukt');
     }
     // Opslaan in localStorage (zelfde key als dashboard)
-    localStorage.setItem(AUTH_KEY,JSON.stringify({
-      access_token:data.access_token,
-      refresh_token:data.refresh_token,
-      user:data.user,
-      expires_at:Date.now()+data.expires_in*1000
-    }));
+    _bewaarSessie(data);
     STATE.user=data.user;
     await naApp();
+    _planRefresh();
   }catch(e){
     errBox.innerHTML=`<div class="alert alert-err">${esc(e.message)}</div>`;
   }
@@ -715,6 +785,8 @@ async function doeLogin(){
 function bevestigUitloggen(){
   if(!confirm('Uitloggen?'))return;
   localStorage.removeItem(AUTH_KEY);
+  try{localStorage.removeItem(_SCHERM_KEY);}catch(e){}
+  if(_refreshTimer)clearTimeout(_refreshTimer);
   STATE.user=null;
   STATE.org_id=null;
   toonScherm('screen-login');
@@ -1240,7 +1312,10 @@ function _authHeaders(){
 }
 
 async function _restGet(path){
-  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers:_authHeaders()});
+  let r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers:_authHeaders()});
+  if(r.status===401 && await _refreshSession()){
+    r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers:_authHeaders()}); // 1x opnieuw met vers token
+  }
   if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('Fetch '+r.status+': '+await r.text());
   return await r.json();
@@ -1955,22 +2030,18 @@ function _maakContractPDFmobiel(data){
 
 // ── REST helpers ──────────────────────────────────────────────────
 async function _restPost(path,data){
-  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
-    method:'POST',
-    headers:{..._authHeaders(),'Prefer':'return=representation'},
-    body:JSON.stringify(data)
-  });
+  const opts=()=>({method:'POST',headers:{..._authHeaders(),'Prefer':'return=representation'},body:JSON.stringify(data)});
+  let r=await fetch(SUPABASE_URL+'/rest/v1/'+path,opts());
+  if(r.status===401 && await _refreshSession()){ r=await fetch(SUPABASE_URL+'/rest/v1/'+path,opts()); }
   if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('POST '+r.status+': '+await r.text());
   return await r.json();
 }
 
 async function _restPatch(path,data){
-  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
-    method:'PATCH',
-    headers:{..._authHeaders(),'Prefer':'return=representation'},
-    body:JSON.stringify(data)
-  });
+  const opts=()=>({method:'PATCH',headers:{..._authHeaders(),'Prefer':'return=representation'},body:JSON.stringify(data)});
+  let r=await fetch(SUPABASE_URL+'/rest/v1/'+path,opts());
+  if(r.status===401 && await _refreshSession()){ r=await fetch(SUPABASE_URL+'/rest/v1/'+path,opts()); }
   if(r.status===401){_sessieVerlopen();throw new Error('Sessie verlopen');}
   if(!r.ok)throw new Error('PATCH '+r.status+': '+await r.text());
   return await r.json();
@@ -2344,20 +2415,28 @@ async function nieuweVerkoop(){
 
 
 async function naApp(){
-  toonScherm('screen-keuze');
   await laadOrgId();
   // Voorraad alvast voor verkoop, maar gebruiker kiest eerst
   await laadVoorraad();
   toonStap(1); // hidden, alleen ready voor wanneer verkoop gekozen wordt
   // Reset inkoopdatum default
   const dat=$('ink-dat');if(dat&&!dat.value)dat.value=new Date().toISOString().split('T')[0];
+  // Herstel het scherm waar je was (i.p.v. altijd het keuzescherm)
+  _herstelScherm();
 }
 
 async function init(){
   const auth=_getStoredAuth();
-  if(auth&&auth.access_token&&auth.expires_at>Date.now()){
+  if(auth&&auth.access_token&&auth.expires_at>Date.now()+60000){
+    // Token nog ruim geldig → meteen door
     STATE.user=auth.user;
     await naApp();
+    _planRefresh();
+  } else if(auth&&auth.refresh_token){
+    // Token verlopen/bijna verlopen maar refresh-token aanwezig → stil verversen, geen wachtwoord nodig
+    const ok=await _refreshSession();
+    if(ok){ await naApp(); _planRefresh(); }
+    else { toonScherm('screen-login'); }
   } else {
     toonScherm('screen-login');
   }
