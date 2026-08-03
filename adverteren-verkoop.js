@@ -186,13 +186,13 @@
     var onlineWaarde = live.concat(gereserveerd).reduce(function (s, a) { return s + (Number(a.vraagprijs) || 0); }, 0);
 
     function tile(label, waarde, kleur, sub) {
-      return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bd);border-radius:12px;padding:12px 14px;box-shadow:inset 3px 0 0 ' + kleur + '">' +
-        '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--gr)">' + label + '</div>' +
+      return '<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:12px 14px;box-shadow:inset 3px 0 0 ' + kleur + ';min-width:0">' +
+        '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--gr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + label + '</div>' +
         '<div style="font-size:22px;font-weight:700;color:var(--nav);margin-top:3px">' + waarde + '</div>' +
-        (sub ? '<div style="font-size:11px;color:var(--gr);margin-top:2px">' + sub + '</div>' : '') + '</div>';
+        (sub ? '<div style="font-size:11px;color:var(--gr);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + sub + '</div>' : '') + '</div>';
     }
 
-    var kpis = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    var kpis = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">' +
       tile("Live", String(live.length), "#15803d", live.length ? eur(onlineWaarde) + " online" : "") +
       tile("Gereserveerd", String(gereserveerd.length), "#b45309", "") +
       tile("Concept", String(concept.length), "#2563eb", "nog niet online") +
@@ -206,14 +206,14 @@
 
     // Marktplaats-prestaties (placeholder tot de Admarkt-API-koppeling er is)
     function stat(label, val) {
-      return '<div style="flex:1;min-width:110px"><div style="font-size:12px;color:var(--gr)">' + label + '</div>' +
-        '<div style="font-size:20px;font-weight:700;color:#cbd5e1">' + val + '</div></div>';
+      return '<div style="min-width:0"><div style="font-size:12px;color:var(--gr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + label + '</div>' +
+        '<div style="font-size:19px;font-weight:700;color:#cbd5e1">' + val + '</div></div>';
     }
     var prestaties = '<div class="adv-card" style="padding:16px;margin-bottom:14px">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
-      '<div style="font-weight:700;color:var(--nav)">📈 Marktplaats-prestaties</div>' +
+      '<div style="margin-bottom:12px">' +
+      '<div style="font-weight:700;color:var(--nav);margin-bottom:6px">📈 Marktplaats-prestaties</div>' +
       '<span style="font-size:11px;background:#fff7ed;color:#c2410c;padding:3px 9px;border-radius:20px;font-weight:600">Koppeling met Marktplaats vereist</span></div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 10px">' +
       stat("Besteed", "€ –") + stat("Kliks", "–") + stat("Websitekliks", "–") + stat("Gem. CPC", "€ –") + stat("Impressies", "–") + stat("CTR", "– %") +
       '</div>' +
       '<div style="font-size:12px;color:var(--gr);margin-top:12px">Zodra de Admarkt-API is gekoppeld, verschijnen hier automatisch je live cijfers (besteed budget, kliks, websitekliks, gemiddelde CPC, impressies en CTR). Voorlopig zie je ze via de knop hierboven op het Marktplaats-dashboard.</div>' +
