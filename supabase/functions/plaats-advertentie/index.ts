@@ -42,6 +42,26 @@ function slugify(s: unknown): string {
   return base || ("nb-" + Math.abs(Date.now()));
 }
 
+// Onze inkoop-categorie -> Shopify product-type dat exact matcht met de slimme
+// collecties in de webshop. Die collecties zijn in de Marktplaats Pro-app gekoppeld
+// aan een Marktplaats-rubriek; zonder deze vertaling valt het product buiten elke
+// gekoppelde collectie en verschijnt de advertentie NIET op Marktplaats.
+const COLLECTIE_TYPE: Record<string, string> = {
+  bank: "Bankstellen",
+  hoekbank: "Bankstellen",
+  loveseat: "Bankstellen",
+  bankstel: "Bankstellen",
+  fauteuil: "Fauteuils",
+  dressoir: "Dressoirs",
+  kast: "Kledingkasten",
+  kledingkast: "Kledingkasten",
+  stoel: "Stoelen",
+};
+function collectieType(rubriek: unknown, categorie: unknown): string {
+  const sleutel = String(categorie ?? rubriek ?? "").trim().toLowerCase();
+  return COLLECTIE_TYPE[sleutel] || String(rubriek ?? categorie ?? "");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -137,7 +157,7 @@ Deno.serve(async (req: Request) => {
     const input: any = {
       title: titel,
       descriptionHtml: descHtml,
-      productType: adv.rubriek || item?.categorie || "",
+      productType: collectieType(adv.rubriek, item?.categorie),
       vendor: "Nijhof Brothers Furniture",
       tags,
       status: shopifyStatus,
