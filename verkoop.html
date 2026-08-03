@@ -6,15 +6,23 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1E2F3A">
 <title>NB Verkoop</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;margin:0;padding:0;font-family:var(--f-body);-webkit-tap-highlight-color:transparent}
 :root{
-  --or:#E87722;--orl:#FFF4EC;--nav:#1E2F3A;--dk:#0f1820;
-  --gr:#6b7280;--bd:#e5e7eb;--bg:#f3f4f6;--wd:#fff;
-  --gn:#15803d;--rd:#dc2626;--bl:#2563eb;
+  --or:#E87722;--orl:#FFF4EC;--nav:#1E2F3A;--dk:#0f172a;
+  --gr:#64748b;--bd:#e2e8f0;--bg:#f1f5f9;--wd:#fff;
+  --gn:#10b981;--rd:#ef4444;--bl:#3b82f6;
+  --f-head:'Sora',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --f-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
 }
 html,body{height:100%;background:var(--bg);color:var(--dk);font-size:15px;overflow-x:hidden}
+h1,h2,h3,.login-logo .ol{font-family:var(--f-head);letter-spacing:-.01em}
 body{display:flex;flex-direction:column;min-height:100dvh}
 
 /* TOP BAR */
@@ -69,10 +77,11 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 
 /* LOGIN */
 .login-wrap{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:80vh;padding:24px}
-.login-card{background:#fff;border-radius:18px;padding:30px 22px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+.login-card{background:#fff;border-radius:18px;padding:30px 22px;width:100%;max-width:380px;box-shadow:0 8px 30px rgba(15,23,42,.08);border:1px solid var(--bd)}
 .login-logo{text-align:center;margin-bottom:24px}
-.login-logo .ol{color:var(--or);font-size:22px;font-weight:900;letter-spacing:.5px}
-.login-logo .sub{font-size:10px;letter-spacing:2px;color:var(--gr);margin-top:2px}
+.login-logo img{width:150px;height:auto;display:block;margin:0 auto 6px}
+.login-logo .ol{color:var(--nav);font-size:22px;font-weight:800;letter-spacing:.3px}
+.login-logo .sub{font-size:10px;letter-spacing:3px;color:var(--or);font-weight:600;margin-top:2px}
 
 /* HELPERS */
 .muted{color:var(--gr);font-size:13px}
@@ -115,8 +124,9 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-logo">
-        <div class="ol">NIJHOF BROTHERS</div>
-        <div class="sub">FURNITURE — VERKOOP</div>
+        <img src="logo.png" alt="Nijhof Brothers Furniture" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <div class="ol" style="display:none">NIJHOF BROTHERS</div>
+        <div class="sub">VERKOOP</div>
       </div>
       <div id="login-err"></div>
       <div class="fg">
