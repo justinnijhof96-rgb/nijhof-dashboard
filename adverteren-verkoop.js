@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  var ADV = { lijst: [], huidig: null, fotos: [], verkochtItems: [], verkochtOpen: false };
+  var ADV = { lijst: [], huidig: null, fotos: [], verkochtItems: [], verkochtOpen: false, centrum: { zoek: "", status: "", sel: {} } };
   window._ADV = ADV;
 
   function E(id) { return document.getElementById(id); }
@@ -188,11 +188,12 @@
 
   function renderCentrum() {
     var body = E("advcentrum-body"); if (!body) return;
-    var ads = ADV.lijst || [];
+    // Verkochte advertenties horen niet in de advertentie-app (staan in het dashboard)
+    var ads = (ADV.lijst || []).filter(function (a) { return a.status !== "verkocht"; });
     var live = ads.filter(function (a) { return a.status === "live"; });
     var gereserveerd = ads.filter(function (a) { return a.status === "gereserveerd"; });
     var concept = ads.filter(function (a) { return a.status === "concept" || a.status === "gegenereerd"; });
-    var verkocht = ads.filter(function (a) { return a.status === "verkocht"; });
+    var offline = ads.filter(function (a) { return a.status === "verwijderd"; });
     var onlineWaarde = live.concat(gereserveerd).reduce(function (s, a) { return s + (Number(a.vraagprijs) || 0); }, 0);
 
     function tile(label, waarde, kleur, sub) {
@@ -206,7 +207,7 @@
       tile("Live", String(live.length), "#15803d", live.length ? eur(onlineWaarde) + " online" : "") +
       tile("Gereserveerd", String(gereserveerd.length), "#b45309", "") +
       tile("Concept", String(concept.length), "#2563eb", "nog niet online") +
-      tile("Verkocht", String(verkocht.length), "#7c3aed", "") +
+      tile("Offline", String(offline.length), "#6b7280", offline.length ? "terug online mogelijk" : "") +
       '</div>';
 
     // Knop naar het Marktplaats Admarkt-dashboard
@@ -229,25 +230,155 @@
       '<div style="font-size:12px;color:var(--gr);margin-top:12px">Zodra de Admarkt-API is gekoppeld, verschijnen hier automatisch je live cijfers (besteed budget, kliks, websitekliks, gemiddelde CPC, impressies en CTR). Voorlopig zie je ze via de knop hierboven op het Marktplaats-dashboard.</div>' +
       '</div>';
 
-    // Advertentie-overzicht: alle items mét een advertentie, nieuwste eerst
-    var alle = alleItems();
-    var metAd = ads.slice().sort(function (a, b) {
-      var rang = { live: 0, gereserveerd: 1, gegenereerd: 2, concept: 3, verkocht: 4, verwijderd: 5 };
-      return (rang[a.status] || 9) - (rang[b.status] || 9);
-    });
-    var lijstHtml = "";
-    if (metAd.length) {
-      lijstHtml = metAd.map(function (a) {
-        var it = alle.find(function (x) { return x.id === a.item_id; });
-        if (!it) return "";
-        return advRowHtml(it, a.status === "verkocht");
-      }).join("");
-    } else {
-      lijstHtml = '<div style="text-align:center;color:var(--gr);padding:24px">Nog geen advertenties aangemaakt. Ga naar Adverteren om je eerste advertentie te plaatsen.</div>';
-    }
-    var lijst = '<div style="font-weight:700;color:var(--nav);margin:4px 0 8px">Al je advertenties <span style="color:var(--gr);font-weight:500">(' + metAd.length + ')</span></div>' + lijstHtml;
+    // Filter- en zoekbalk boven de lijst
+    var f = ADV.centrum;
+    var statusOpts = [["", "Alle statussen"], ["live", "Live"], ["gereserveerd", "Gereserveerd"], ["gegenereerd", "Tekst klaar"], ["concept", "Concept"], ["verwijderd", "Offline"]]
+      .map(function (o) { return '<option value="' + o[0] + '"' + (f.status === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("");
+    var filterBar = '<div style="display:flex;gap:8px;margin-bottom:10px">' +
+      '<input id="adv-c-zoek" value="' + X(f.zoek) + '" oninput="advCentrumZoek()" placeholder="🔍 Zoek naam, artikelnr, merk…" ' +
+      'style="flex:1;min-width:0;border:1.5px solid var(--bd);border-radius:10px;padding:11px 12px;font-size:15px;background:#fff;outline:none;-webkit-appearance:none">' +
+      '<select id="adv-c-status" onchange="advCentrumFilter()" style="border:1.5px solid var(--bd);border-radius:10px;padding:0 8px;font-size:14px;background:#fff;color:var(--nav);outline:none">' + statusOpts + '</select>' +
+      '</div>';
 
-    body.innerHTML = kpis + mpKnop + prestaties + lijst;
+    body.innerHTML = kpis + mpKnop + prestaties + filterBar +
+      '<div id="advcentrum-kop" style="display:flex;align-items:center;gap:8px;margin:4px 0 8px"></div>' +
+      '<div id="advcentrum-lijst"></div>' +
+      '<div id="advcentrum-bulk"></div>';
+    renderCentrumLijst();
+  }
+
+  // Alleen de lijst + selectie hertekenen (houdt focus in het zoekveld vast)
+  function renderCentrumLijst() {
+    var wrap = E("advcentrum-lijst"); if (!wrap) return;
+    var f = ADV.centrum;
+    var alle = alleItems();
+    var zk = (f.zoek || "").toLowerCase().trim();
+    var rang = { live: 0, gereserveerd: 1, gegenereerd: 2, concept: 3, verwijderd: 4 };
+    var lijst = (ADV.lijst || []).filter(function (a) {
+      if (a.status === "verkocht") return false; // verkocht hoort niet in de advertentie-app
+      if (f.status && a.status !== f.status) return false;
+      if (!zk) return true;
+      var it = alle.find(function (x) { return x.id === a.item_id; }) || {};
+      return [it.naam, it.artikelnummer, a.merk, it.categorie].some(function (v) { return (v || "").toLowerCase().indexOf(zk) >= 0; });
+    }).sort(function (a, b) { return (rang[a.status] || 9) - (rang[b.status] || 9); });
+
+    // Kop met teller + 'alles selecteren'
+    var kop = E("advcentrum-kop");
+    if (kop) {
+      var zichtbaarSel = lijst.filter(function (a) { return f.sel[a.id]; }).length;
+      var allesAan = lijst.length > 0 && zichtbaarSel === lijst.length;
+      kop.innerHTML = '<input type="checkbox" onchange="advCentrumSelAlle(this.checked)"' + (allesAan ? " checked" : "") +
+        ' style="width:20px;height:20px;accent-color:var(--or)"> ' +
+        '<span style="font-weight:700;color:var(--nav)">Advertenties <span style="color:var(--gr);font-weight:500">(' + lijst.length + ')</span></span>';
+    }
+
+    if (!lijst.length) {
+      wrap.innerHTML = '<div style="text-align:center;color:var(--gr);padding:24px">' +
+        ((f.zoek || f.status) ? "Geen advertenties met dit filter." : "Nog geen advertenties. Ga naar Adverteren om te beginnen.") + '</div>';
+    } else {
+      wrap.innerHTML = lijst.map(function (a) {
+        var it = alle.find(function (x) { return x.id === a.item_id; });
+        return it ? centrumRow(a, it) : "";
+      }).join("");
+    }
+    renderBulkBar();
+  }
+
+  function centrumRow(ad, it) {
+    var checked = ADV.centrum.sel[ad.id] ? " checked" : "";
+    var foto = (Array.isArray(ad.fotos) && ad.fotos[0] && ad.fotos[0].url) || it.foto_url || "";
+    var thumb = foto ? '<img class="adv-thumb" src="' + X(foto) + '">' : '<div class="adv-thumb">📦</div>';
+    var st = STATUS_LABEL[ad.status] || ["?", "#6b7280"];
+    return '<div class="adv-item" style="align-items:center">' +
+      '<input type="checkbox" onclick="event.stopPropagation()" onchange="advCentrumSel(\'' + X(ad.id) + '\',this.checked)"' + checked +
+      ' style="width:22px;height:22px;flex:none;accent-color:var(--or)">' +
+      '<div onclick="advOpenItem(\'' + X(ad.item_id) + '\')" style="display:flex;gap:12px;align-items:center;flex:1;min-width:0;cursor:pointer">' +
+      thumb +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(it.naam || "?") + '</div>' +
+      '<div style="font-size:12px;color:var(--gr);margin-top:3px">' + (ad.vraagprijs ? eur(ad.vraagprijs) : "—") + (it.artikelnummer ? " · " + X(it.artikelnummer) : "") + '</div>' +
+      '<div style="margin-top:6px"><span class="adv-badge" style="background:' + st[1] + '">' + X(st[0]) + '</span></div>' +
+      '</div></div></div>';
+  }
+
+  function renderBulkBar() {
+    var bar = E("advcentrum-bulk"); if (!bar) return;
+    var ids = Object.keys(ADV.centrum.sel).filter(function (id) { return ADV.centrum.sel[id]; });
+    if (!ids.length) { bar.innerHTML = ""; return; }
+    var knop = function (kleur, tekst, actie) {
+      return '<button onclick="advCentrumBulk(\'' + actie + '\')" style="flex:1;min-width:96px;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;color:#fff;background:' + kleur + ';cursor:pointer">' + tekst + '</button>';
+    };
+    bar.innerHTML = '<div style="position:sticky;bottom:8px;background:#fff;border:1px solid var(--bd);border-radius:12px;padding:10px;margin-top:10px;box-shadow:0 -3px 14px rgba(0,0,0,.1);z-index:5">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+      '<span style="font-weight:700;color:var(--nav)">' + ids.length + ' geselecteerd</span>' +
+      '<button onclick="advCentrumSelWis()" style="background:none;border:none;color:var(--gr);font-size:13px;cursor:pointer;text-decoration:underline">wissen</button></div>' +
+      '<div id="advcentrum-bulkstatus" style="font-size:12px;color:var(--gr);margin-bottom:8px;display:none"></div>' +
+      '<div style="display:flex;gap:8px">' +
+      knop("#15803d", "🚀 Online", "plaatsen") + knop("#b45309", "💶 Prijs", "prijs") + knop("#dc2626", "⏸️ Offline", "verwijderen") +
+      '</div></div>';
+  }
+
+  function advCentrumZoek() { ADV.centrum.zoek = val("adv-c-zoek"); renderCentrumLijst(); }
+  function advCentrumFilter() { ADV.centrum.status = val("adv-c-status"); renderCentrumLijst(); }
+  function advCentrumSel(id, aan) { if (aan) ADV.centrum.sel[id] = true; else delete ADV.centrum.sel[id]; renderBulkBar(); }
+  function advCentrumSelWis() { ADV.centrum.sel = {}; renderCentrumLijst(); }
+  function advCentrumSelAlle(aan) {
+    var f = ADV.centrum, alle = alleItems(), zk = (f.zoek || "").toLowerCase().trim();
+    (ADV.lijst || []).forEach(function (a) {
+      if (a.status === "verkocht") return;
+      if (f.status && a.status !== f.status) return;
+      if (zk) { var it = alle.find(function (x) { return x.id === a.item_id; }) || {}; if (![it.naam, it.artikelnummer, a.merk, it.categorie].some(function (v) { return (v || "").toLowerCase().indexOf(zk) >= 0; })) return; }
+      if (aan) f.sel[a.id] = true; else delete f.sel[a.id];
+    });
+    renderCentrumLijst();
+  }
+
+  function advCentrumBulk(actie) {
+    var ids = Object.keys(ADV.centrum.sel).filter(function (id) { return ADV.centrum.sel[id]; });
+    if (!ids.length) return;
+    var ads = ids.map(function (id) { return (ADV.lijst || []).find(function (a) { return a.id === id; }); }).filter(Boolean);
+
+    var pct = 0;
+    if (actie === "prijs") {
+      var s = prompt("Prijs van " + ads.length + " advertentie(s) verlagen met hoeveel procent?\n(bijv. 10 voor 10% lager)");
+      if (s === null) return;
+      pct = parseFloat(String(s).replace(",", "."));
+      if (!(pct > 0 && pct < 90)) { T("Vul een percentage tussen 1 en 89 in", "#dc2626"); return; }
+    } else {
+      var wat = actie === "plaatsen" ? "online zetten" : "offline halen";
+      if (!confirm(ads.length + " advertentie(s) " + wat + "?")) return;
+    }
+
+    var statusEl = E("advcentrum-bulkstatus");
+    if (statusEl) { statusEl.style.display = "block"; }
+    var klaar = 0, fouten = 0;
+    var chain = Promise.resolve();
+    ads.forEach(function (ad) {
+      chain = chain.then(function () {
+        if (statusEl) statusEl.textContent = "Bezig… " + (klaar + fouten + 1) + "/" + ads.length;
+        var stap;
+        if (actie === "prijs") {
+          var nieuw = Math.max(1, Math.round(ad.vraagprijs * (1 - pct / 100)));
+          ad.vraagprijs = nieuw;
+          stap = _restPatch("advertenties?id=eq." + encodeURIComponent(ad.id), { vraagprijs: nieuw });
+          // Live/gereserveerde advertenties meteen bijwerken op Shopify + Marktplaats
+          if (ad.status === "live" || ad.status === "gereserveerd") {
+            stap = stap.then(function () { return roepFunctie("plaats-advertentie", { advertentie_id: ad.id, actie: "plaatsen" }); });
+          }
+        } else {
+          stap = roepFunctie("plaats-advertentie", { advertentie_id: ad.id, actie: actie });
+        }
+        return stap.then(function () { klaar++; }, function (e) { fouten++; console.warn("Bulk-actie mislukt voor", ad.id, e); });
+      });
+    });
+    chain.then(function () {
+      T("✅ " + klaar + " gelukt" + (fouten ? " · " + fouten + " mislukt" : ""), fouten ? "#c2410c" : "#15803d");
+      ADV.centrum.sel = {};
+      return laadAdvertenties();
+    }).then(function () {
+      // Voorraad-status kan zijn meegewijzigd bij offline/verkocht
+      return (typeof laadVoorraad === "function") ? laadVoorraad().then(laadVerkocht, laadVerkocht) : laadVerkocht();
+    }).then(function () { renderCentrum(); }, function () { renderCentrum(); });
   }
 
   function injectScherm() {
@@ -264,7 +395,7 @@
       '<main>' +
       // Paneel 1: item kiezen
       '<div id="adv-panel-lijst">' +
-      '<h1>Welk meubel?</h1><h2>Kies een item uit de voorraad om te adverteren</h2>' +
+      '<h1>Welk meubel?</h1><h2>Kies voorraad die nog niet online staat</h2>' +
       '<div class="adv-card" style="padding:0">' +
       '<input type="search" id="adv-zoek" placeholder="🔍 Zoek op naam of artikelnummer..." style="width:100%;border:none;padding:16px;font-size:15px;background:transparent;outline:none" oninput="advZoek()">' +
       '</div>' +
@@ -353,26 +484,15 @@
   function renderAdvLijst() {
     var wrap = E("adv-items"); if (!wrap) return;
     var zk = (val("adv-zoek") || "").toLowerCase().trim();
-    var besch = (STATE.items || []).filter(function (i) { return advMatch(i, zk); });
-    var verk = (ADV.verkochtItems || []).filter(function (i) { return advMatch(i, zk); });
-    var html = "";
+    // Alleen beschikbare voorraad die nog GEEN advertentie heeft — al geadverteerde
+    // en verkochte items horen thuis in het advertentiecentrum / het dashboard.
+    var besch = (STATE.items || []).filter(function (i) { return advMatch(i, zk) && !advVoorItem(i.id); });
     if (besch.length) {
-      html += besch.map(function (it) { return advRowHtml(it, false); }).join("");
+      wrap.innerHTML = besch.map(function (it) { return advRowHtml(it, false); }).join("");
     } else {
-      html += '<div class="empty" style="text-align:center;color:var(--gr);padding:24px">' +
-        (zk ? 'Geen beschikbare items voor "' + X(zk) + '"' : "Geen voorraad om te adverteren") + '</div>';
+      wrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--gr);padding:24px">' +
+        (zk ? 'Geen items zonder advertentie voor "' + X(zk) + '"' : "Alle voorraad is al geadverteerd — beheer je advertenties in het Advertentiecentrum.") + '</div>';
     }
-    // Uitklapbaar 'Verkocht'-kopje — verkochte items blijven zo bewaard/zichtbaar.
-    if (verk.length) {
-      html += '<div style="margin-top:16px;border-top:1px solid var(--bd);padding-top:4px">' +
-        '<div onclick="advToggleVerkocht()" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:12px 4px;font-weight:700;color:var(--nav)">' +
-        '<span id="adv-verkocht-caret" style="display:inline-block;transition:.15s' + (ADV.verkochtOpen ? ";transform:rotate(90deg)" : "") + '">▸</span>' +
-        '✓ Verkocht <span style="color:var(--gr);font-weight:500">(' + verk.length + ')</span></div>' +
-        '<div id="adv-verkocht-lijst" style="display:' + (ADV.verkochtOpen ? "block" : "none") + '">' +
-        verk.map(function (it) { return advRowHtml(it, true); }).join("") +
-        '</div></div>';
-    }
-    wrap.innerHTML = html;
   }
   function advToggleVerkocht() {
     ADV.verkochtOpen = !ADV.verkochtOpen;
@@ -657,6 +777,12 @@
   /* ---- globals voor inline handlers ---- */
   window.advMenu = advMenu;
   window.advCentrum = advCentrum;
+  window.advCentrumZoek = advCentrumZoek;
+  window.advCentrumFilter = advCentrumFilter;
+  window.advCentrumSel = advCentrumSel;
+  window.advCentrumSelWis = advCentrumSelWis;
+  window.advCentrumSelAlle = advCentrumSelAlle;
+  window.advCentrumBulk = advCentrumBulk;
   window.advStart = advStart;
   window.advTerug = advTerug;
   window.advZoek = advZoek;
