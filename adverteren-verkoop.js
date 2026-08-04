@@ -16,7 +16,8 @@
 (function () {
   "use strict";
 
-  var ADV = { lijst: [], huidig: null, fotos: [], verkochtItems: [], verkochtOpen: false, centrum: { zoek: "", status: "", sel: {} } };
+  var ADV = { lijst: [], huidig: null, fotos: [], verkochtItems: [], verkochtOpen: false, partijen: [], peel: null, centrum: { zoek: "", status: "", sel: {} } };
+  var PEEL_CATS = [["bank", "Bank"], ["hoekbank", "Hoekbank"], ["fauteuil", "Fauteuil"], ["loveseat", "Loveseat"], ["kast", "Kast"], ["dressoir", "Dressoir"], ["overig", "Overig"]];
   window._ADV = ADV;
 
   function E(id) { return document.getElementById(id); }
@@ -427,6 +428,13 @@
       return ADV.verkochtItems;
     }).catch(function (e) { console.warn("Verkochte items laden mislukt", e); ADV.verkochtItems = []; return []; });
   }
+  // Partijen (gesplitste inkopen met partij_rest > 0) — hieruit peel je losse stukken.
+  function laadPartijen() {
+    return _restGet("items?partij_rest=not.is.null&order=aangemaakt_op.desc").then(function (rows) {
+      ADV.partijen = (rows || []).filter(function (p) { return Number(p.partij_rest) > 0; });
+      return ADV.partijen;
+    }).catch(function (e) { console.warn("Partijen laden mislukt", e); ADV.partijen = []; return []; });
+  }
   // Beschikbaar + verkocht samen (voor het openen van een item-formulier)
   function alleItems() { return (STATE.items || []).concat(ADV.verkochtItems || []); }
 
@@ -436,7 +444,7 @@
     toonPaneel("lijst");
     E("adv-items").innerHTML = '<p style="color:var(--gr);padding:8px">Laden…</p>';
     var pre = (STATE.items && STATE.items.length) ? Promise.resolve() : (typeof laadVoorraad === "function" ? laadVoorraad() : Promise.resolve());
-    pre.then(laadAdvertenties).then(laadVerkocht).then(renderAdvLijst).catch(function (e) {
+    pre.then(laadAdvertenties).then(laadVerkocht).then(laadPartijen).then(renderAdvLijst).catch(function (e) {
       E("adv-items").innerHTML = '<div class="alert alert-err">⚠️ Laden mislukt: ' + X(e.message || e) + '</div>';
     });
   }
@@ -481,19 +489,97 @@
       '<div style="color:var(--gr);font-size:22px">›</div>' +
       '</div>';
   }
+  function advPartijRowHtml(p) {
+    var thumb = p.foto_url ? '<img class="adv-thumb" src="' + X(p.foto_url) + '">' : '<div class="adv-thumb">📦</div>';
+    return '<div class="adv-item" style="border:1px solid #99f6e4;background:#f0fdfa" onclick="advPeelStart(\'' + X(p.id) + '\')">' + thumb +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(p.naam || "?") + '</div>' +
+      '<div style="font-size:12px;color:#115e59;margin-top:3px">✂️ Partij · nog ' + X(p.partij_rest) + ' ' + (p.partij_rest == 1 ? "stuk" : "stuks") + ' · rest inkoop ' + X(eur(p.prijs || 0)) + '</div>' +
+      '</div><div style="color:#0f766e;font-size:22px">›</div></div>';
+  }
   function renderAdvLijst() {
     var wrap = E("adv-items"); if (!wrap) return;
     var zk = (val("adv-zoek") || "").toLowerCase().trim();
-    // Alleen beschikbare voorraad die nog GEEN advertentie heeft — al geadverteerde
-    // en verkochte items horen thuis in het advertentiecentrum / het dashboard.
+    var partijen = (ADV.partijen || []).filter(function (i) { return advMatch(i, zk); });
+    // Alleen beschikbare losse voorraad zonder advertentie (partijen zitten in hun eigen sectie).
     var besch = (STATE.items || []).filter(function (i) { return advMatch(i, zk) && !advVoorItem(i.id); });
-    if (besch.length) {
-      wrap.innerHTML = besch.map(function (it) { return advRowHtml(it, false); }).join("");
-    } else {
-      wrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--gr);padding:24px">' +
-        (zk ? 'Geen items zonder advertentie voor "' + X(zk) + '"' : "Alle voorraad is al geadverteerd — beheer je advertenties in het Advertentiecentrum.") + '</div>';
+    var html = "";
+    if (partijen.length) {
+      html += '<div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin:2px 0 8px">Partijen — kies om een stuk te maken</div>';
+      html += partijen.map(advPartijRowHtml).join("");
+      html += '<div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin:16px 0 8px">Losse voorraad</div>';
     }
+    if (besch.length) {
+      html += besch.map(function (it) { return advRowHtml(it, false); }).join("");
+    } else if (!partijen.length) {
+      html += '<div class="empty" style="text-align:center;color:var(--gr);padding:24px">' +
+        (zk ? 'Geen items zonder advertentie voor "' + X(zk) + '"' : "Alle losse voorraad is al geadverteerd — beheer je advertenties in het Advertentiecentrum.") + '</div>';
+    }
+    wrap.innerHTML = html;
   }
+  // Een stuk uit een partij peelen: formulier (naam + categorie + inkoopdeel), daarna
+  // opslaan als voorraad OF meteen doorgaan naar het adverteerformulier.
+  function advPeelStart(itemId) {
+    injectAll();
+    var p = (ADV.partijen || []).find(function (x) { return x.id === itemId; });
+    if (!p) { T("Partij niet gevonden", "#dc2626"); return; }
+    var deel = Math.round((Number(p.prijs) || 0) / Math.max(1, Number(p.partij_rest) || 1) * 100) / 100;
+    ADV.peel = { partij: p, deel: deel };
+    var catOpts = ['<option value="">— categorie —</option>'].concat(PEEL_CATS.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; })).join("");
+    E("adv-panel-form").innerHTML =
+      '<div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px">Nieuw stuk uit <strong>' + X(p.naam || "partij") + '</strong> (nog ' + X(p.partij_rest) + '). Geef het een naam; het inkoopdeel is automatisch berekend en aanpasbaar.</div>' +
+      '<div class="adv-card">' +
+      '<div class="fld"><label class="al">Naam van dit stuk</label><input id="peel-naam" class="ai" placeholder="bijv. Eettafel eiken"></div>' +
+      '<div class="fld"><label class="al">Categorie</label><select id="peel-cat" class="as">' + catOpts + '</select></div>' +
+      '<div class="fld"><label class="al">Inkoopdeel (€)</label><input id="peel-deel" class="ai" type="number" inputmode="decimal" min="0" step="0.01" value="' + deel + '"></div>' +
+      '</div>' +
+      '<div id="peel-status" style="margin:10px 0"></div>' +
+      '<button class="btn btn-or" style="width:100%;margin-bottom:8px" onclick="advPeelDoen(true)">➕ Stuk + advertentie maken</button>' +
+      '<button class="btn btn-gy" style="width:100%" onclick="advPeelDoen(false)">📦 Alleen als voorraad opslaan</button>' +
+      '<button style="width:100%;margin-top:10px;background:none;border:none;color:var(--gr);cursor:pointer;padding:8px" onclick="advPeelAnnuleer()">Annuleren</button>';
+    toonPaneel("form");
+  }
+  function advPeelAnnuleer() { ADV.peel = null; toonPaneel("lijst"); renderAdvLijst(); }
+  function advPeelDoen(maakAd) {
+    if (!ADV.peel) return;
+    var p = ADV.peel.partij;
+    var naam = (val("peel-naam") || "").trim();
+    var cat = val("peel-cat");
+    var deel = parseFloat(val("peel-deel")) || 0;
+    var st = E("peel-status");
+    if (!naam) { if (st) st.innerHTML = '<div class="alert alert-err">Geef het stuk een naam.</div>'; return; }
+    var restNa = (Number(p.partij_rest) || 0) - 1;
+    var prijsNa = Math.max(0, Math.round(((Number(p.prijs) || 0) - deel) * 100) / 100);
+    var newId = _genId();
+    var kind = {
+      id: newId, user_id: (STATE.user && STATE.user.id), org_id: STATE.org_id,
+      naam: naam, categorie: cat, stof: p.stof || "", locatie: p.locatie || "",
+      prijs: deel, verwacht_vp: 0, datum: p.datum || null,
+      notitie: "Uit partij: " + (p.naam || "") + (p.artikelnummer ? (" (" + p.artikelnummer + ")") : ""),
+      status: "beschikbaar", stortkosten: 0, inkoopbon_nr: p.inkoopbon_nr || null,
+      foto_url: null, bewerkt: [], aangemaakt_op: new Date().toISOString(), partij_rest: null
+    };
+    if (st) st.innerHTML = '<div style="color:var(--gr);font-size:13px">⏳ Stuk aanmaken…</div>';
+    _restPost("items", kind).then(function () {
+      var patch = restNa <= 0 ? { partij_rest: 0, prijs: 0, status: "gesplitst" } : { partij_rest: restNa, prijs: prijsNa };
+      return _restPatch("items?id=eq." + encodeURIComponent(p.id), patch);
+    }).then(function () {
+      ADV.partijen = (ADV.partijen || []).map(function (x) { return x.id === p.id ? Object.assign({}, x, { partij_rest: restNa, prijs: prijsNa }) : x; }).filter(function (x) { return Number(x.partij_rest) > 0; });
+      ADV.peel = null;
+      if (maakAd) {
+        if (STATE.items) STATE.items.unshift(kind); else STATE.items = [kind];
+        T("✓ Stuk aangemaakt", "#15803d");
+        advOpenItem(newId);
+      } else {
+        T("✓ Stuk als voorraad opgeslagen", "#15803d");
+        toonPaneel("lijst");
+        renderAdvLijst();
+      }
+    }).catch(function (e) {
+      if (st) st.innerHTML = '<div class="alert alert-err">⚠️ Mislukt: ' + X(e.message || e) + '</div>';
+    });
+  }
+
   function advToggleVerkocht() {
     ADV.verkochtOpen = !ADV.verkochtOpen;
     var l = E("adv-verkocht-lijst"), c = E("adv-verkocht-caret");
@@ -789,6 +875,9 @@
   window.advFotoKies = advFotoKies;
   window.advFotoWis = advFotoWis;
   window.advFotoMove = advFotoMove;
+  window.advPeelStart = advPeelStart;
+  window.advPeelDoen = advPeelDoen;
+  window.advPeelAnnuleer = advPeelAnnuleer;
 
   /* ---- init: knop + scherm injecteren zodra de app-DOM er is ---- */
   function boot() { try { injectAll(); } catch (e) { console.warn("Adverteren init:", e); } }

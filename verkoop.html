@@ -1378,7 +1378,8 @@ async function laadOrgId(){
 
 async function laadVoorraad(){
   try{
-    const rows=await _restGet('items?status=eq.beschikbaar&order=aangemaakt_op.desc');
+    // Partijen (partij_rest gezet) horen niet in de gewone verkoop-/adverteerlijst — daar peel je losse stukken uit.
+    const rows=await _restGet('items?status=eq.beschikbaar&partij_rest=is.null&order=aangemaakt_op.desc');
     STATE.items=rows||[];
     renderItems();
   }catch(e){
@@ -2112,175 +2113,114 @@ function _genId(){
 
 // ── PARTIJ SPLITSEN: 1 gezamenlijke inkoop → meerdere losse voorraad-items ──
 const SPLIT_CATS=[['bank','Bank'],['hoekbank','Hoekbank'],['fauteuil','Fauteuil'],['loveseat','Loveseat'],['kast','Kast'],['dressoir','Dressoir'],['overig','Overig']];
-const SPLIT={items:[],zoek:'',partij:null,stukken:[],bezig:false};
+const SPLIT={splitbaar:[],partijen:[],zoek:'',partij:null,bezig:false};
 
 async function herstartSplitsen(){
-  SPLIT.partij=null;SPLIT.stukken=[];SPLIT.zoek='';SPLIT.bezig=false;
+  SPLIT.partij=null;SPLIT.zoek='';SPLIT.bezig=false;
   const sub=$('split-sub');if(sub)sub.textContent='Kies een inkoop';
   $('split-body').innerHTML='<div style="color:var(--gr);padding:20px;text-align:center">Laden…</div>';
   try{
-    const rows=await _restGet('items?status=eq.beschikbaar&order=aangemaakt_op.desc');
-    SPLIT.items=rows||[];
+    // Splitbaar = gewone beschikbare items (geen partij). Partijen = al gesplitste inkopen (partij_rest gezet).
+    const [splitbaar,partijen]=await Promise.all([
+      _restGet('items?status=eq.beschikbaar&partij_rest=is.null&order=aangemaakt_op.desc'),
+      _restGet('items?partij_rest=not.is.null&order=aangemaakt_op.desc')
+    ]);
+    SPLIT.splitbaar=splitbaar||[];
+    SPLIT.partijen=(partijen||[]).filter(p=>Number(p.partij_rest)>0);
     renderSplitPicker();
   }catch(e){
     $('split-body').innerHTML='<div class="alert alert-err">⚠️ Voorraad laden mislukt: '+esc(e.message)+'</div>';
   }
 }
 
-function renderSplitPicker(){
-  const zk=SPLIT.zoek.toLowerCase().trim();
-  let items=SPLIT.items;
-  if(zk)items=items.filter(i=>((i.naam||'')+' '+(i.artikelnummer||'')+' '+(i.categorie||'')).toLowerCase().includes(zk));
-  const lijst=items.map(i=>`
-    <div class="card" style="padding:14px;cursor:pointer;margin-bottom:10px" onclick="kiesSplitPartij('${esc(i.id)}')">
+function _splitRij(i,badge){
+  return `<div class="card" style="padding:14px;cursor:pointer;margin-bottom:10px" onclick="kiesSplitPartij('${esc(i.id)}')">
       <div style="display:flex;align-items:center;gap:14px">
         ${i.foto_url?`<img src="${esc(i.foto_url)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f3f4f6">`:'<div style="width:56px;height:56px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>'}
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam||'?')}</div>
           <div style="font-size:12px;color:var(--gr);margin-top:2px">${i.artikelnummer?`<span style="background:var(--orl);color:var(--or);padding:2px 8px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace">${esc(i.artikelnummer)}</span>`:''}${i.categorie?' · '+esc(i.categorie):''}</div>
-          <div style="font-size:13px;color:var(--nav);margin-top:4px">Inkoop: <strong>${eur(i.prijs||0)}</strong></div>
+          <div style="font-size:13px;color:var(--nav);margin-top:4px">${badge}</div>
         </div>
         <div style="color:#0f766e;font-size:22px">✂️</div>
       </div>
-    </div>`).join('');
+    </div>`;
+}
+function renderSplitPicker(){
+  const zk=SPLIT.zoek.toLowerCase().trim();
+  const flt=arr=>arr.filter(i=>!zk||((i.naam||'')+' '+(i.artikelnummer||'')+' '+(i.categorie||'')).toLowerCase().includes(zk));
+  const partijen=flt(SPLIT.partijen);
+  const splitbaar=flt(SPLIT.splitbaar);
+  const partijHtml=partijen.length?(
+    '<div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin:4px 0 8px">Bestaande partijen</div>'+
+    partijen.map(i=>_splitRij(i,`Partij · nog <strong>${i.partij_rest}</strong> ${i.partij_rest==1?'stuk':'stuks'} · rest inkoop <strong>${eur(i.prijs||0)}</strong>`)).join('')
+  ):'';
+  const splitHtml=(
+    '<div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin:14px 0 8px">Inkoop splitsen</div>'+
+    (splitbaar.length?splitbaar.map(i=>_splitRij(i,`Inkoop: <strong>${eur(i.prijs||0)}</strong>`)).join(''):'<div class="empty" style="padding:12px;color:var(--gr)">Geen splitbare inkoop gevonden</div>')
+  );
   $('split-body').innerHTML=`
     <div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px">
-      Kies de gezamenlijke inkoop (bijv. een inboedel) die je in losse stukken wilt opdelen. Je verdeelt daarna de inkoopprijs over de stukken.
+      Kies een gezamenlijke inkoop (bijv. een inboedel) en geef aan in hoeveel stukken je die wilt verdelen. De losse stukken benoem je later, wanneer je ze adverteert. Een bestaande partij kun je hier aantikken om het aantal aan te passen.
     </div>
-    <input type="search" placeholder="🔍 Zoek in voorraad…" value="${esc(SPLIT.zoek)}" oninput="SPLIT.zoek=this.value;renderSplitPicker()" style="width:100%;border:1px solid var(--bd);border-radius:10px;padding:12px;font-size:15px;margin-bottom:12px;outline:none">
-    ${lijst||'<div class="empty">Geen voorraad gevonden</div>'}
+    <input type="search" placeholder="🔍 Zoek…" value="${esc(SPLIT.zoek)}" oninput="SPLIT.zoek=this.value;renderSplitPicker()" style="width:100%;border:1px solid var(--bd);border-radius:10px;padding:12px;font-size:15px;margin-bottom:12px;outline:none">
+    ${partijHtml}${splitHtml}
   `;
 }
 
 function kiesSplitPartij(id){
-  const p=SPLIT.items.find(x=>x.id===id);
+  const p=SPLIT.partijen.concat(SPLIT.splitbaar).find(x=>x.id===id);
   if(!p)return;
   SPLIT.partij=p;
-  SPLIT.stukken=_splitVerdeel(2,p.prijs||0);
-  const sub=$('split-sub');if(sub)sub.textContent='Verdeel in stukken';
+  const sub=$('split-sub');if(sub)sub.textContent='Aantal stukken';
   renderSplitForm();
-}
-
-// Verdeel bedrag gelijk over n stukken in hele centen; restcenten over de eerste stukken → som klopt exact.
-function _splitVerdeel(n,totaal){
-  const totCent=Math.round((Number(totaal)||0)*100);
-  const base=Math.floor(totCent/n);
-  const rest=totCent-base*n;
-  const stukken=[];
-  for(let i=0;i<n;i++)stukken.push({naam:'',categorie:'',prijs:(base+(i<rest?1:0))/100});
-  return stukken;
-}
-
-function _splitSom(){return SPLIT.stukken.reduce((a,s)=>a+(Number(s.prijs)||0),0);}
-function _splitGeldig(){
-  const p=SPLIT.partij;if(!p)return false;
-  if(SPLIT.stukken.length<2)return false;
-  if(Math.abs(_splitSom()-(Number(p.prijs)||0))>=0.005)return false;
-  return SPLIT.stukken.every(s=>(s.naam||'').trim() && s.categorie);
 }
 
 function renderSplitForm(){
   const p=SPLIT.partij;if(!p)return;
-  const n=SPLIT.stukken.length;
-  const catOpts=(sel)=>['<option value="">— categorie —</option>'].concat(SPLIT_CATS.map(c=>`<option value="${c[0]}"${sel===c[0]?' selected':''}>${c[1]}</option>`)).join('');
-  const rows=SPLIT.stukken.map((s,idx)=>`
-    <div class="card" style="padding:12px;margin-bottom:10px">
-      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:8px">Stuk ${idx+1}</div>
-      <input placeholder="Naam (bijv. Eettafel eiken)" value="${esc(s.naam)}" oninput="splitSet(${idx},'naam',this.value)" style="width:100%;border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:8px;font-size:15px">
-      <div style="display:flex;gap:8px">
-        <select onchange="splitSet(${idx},'categorie',this.value)" style="flex:1;border:1px solid var(--bd);border-radius:8px;padding:10px;font-size:15px;background:#fff">${catOpts(s.categorie)}</select>
-        <div style="display:flex;align-items:center;gap:4px;flex:0 0 128px"><span style="color:var(--gr)">€</span><input type="number" inputmode="decimal" min="0" step="0.01" value="${s.prijs}" oninput="splitSet(${idx},'prijs',this.value)" style="width:100%;border:1px solid var(--bd);border-radius:8px;padding:10px;font-size:15px"></div>
-      </div>
-    </div>`).join('');
+  const isPartij=Number(p.partij_rest)>0;
+  const aantal=isPartij?Number(p.partij_rest):2;
   $('split-body').innerHTML=`
     <div class="card" style="padding:14px;margin-bottom:14px">
       <div style="font-weight:700;color:var(--nav)">${esc(p.naam||'Partij')}</div>
-      <div style="font-size:12px;color:var(--gr);margin-top:2px">${p.artikelnummer?esc(p.artikelnummer)+' · ':''}Totale inkoop: <strong style="color:var(--nav)">${eur(Number(p.prijs)||0)}</strong>${p.inkoopbon_nr?' · bon '+esc(p.inkoopbon_nr):''}</div>
+      <div style="font-size:12px;color:var(--gr);margin-top:2px">${p.artikelnummer?esc(p.artikelnummer)+' · ':''}${isPartij?'Resterende':'Totale'} inkoop: <strong style="color:var(--nav)">${eur(Number(p.prijs)||0)}</strong>${p.inkoopbon_nr?' · bon '+esc(p.inkoopbon_nr):''}</div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <label style="font-weight:600;color:var(--nav)">Aantal stukken</label>
-      <div style="display:flex;align-items:center;gap:10px">
-        <button onclick="splitAantal(${n-1})" ${n<=2?'disabled':''} style="width:38px;height:38px;border-radius:10px;border:1px solid var(--bd);background:#fff;font-size:20px;cursor:pointer">−</button>
-        <span style="min-width:24px;text-align:center;font-weight:700;font-size:18px">${n}</span>
-        <button onclick="splitAantal(${n+1})" style="width:38px;height:38px;border-radius:10px;border:1px solid var(--bd);background:#fff;font-size:20px;cursor:pointer">+</button>
-        <button onclick="splitHerverdeel()" style="border:1px solid var(--bd);background:#fff;border-radius:10px;padding:9px 12px;cursor:pointer;font-size:13px">Gelijk verdelen</button>
-      </div>
+    <div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px">
+      ${isPartij?'Pas het aantal resterende stukken aan. Mag ook nadat je er al eentje hebt verkocht.':'In hoeveel stukken wil je deze inkoop verdelen? De stukken benoem je later, bij het adverteren. Je hoeft nu niks per stuk in te vullen.'}
     </div>
-    ${rows}
-    <div class="card" id="split-tot" style="padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;font-weight:700"></div>
-    <div id="split-warn"></div>
-    <button class="btn btn-or" id="split-do-btn" onclick="splitsUitvoeren()" style="width:100%">✂️ Splitsen</button>
+    <div class="fld" style="margin-bottom:12px">
+      <label class="al">Aantal stukken</label>
+      <input id="split-aantal" type="number" inputmode="numeric" min="1" step="1" value="${aantal}" oninput="_splitPerStuk()" class="ai" style="font-size:18px;font-weight:700">
+    </div>
+    <div id="split-perstuk" style="font-size:13px;color:var(--gr);margin-bottom:14px"></div>
+    <button class="btn btn-or" onclick="splitOpslaan()" style="width:100%">${isPartij?'Aantal bijwerken':'✂️ Partij aanmaken'}</button>
     <div id="split-status" style="margin-top:12px"></div>
-    <button onclick="herstartSplitsen()" style="width:100%;margin-top:10px;background:none;border:none;color:var(--gr);cursor:pointer;padding:8px">Andere inkoop kiezen</button>
+    <button onclick="herstartSplitsen()" style="width:100%;margin-top:10px;background:none;border:none;color:var(--gr);cursor:pointer;padding:8px">Terug</button>
   `;
-  _splitRefreshTotals();
+  _splitPerStuk();
 }
 
-// Werk alleen de som-regel + waarschuwing + knop bij (niet de invoervelden → focus blijft tijdens typen).
-function _splitRefreshTotals(){
+function _splitPerStuk(){
   const p=SPLIT.partij;if(!p)return;
-  const som=_splitSom(),totaal=Number(p.prijs)||0,verschil=Math.round((som-totaal)*100)/100;
-  const ok=Math.abs(verschil)<0.005;
-  const tot=$('split-tot');
-  if(tot){tot.style.color=ok?'var(--gn)':'var(--rd)';tot.innerHTML=`<span>Som van stukken</span><span>${eur(som)} / ${eur(totaal)}</span>`;}
-  const warn=$('split-warn');
-  if(warn)warn.innerHTML=ok?'':`<div class="alert alert-err" style="margin-bottom:8px">De som moet exact ${eur(totaal)} zijn (nu ${verschil>0?'+':''}${eur(verschil)}). Pas een bedrag aan of klik "Gelijk verdelen".</div>`;
-  const btn=$('split-do-btn');
-  if(btn){const g=_splitGeldig();btn.disabled=!g;btn.style.opacity=g?'1':'.5';btn.textContent='✂️ Splitsen in '+SPLIT.stukken.length+' stukken';}
+  const n=Math.max(1,parseInt($('split-aantal')?.value)||0);
+  const el=$('split-perstuk');
+  if(el)el.innerHTML=n>0?`Inkoopdeel per stuk ≈ <strong>${eur((Number(p.prijs)||0)/n)}</strong> (${eur(Number(p.prijs)||0)} ÷ ${n})`:'';
 }
 
-function splitSet(idx,veld,val){
-  if(!SPLIT.stukken[idx])return;
-  SPLIT.stukken[idx][veld]=veld==='prijs'?(parseFloat(val)||0):val;
-  _splitRefreshTotals();
-}
-
-function splitAantal(n){
-  n=Math.max(2,Math.min(60,n|0));
-  const oud=SPLIT.stukken;
-  SPLIT.stukken=_splitVerdeel(n,Number(SPLIT.partij.prijs)||0);
-  for(let i=0;i<n && i<oud.length;i++){SPLIT.stukken[i].naam=oud[i].naam;SPLIT.stukken[i].categorie=oud[i].categorie;}
-  renderSplitForm();
-}
-
-function splitHerverdeel(){
-  const n=SPLIT.stukken.length;
-  const nieuw=_splitVerdeel(n,Number(SPLIT.partij.prijs)||0);
-  for(let i=0;i<n;i++){nieuw[i].naam=SPLIT.stukken[i].naam;nieuw[i].categorie=SPLIT.stukken[i].categorie;}
-  SPLIT.stukken=nieuw;
-  renderSplitForm();
-}
-
-async function splitsUitvoeren(){
-  if(SPLIT.bezig||!_splitGeldig())return;
+async function splitOpslaan(){
+  const p=SPLIT.partij;if(!p||SPLIT.bezig)return;
+  const n=parseInt($('split-aantal')?.value)||0;
+  const st=$('split-status');
+  if(n<1){if(st)st.innerHTML='<div class="alert alert-err">Vul een aantal van minimaal 1 in.</div>';return;}
   SPLIT.bezig=true;
-  const st=$('split-status'),btn=$('split-do-btn');
-  if(btn)btn.disabled=true;
-  const p=SPLIT.partij;
   try{
-    const nu=new Date().toISOString();
-    for(let i=0;i<SPLIT.stukken.length;i++){
-      const s=SPLIT.stukken[i];
-      if(st)st.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">⏳ Stuk '+(i+1)+'/'+SPLIT.stukken.length+' aanmaken…</div>';
-      await _restPost('items',{
-        id:_genId(),user_id:STATE.user.id,org_id:STATE.org_id,
-        naam:s.naam.trim(),categorie:s.categorie,stof:p.stof||'',locatie:p.locatie||'',
-        prijs:Number(s.prijs)||0,verwacht_vp:0,datum:p.datum||null,
-        notitie:'Uit partij: '+(p.naam||'')+(p.artikelnummer?(' ('+p.artikelnummer+')'):''),
-        status:'beschikbaar',stortkosten:0,
-        inkoopbon_nr:p.inkoopbon_nr||null,foto_url:p.foto_url||null,
-        bewerkt:[],aangemaakt_op:nu
-      });
-    }
-    // Partij zelf uit de voorraad halen zodat hij niet dubbel telt (inkoop zit nu in de stukken).
-    await _restPatch('items?id=eq.'+encodeURIComponent(p.id),{status:'gesplitst'});
-    if(st)st.innerHTML='<div style="background:#dcfce7;color:#15803d;padding:12px;border-radius:8px">✓ '+SPLIT.stukken.length+' losse items aangemaakt (bon '+esc(p.inkoopbon_nr||'—')+'). De partij is als "gesplitst" gemarkeerd.</div>';
-    toast('✓ Partij gesplitst');
-    setTimeout(herstartSplitsen,1400);
-  }catch(e){
-    if(st)st.innerHTML='<div class="alert alert-err">⚠️ Splitsen mislukt: '+esc(e.message)+'</div>';
+    await _restPatch('items?id=eq.'+encodeURIComponent(p.id),{partij_rest:n});
+    toast('✓ Partij ingesteld op '+n+' stuks');
     SPLIT.bezig=false;
-    _splitRefreshTotals();
+    herstartSplitsen();
+  }catch(e){
+    SPLIT.bezig=false;
+    if(st)st.innerHTML='<div class="alert alert-err">⚠️ Opslaan mislukt: '+esc(e.message)+'</div>';
   }
 }
 
