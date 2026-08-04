@@ -642,8 +642,9 @@ function toonInkStap(n){
   }
   // Klaar-screen apart
   $('ink-stap-klaar').classList.remove('show');
-  // Prev/next knoppen
+  // Prev/next knoppen — display van next ook herstellen: opslaanInkoop verbergt hem
   $('ink-btn-prev').style.display=n>1?'block':'none';
+  $('ink-btn-next').style.display='';
   $('ink-btn-next').textContent=n===3?'✓ Inkoop opslaan':'Volgende';
   updInkStapBtn();
   if(n===3)renderInkOverzicht();
@@ -820,6 +821,9 @@ function bevestigUitloggen(){
 
 // ── KEUZE-FLOW ────────────────────────────────────────────────────
 function kiesActie(actie){
+  // Het succes-scherm van een verkoop zet ALLE .steps/.bot op display:none —
+  // altijd herstellen, anders zitten inkoop/bonnetje/splitsen zonder knoppen vast
+  document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
   if(actie==='verkoop'){
     toonScherm('screen-app');
     herstart(); // reset verkoop-state + ga naar stap 1
@@ -2389,7 +2393,7 @@ async function afronden(){
     }
 
     // 3. Factuur wordt ALTIJD gemaakt — klant opslaan en contract alleen bij ingevulde klantgegevens
-    let factuurId=null,contractId=null,klantId=null;
+    let factuurId=null,contractId=null,klantId=null,mailGelukt=false;
     const heeftKlant=!!(STATE.klant.naam && STATE.klant.email);
     {
       if(heeftKlant){
@@ -2468,7 +2472,7 @@ async function afronden(){
           btw_methode:STATE.btwMethode,btw_percentage:STATE.btwMethode==='standaard'?21:0,
           btw_bedrag:btw,subtotaal:STATE.prijs,totaal:factuurTotaal,
           betaalwijze:STATE.type,factuurdatum:verkoopDatum,
-          status:(STATE.wilEmailen&&heeftKlant)?'verzonden':'aangemaakt',
+          status:'aangemaakt', // wordt pas 'verzonden' als de mail daadwerkelijk is gelukt
           termijnen_snapshot:STATE.termijnen,pdf_url:pdfPad,
           aangemaakt_op:new Date().toISOString()
         });
@@ -2500,6 +2504,10 @@ async function afronden(){
           console.log('EMAIL response status:',emRes.status,'body:',emTxt);
           if(!emRes.ok){
             throw new Error(`Email-server: ${emRes.status} — ${emTxt}`);
+          }
+          mailGelukt=true;
+          if(mailNaarKlant&&factuurId){
+            try{await _restPatch('facturen?id=eq.'+encodeURIComponent(factuurId),{status:'verzonden'});}catch(e2){console.warn('Factuurstatus bijwerken:',e2);}
           }
         }catch(e){
           console.error('Email mislukt:',e);
@@ -2579,7 +2587,11 @@ async function afronden(){
       <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(item.naam)}</strong> verkocht</div>
       <div>Factuurnr: <span style="font-family:ui-monospace,monospace">${esc(factuurnr)}</span></div>
       <div style="margin-top:6px">Totaal: <strong>${eur(factuurTotaal)}</strong></div>
-      ${(STATE.wilEmailen&&heeftKlant)?'<div style="margin-top:10px;color:var(--gn)">📧 Factuur verstuurd naar klant</div>':(STATE.factuurEmail?'<div style="margin-top:10px;color:var(--gn)">📥 Factuur naar eigen invoice-adres gestuurd</div>':'<div style="margin-top:10px;color:#c2410c">💾 Factuur opgeslagen — stel een invoice-adres in via het dashboard (⚙️ Instellingen)</div>')}
+      ${(STATE.wilEmailen&&heeftKlant)
+        ?(mailGelukt?'<div style="margin-top:10px;color:var(--gn)">📧 Factuur verstuurd naar klant</div>':'<div style="margin-top:10px;color:#dc2626">⚠️ Factuur-mail NIET verstuurd — verstuur hem via het dashboard (Archief)</div>')
+        :(STATE.factuurEmail
+          ?(mailGelukt?'<div style="margin-top:10px;color:var(--gn)">📥 Factuur naar eigen invoice-adres gestuurd</div>':'<div style="margin-top:10px;color:#dc2626">⚠️ Factuur-mail naar invoice-adres NIET verstuurd — check het dashboard</div>')
+          :'<div style="margin-top:10px;color:#c2410c">💾 Factuur opgeslagen — stel een invoice-adres in via het dashboard (⚙️ Instellingen)</div>')}
     `;
     document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='none');
     toonScherm('screen-app');

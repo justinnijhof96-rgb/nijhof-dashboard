@@ -376,9 +376,12 @@
     }).then(function () { if (btn) { btn.disabled = false; btn.textContent = "✨ Genereer advertentietekst"; } });
   }
 
+  var _advActieBezig = false;
   function advPlaats(actie) {
+    if (_advActieBezig) return; // dubbelklik → geen tweede parallelle keten (status-race, dubbel Shopify-product)
     var labels = { plaatsen: "plaatsen op Shopify + Marktplaats", reserveren: "op gereserveerd zetten", terug_online: "terug online zetten", verkocht: "als verkocht markeren", verwijderen: "van Marktplaats halen" };
     if ((actie === "verkocht" || actie === "verwijderen") && !confirm("Weet je zeker dat je dit meubel wilt " + labels[actie] + "?")) return;
+    _advActieBezig = true;
     var st = E("adv-status"); if (st) st.textContent = "Bezig met " + (labels[actie] || actie) + "…";
     advOpslaan(true).then(function (saved) {
       return _sb.functions.invoke("plaats-advertentie", { body: { advertentie_id: saved.id, actie: actie } });
@@ -392,7 +395,7 @@
     }).then(function () { renderLijst(); }).catch(function (e) {
       if (st) st.innerHTML = '<span style="color:#dc2626">' + esc(e.message || e) + " — vaak: Shopify-secrets nog niet ingesteld.</span>";
       toastX("Actie mislukt", "#dc2626");
-    });
+    }).then(function () { _advActieBezig = false; });
   }
 
   function advSluit() { try { sluitModal("m-adv"); } catch (e) { var m = E("m-adv"); if (m) m.classList.remove("open"); } }

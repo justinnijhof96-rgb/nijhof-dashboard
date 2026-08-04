@@ -58,8 +58,12 @@ const COLLECTIE_TYPE: Record<string, string> = {
   stoel: "Stoelen",
 };
 function collectieType(rubriek: unknown, categorie: unknown): string {
-  const sleutel = String(categorie ?? rubriek ?? "").trim().toLowerCase();
-  return COLLECTIE_TYPE[sleutel] || String(rubriek ?? categorie ?? "");
+  // Beide sleutels proberen: een lege categorie ('' is niet nullish) mag de
+  // rubriek-mapping niet blokkeren — anders valt het product buiten de gekoppelde
+  // collecties en verschijnt de advertentie stilzwijgend niet op Marktplaats.
+  const cat = String(categorie ?? "").trim().toLowerCase();
+  const rub = String(rubriek ?? "").trim().toLowerCase();
+  return COLLECTIE_TYPE[cat] || COLLECTIE_TYPE[rub] || String(rubriek || categorie || "");
 }
 
 Deno.serve(async (req: Request) => {

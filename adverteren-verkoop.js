@@ -541,13 +541,15 @@
   }
   function advPeelAnnuleer() { ADV.peel = null; toonPaneel("lijst"); renderAdvLijst(); }
   function advPeelDoen(maakAd) {
-    if (!ADV.peel) return;
+    if (!ADV.peel || ADV.peelBezig) return; // dubbele tik → tweede aanroep negeren
     var p = ADV.peel.partij;
     var naam = (val("peel-naam") || "").trim();
     var cat = val("peel-cat");
     var deel = parseFloat(val("peel-deel")) || 0;
     var st = E("peel-status");
     if (!naam) { if (st) st.innerHTML = '<div class="alert alert-err">Geef het stuk een naam.</div>'; return; }
+    ADV.peelBezig = true;
+    document.querySelectorAll("#adv-panel-form button").forEach(function (b) { b.disabled = true; });
     var restNa = (Number(p.partij_rest) || 0) - 1;
     var prijsNa = Math.max(0, Math.round(((Number(p.prijs) || 0) - deel) * 100) / 100);
     var newId = _genId();
@@ -562,7 +564,14 @@
     if (st) st.innerHTML = '<div style="color:var(--gr);font-size:13px">⏳ Stuk aanmaken…</div>';
     _restPost("items", kind).then(function () {
       var patch = restNa <= 0 ? { partij_rest: 0, prijs: 0, status: "gesplitst" } : { partij_rest: restNa, prijs: prijsNa };
-      return _restPatch("items?id=eq." + encodeURIComponent(p.id), patch);
+      return _restPatch("items?id=eq." + encodeURIComponent(p.id), patch).catch(function (e) {
+        // Compensatie: partij niet verlaagd → het zojuist aangemaakte stuk weer
+        // verwijderen, anders geeft een retry een duplicaat én dubbel inkoopdeel
+        return fetch(SUPABASE_URL + "/rest/v1/items?id=eq." + encodeURIComponent(newId), {
+          method: "DELETE",
+          headers: { "apikey": SUPABASE_ANON, "Authorization": "Bearer " + tok() }
+        }).catch(function () {}).then(function () { throw e; });
+      });
     }).then(function () {
       ADV.partijen = (ADV.partijen || []).map(function (x) { return x.id === p.id ? Object.assign({}, x, { partij_rest: restNa, prijs: prijsNa }) : x; }).filter(function (x) { return Number(x.partij_rest) > 0; });
       ADV.peel = null;
@@ -577,6 +586,9 @@
       }
     }).catch(function (e) {
       if (st) st.innerHTML = '<div class="alert alert-err">⚠️ Mislukt: ' + X(e.message || e) + '</div>';
+    }).then(function () {
+      ADV.peelBezig = false;
+      document.querySelectorAll("#adv-panel-form button").forEach(function (b) { b.disabled = false; });
     });
   }
 
@@ -825,9 +837,12 @@
     }).then(function () { if (btn) { btn.disabled = false; btn.textContent = "✨ Genereer advertentietekst"; } });
   }
 
+  var _advActieBezig = false;
   function advPlaats(actie) {
+    if (_advActieBezig) return; // dubbelklik → geen tweede parallelle keten (status-race, dubbel Shopify-product)
     var labels = { plaatsen: "plaatsen op Shopify + Marktplaats", reserveren: "op gereserveerd zetten", terug_online: "terug online zetten", verkocht: "als verkocht markeren", verwijderen: "offline halen" };
     if ((actie === "verkocht" || actie === "verwijderen") && !confirm("Weet je zeker dat je dit meubel wilt " + labels[actie] + "?")) return;
+    _advActieBezig = true;
     var st = E("adv-status"); if (st) { st.style.color = "var(--gr)"; st.textContent = "Bezig met " + (labels[actie] || actie) + "…"; }
     advOpslaan(true).then(function (saved) {
       return roepFunctie("plaats-advertentie", { advertentie_id: saved.id, actie: actie });
@@ -851,7 +866,7 @@
     }).catch(function (e) {
       if (st) { st.style.color = "#dc2626"; st.textContent = (e.message || e) + " — vaak: Shopify-secrets nog niet ingesteld."; }
       T("Actie mislukt", "#dc2626");
-    });
+    }).then(function () { _advActieBezig = false; });
   }
 
   /* ---- globals voor inline handlers ---- */

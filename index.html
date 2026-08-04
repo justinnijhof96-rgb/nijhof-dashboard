@@ -895,7 +895,7 @@ const _syncSnap={items:new Map(),verkopen:new Map(),termijnen:new Map(),lasten:n
 function _itemRow(i,uid_user,org_id){
   return {
     id:i.id,naam:i.naam,categorie:i.categorie,stof:i.stof||'',locatie:i.locatie||'',
-    prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum,notitie:i.notitie||'',
+    prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum||null,notitie:i.notitie||'',
     status:i.status,del_reden:i.del_reden||null,del_toel:i.del_toel||null,stortkosten:i.stortkosten||0,
     foto_url:i.foto_url||null,
     afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
@@ -1426,10 +1426,18 @@ async function factuurActieArchief(itemId){
   const item=DB.items.find(x=>x.id===itemId);
   const vk=DB.verkopen.find(v=>v.itemId===itemId);
   if(!item||!vk){toast('Item of verkoop niet gevonden','#dc2626');return;}
-  // Bestaand?
-  const bestaand=_facturenCache.find(f=>f.verkoop_id===vk.id);
+  // Bestaand? Bij een multi-item order hangt het factuurrecord aan de primaire
+  // verkopen-rij — daarom óók op factuurnummer zoeken, niet alleen op verkoop_id
+  const bestaand=_facturenCache.find(f=>f.verkoop_id===vk.id||(vk.factuur&&f.factuurnummer===vk.factuur));
   if(bestaand){
     return bekijkFactuurPDF(bestaand.id);
+  }
+  // Multi-item order zonder record: niet per los item hergenereren — dat zou een
+  // 1-item-PDF over de echte orderfactuur heen zetten
+  const orderRijen=vk.factuur?DB.verkopen.filter(v=>v.factuur===vk.factuur):[vk];
+  if(orderRijen.length>1){
+    toast(`⚠️ Factuur ${vk.factuur} hoort bij een order met ${orderRijen.length} items — die kan niet per los item gegenereerd worden`,'#c2410c');
+    return;
   }
   // Genereren
   if(!confirm(`Factuur PDF genereren voor "${item.naam}"?\nFactuurnr: ${vk.factuur||'(nieuw)'}\nDeze wordt opgeslagen in Storage + DB.`))return;
@@ -1448,7 +1456,7 @@ async function factuurActieArchief(itemId){
     // Factuurnr — als ontbrekend, nieuwe genereren
     let factuurnr=vk.factuur;
     if(!factuurnr){
-      factuurnr=volgendeFactuur();
+      factuurnr=await _volgendeFactuurLive();
       vk.factuur=factuurnr;
       // Update verkopen-record
       try{await dbUpdate('verkopen',vk.id,{factuur:factuurnr});}catch(e){console.warn('Factuurnr update:',e);}
@@ -1771,6 +1779,8 @@ function slaBewerk(){
   const i=DB.items.find(x=>x.id===_bewerkId);if(!i)return;
   const naam=val('bw-naam').trim(),cat=val('bw-cat');
   if(!naam||!cat){toast('Naam en categorie zijn verplicht','#dc2626');return;}
+  // Lege datum zou de complete items-sync laten falen (date-kolom weigert '')
+  if(!val('bw-dat')){toast('Datum is verplicht','#dc2626');return;}
   i.naam=naam;i.categorie=cat;i.stof=val('bw-stof').trim();i.locatie=val('bw-loc').trim();
   const oudePrijs=i.prijs;
   i.prijs=fval('bw-ip');i.verwacht_vp=fval('bw-vvp');i.datum=val('bw-dat');
@@ -1910,14 +1920,24 @@ function openBewerkVerkoop(itemId) {
   openModal('m-vk');
 }
 
+// Services van een verkoop: nieuwe verkopen hebben een services-array (bezorging,
+// montage, …), oude verkopen alleen het impregneer-veld
+function _vkServicesTot(vk){
+  return Array.isArray(vk?.services)?vk.services.reduce((a,s)=>a+(Number(s.bedrag)||0),0):(vk?.impregneer||0);
+}
 function updateBewerkVkPrev(itemId) {
   const item=DB.items.find(x=>x.id===itemId);const prevEl=el('bvk-prev');if(!item||!prevEl)return;
-  const vp=fval('bvk-vp'),imp=DB.verkopen.find(v=>v.itemId===itemId)?.impregneer||0;
-  // Marge-BTW over totale winst incl. bijverkopen (services staan samen op de factuur → bijkomende kosten in de marge)
-  const bruto=vp-item.prijs,netto=bruto+imp,btw=Math.max(0,(vp+imp-item.prijs)/1.21*0.21),nNaBtw=netto-btw;
+  const vk=DB.verkopen.find(v=>v.itemId===itemId);
+  const vp=fval('bvk-vp'),servTot=_vkServicesTot(vk);
+  const factuurTotaal=vp+servTot;
+  const bruto=vp-item.prijs,netto=bruto+servTot;
+  const btw=vk?.btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(factuurTotaal-item.prijs)/1.21*0.21);
+  const nNaBtw=netto-btw;
   prevEl.innerHTML=`<div style="background:#f9fafb;border-radius:8px;padding:10px;border:1px solid var(--bd);font-size:13px">
+    ${servTot>0?`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Services</span><span>${eur(servTot)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Factuurtotaal</span><span>${eur(factuurTotaal)}</span></div>`:''}
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6"><span>Bruto marge</span><span style="color:${bruto>=0?'var(--gn)':'var(--rd)'}">${eur(bruto)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>BTW winstmarge</span><span>−${eur(btw)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;color:var(--rd)"><span>${vk?.btwMethode==='standaard'?'BTW 21%':'BTW winstmarge'}</span><span>−${eur(btw)}</span></div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
   </div>`;
 }
@@ -1927,14 +1947,16 @@ function slaVerkKopOp(itemId) {
   const vpStr=val('bvk-vp').trim(),vp=parseFloat(vpStr);
   if(!vpStr||isNaN(vp)||vp<=0){toast('Vul een geldige verkoopprijs in','#dc2626');return;}
   const item=DB.items.find(x=>x.id===itemId);
-  const imp=(vk.impregneer||0);
-  const factuurTotaal=vp+imp; // services hangen aan vk.impregneer (oud) of services-array (nieuw)
+  const servTot=_vkServicesTot(vk); // alle services (bezorging, montage, …), niet alleen impregneer
+  const factuurTotaal=vp+servTot;
   const bruto=vp-item.prijs;
-  const netto=bruto+imp;
-  const btw=Math.max(0,(factuurTotaal-item.prijs)/1.21*0.21); // marge incl. bijverkopen
+  const netto=bruto+servTot;
+  // BTW volgens de methode van de verkoop: standaard 21% over het totaal, anders margeregeling
+  const btw=vk.btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(factuurTotaal-item.prijs)/1.21*0.21);
   const nNaBtw=netto-btw;
   vk.verkoopprijs=vp;vk.verkooplocatie=val('bvk-loc');
   vk.factuur=val('bvk-fac')||vk.factuur;vk.datum=val('bvk-dat')||vk.datum;
+  vk.factuurTotaal=factuurTotaal;
   vk.brutoMarge=bruto;vk.nettoMarge=netto;vk.btw=btw;vk.nettoNaBtw=nNaBtw;
   // Herverdelen termijnen op factuurTotaal-basis
   if(vk.termijnen?.length){
@@ -1966,11 +1988,17 @@ function slaVerkKopOp(itemId) {
 async function ongedaanVerkoop(itemId) {
   const vk=DB.verkopen.find(v=>v.itemId===itemId);
   if(!vk)return;
-  const open=(vk.termijnen||[]).filter(t=>!t.betaald);
-  // Check of er facturen/contracten bij horen
-  const factuur=_facturenCache.find(f=>f.verkoop_id===vk.id);
-  const contract=_contractenCache.find(c=>c.verkoop_id===vk.id);
+  // Multi-item order (verkoopapp): alle verkopen-rijen met hetzelfde factuurnummer
+  // horen bij elkaar — termijnen/factuur/contract hangen aan de primaire rij, dus
+  // een losse rij terugdraaien zou de order inconsistent achterlaten.
+  const orderRijen=vk.factuur?DB.verkopen.filter(v=>v.factuur===vk.factuur):[vk];
+  const isOrder=orderRijen.length>1;
+  const open=orderRijen.flatMap(v=>v.termijnen||[]).filter(t=>!t.betaald);
+  // Factuur/contract kunnen aan elke rij van de order hangen; factuur ook via nummer
+  const factuur=_facturenCache.find(f=>orderRijen.some(v=>f.verkoop_id===v.id)||(vk.factuur&&f.factuurnummer===vk.factuur));
+  const contract=_contractenCache.find(c=>orderRijen.some(v=>c.verkoop_id===v.id));
   let waarschuwing='';
+  if(isOrder)waarschuwing+=`⚠️ Dit is één order met ${orderRijen.length} items (factuur ${vk.factuur}) — de HELE order wordt teruggedraaid en alle items komen terug in de voorraad\n`;
   if(open.length>0){
     const openBed=open.reduce((a,t)=>a+t.bedrag,0);
     waarschuwing+=`⚠️ ${open.length} openstaande termijn(en) van ${eur(openBed)}\n`;
@@ -1984,7 +2012,6 @@ async function ongedaanVerkoop(itemId) {
   if(contract&&contract.ondertekend){
     if(!confirm('Extra check: dit contract is ONDERTEKEND door de klant. Echt verwijderen?'))return;
   }
-  const item=DB.items.find(x=>x.id===itemId);if(!item)return;
   try{
     // Volgorde: kinderen eerst, daarna ouders
     if(contract){
@@ -2000,21 +2027,26 @@ async function ongedaanVerkoop(itemId) {
       }
       await dbDelete('facturen','id=eq.'+encodeURIComponent(factuur.id));
     }
-    await dbDelete('termijnen','verkoop_id=eq.'+encodeURIComponent(vk.id));
-    await dbDelete('verkopen','id=eq.'+encodeURIComponent(vk.id));
+    for(const v of orderRijen){
+      await dbDelete('termijnen','verkoop_id=eq.'+encodeURIComponent(v.id));
+      await dbDelete('verkopen','id=eq.'+encodeURIComponent(v.id));
+    }
   }catch(e){
     console.error('Ongedaan maken fout:',e);
     toast('⚠️ Mislukt: '+e.message,'#dc2626');
     return;
   }
-  // Cache opschonen
-  DB.verkopen=DB.verkopen.filter(v=>v.itemId!==itemId);
+  // Cache opschonen + alle items van de order terug naar beschikbaar
+  const orderIds=new Set(orderRijen.map(v=>v.id));
+  DB.verkopen=DB.verkopen.filter(v=>!orderIds.has(v.id));
   if(factuur)_facturenCache=_facturenCache.filter(f=>f.id!==factuur.id);
   if(contract)_contractenCache=_contractenCache.filter(c=>c.id!==contract.id);
-  item.status='beschikbaar';
-  _patchItem(item.id,{status:'beschikbaar'});
+  orderRijen.forEach(v=>{
+    const it=DB.items.find(x=>x.id===v.itemId);
+    if(it){it.status='beschikbaar';_patchItem(it.id,{status:'beschikbaar'});}
+  });
   slaOp();renderV();renderDash();renderDebiteuren();renderFacturen?.();renderContracten?.();
-  toast('↩️ Verkoop ongedaan gemaakt' + (factuur||contract?' (incl. factuur/contract)':''),'#2563eb');
+  toast('↩️ '+(isOrder?`Order met ${orderRijen.length} items ongedaan gemaakt`:'Verkoop ongedaan gemaakt')+(factuur||contract?' (incl. factuur/contract)':''),'#2563eb');
 }
 
 let _vkId=null;
@@ -2318,6 +2350,31 @@ function volgendeFactuur(){
   const nextN=alle.length?Math.max(...alle)+1:1;
   return prefix+nextN;
 }
+// Live variant voor het moment van uitgifte: telt facturen én verkopen in de
+// database, zodat een open dashboard geen nummer dupliceert dat de verkoopapp
+// intussen heeft uitgegeven (zelfde pad zou de PDF overschrijven).
+async function _volgendeFactuurLive(){
+  const d=new Date();
+  const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  const prefix=`NBF-${datStr}-`;
+  const regex=new RegExp(`^NBF-${datStr}-(\\d+)$`);
+  let hoogste=0;
+  try{
+    const [facs,vks]=await Promise.all([
+      dbSelect('facturen','select=factuurnummer&factuurnummer=like.'+encodeURIComponent(prefix+'*')),
+      dbSelect('verkopen','select=factuur&factuur=like.'+encodeURIComponent(prefix+'*'))
+    ]);
+    (facs||[]).forEach(f=>{const m=(f.factuurnummer||'').match(regex);if(m)hoogste=Math.max(hoogste,parseInt(m[1],10));});
+    (vks||[]).forEach(v=>{const m=(v.factuur||'').match(regex);if(m)hoogste=Math.max(hoogste,parseInt(m[1],10));});
+  }catch(e){
+    console.warn('Live factuurnummer tellen mislukt — val terug op cache:',e);
+    return volgendeFactuur();
+  }
+  // Lokale cache meenemen: een net geregistreerde verkoop kan nog niet gesynct zijn
+  const mLok=volgendeFactuur().match(regex);
+  if(mLok)hoogste=Math.max(hoogste,parseInt(mLok[1],10)-1);
+  return prefix+(hoogste+1);
+}
 async function bevestigVk(){
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;if(!item)return;
   const vpStr=val('vk-vp').trim(),vp=parseFloat(vpStr);
@@ -2380,7 +2437,9 @@ async function bevestigVk(){
     termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
   }
   const verkoopId=uid();
-  const factuurnr=val('vk-fac')||volgendeFactuur();
+  // Niet-aangepast voorstel → live hertellen zodat een verkoopapp-nummer niet gedupliceerd wordt
+  let factuurnr=val('vk-fac');
+  if(!factuurnr||factuurnr===volgendeFactuur())factuurnr=await _volgendeFactuurLive();
   const verkoopDatum=val('vk-dat')||vandaag();
   DB.verkopen.push({
     id:verkoopId,itemId:item.id,verkoopprijs:vp,verkooplocatie:val('vk-loc'),
