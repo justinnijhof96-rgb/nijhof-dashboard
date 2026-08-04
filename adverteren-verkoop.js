@@ -530,7 +530,6 @@
     ADV.fotos = Array.isArray(a.fotos) ? a.fotos.slice() : [];
 
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
-    var pt = a.prijstype || "vaste_prijs";
     var bez = a.bezorging || {};
     var isLive = a.status && a.status !== "concept" && a.status !== "gegenereerd";
 
@@ -553,12 +552,6 @@
       '<div class="fld"><label class="al">Materiaal</label><input id="adv-materiaal" class="ai" value="' + X(a.materiaal || "") + '"></div>' +
       '<div class="fld"><label class="al">Kleur</label><input id="adv-kleur" class="ai" value="' + X(a.kleur || "") + '"></div>' +
       '<div class="fld"><label class="al">Vraagprijs (€)</label><input id="adv-prijs" class="ai" type="number" inputmode="decimal" min="0" step="0.01" value="' + X(a.vraagprijs != null ? a.vraagprijs : (it.verwacht_vp || it.vvp || "")) + '"></div>' +
-      '<div class="fld"><label class="al">Prijstype</label><select id="adv-prijstype" class="as">' +
-      '<option value="vaste_prijs"' + (pt === "vaste_prijs" ? " selected" : "") + ">Vaste prijs</option>" +
-      '<option value="bieden"' + (pt === "bieden" ? " selected" : "") + ">Bieden</option>" +
-      '<option value="notk"' + (pt === "notk" ? " selected" : "") + ">N.o.t.k.</option></select></div>" +
-      '<div class="fld"><label class="al">Klikprijs CPC (€)</label><input id="adv-cpc" class="ai" type="number" inputmode="decimal" min="0.01" step="0.01" value="' + X(a.klikprijs != null ? a.klikprijs : 0.05) + '"></div>' +
-      '<div class="fld"><label class="al">Budget (€)</label><input id="adv-budget" class="ai" type="number" inputmode="decimal" min="0" step="1" value="' + X(a.budget != null ? a.budget : 10) + '"></div>' +
       '<div class="fld"><label class="al">Bezorgen mogelijk?</label><select id="adv-bezorgen" class="as"><option value="ja"' + (bez.bezorgen !== false ? " selected" : "") + ">Ja</option><option value=\"nee\"" + (bez.bezorgen === false ? " selected" : "") + ">Nee</option></select></div>" +
       '<div class="fld"><label class="al">Bezorgkosten (€, 0 = gratis)</label><input id="adv-bezorgkosten" class="ai" type="number" inputmode="decimal" min="0" step="1" value="' + X(bez.kosten != null ? bez.kosten : "") + '"></div>' +
       '</div>' +
@@ -677,9 +670,10 @@
       materiaal: (val("adv-materiaal") || "").trim(),
       kleur: (val("adv-kleur") || "").trim(),
       vraagprijs: parseFloat(val("adv-prijs")) || 0,
-      prijstype: val("adv-prijstype"),
-      klikprijs: parseFloat(val("adv-cpc")) || 0.05,
-      budget: parseFloat(val("adv-budget")) || 10,
+      // prijstype/budget worden via Woosify bepaald, niet vanuit deze app. Velden zijn uit
+      // het formulier gehaald; we schrijven vaste defaults zodat bestaande DB-kolommen blijven werken.
+      prijstype: "bieden",
+      budget: 10,
       bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: parseFloat(val("adv-bezorgkosten")) || 0 },
       notitie: (val("adv-notitie") || "").trim(),
       niet_vermelden: (val("adv-niet") || "").trim(),

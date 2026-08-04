@@ -204,7 +204,6 @@
     ADV.fotos = Array.isArray(a.fotos) ? a.fotos.slice() : [];
 
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
-    var pt = a.prijstype || "vaste_prijs";
     var bez = a.bezorging || {};
 
     E("adv-titel").textContent = "Advertentie · " + (it.naam || "");
@@ -218,12 +217,6 @@
       '<div><label>Materiaal</label><input id="adv-materiaal" value="' + esc(a.materiaal || "") + '"></div>' +
       '<div><label>Kleur</label><input id="adv-kleur" value="' + esc(a.kleur || "") + '"></div>' +
       '<div><label>Vraagprijs (€)</label><input id="adv-prijs" type="number" min="0" step="0.01" value="' + esc(a.vraagprijs != null ? a.vraagprijs : (it.verwacht_vp || "")) + '"></div>' +
-      '<div><label>Prijstype</label><select id="adv-prijstype">' +
-        '<option value="vaste_prijs"' + (pt === "vaste_prijs" ? " selected" : "") + ">Vaste prijs</option>" +
-        '<option value="bieden"' + (pt === "bieden" ? " selected" : "") + ">Bieden</option>" +
-        '<option value="notk"' + (pt === "notk" ? " selected" : "") + ">N.o.t.k.</option></select></div>" +
-      '<div><label>Klikprijs CPC (€)</label><input id="adv-cpc" type="number" min="0.01" step="0.01" value="' + esc(a.klikprijs != null ? a.klikprijs : 0.05) + '"></div>' +
-      '<div><label>Budget (€)</label><input id="adv-budget" type="number" min="0" step="1" value="' + esc(a.budget != null ? a.budget : 10) + '"></div>' +
       '<div><label>Bezorgen mogelijk?</label><select id="adv-bezorgen"><option value="ja"' + (bez.bezorgen !== false ? " selected" : "") + ">Ja</option><option value=\"nee\"" + (bez.bezorgen === false ? " selected" : "") + ">Nee</option></select></div>" +
       '<div><label>Bezorgkosten (€, 0 = gratis/n.v.t.)</label><input id="adv-bezorgkosten" type="number" min="0" step="1" value="' + esc(bez.kosten != null ? bez.kosten : "") + '"></div>' +
       '<div class="full"><label>Notitie (AI benoemt dit — bv. hoes afritsbaar, kleine kras)</label><textarea id="adv-notitie">' + esc(a.notitie || "") + "</textarea></div>" +
@@ -336,9 +329,10 @@
       materiaal: val("adv-materiaal").trim(),
       kleur: val("adv-kleur").trim(),
       vraagprijs: parseFloat(val("adv-prijs")) || 0,
-      prijstype: val("adv-prijstype"),
-      klikprijs: parseFloat(val("adv-cpc")) || 0.05,
-      budget: parseFloat(val("adv-budget")) || 10,
+      // prijstype/budget worden via Woosify bepaald, niet vanuit deze app. Velden zijn uit
+      // het formulier gehaald; we schrijven vaste defaults zodat bestaande DB-kolommen blijven werken.
+      prijstype: "bieden",
+      budget: 10,
       bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: parseFloat(val("adv-bezorgkosten")) || 0 },
       notitie: val("adv-notitie").trim(),
       niet_vermelden: val("adv-niet").trim(),

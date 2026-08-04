@@ -169,8 +169,13 @@ Deno.serve(async (req: Request) => {
 
     const isCreate = !adv.shopify_product_id;
     const handle = slugify(`${artikelnr || ""}-${baseTitel}`);
-    if (isCreate) {
-      input.handle = handle;
+    if (isCreate) input.handle = handle;
+    // Foto's: bij aanmaken én bij updaten meesturen. productSet behandelt media als een
+    // list-field (volledige sync): meegestuurde foto's worden gezet, weggelaten media
+    // verwijderd. Zo komen gewijzigde/toegevoegde foto's óók op een bestaande advertentie
+    // door — voorheen gebeurde dat alleen bij aanmaken. Bij offline (verkocht/verwijderd)
+    // laten we media met rust.
+    if (!offline) {
       const fotos = Array.isArray(adv.fotos) ? adv.fotos : [];
       let urls: string[] = fotos.map((f: any) => f?.url).filter(Boolean);
       if (urls.length === 0 && item?.foto_url) urls = [item.foto_url];

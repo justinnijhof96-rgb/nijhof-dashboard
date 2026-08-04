@@ -40,6 +40,15 @@ const CM_KEYS = new Set([
   "zithoogte", "hoogte", "lengte", "diameter",
 ]);
 
+// Zet de bezorgkeuze van de advertentie om in een nette regel voor de tekst.
+// bezorging = { bezorgen: boolean, kosten: number }. 0 kosten = gratis.
+function bezorgRegel(adv: any): string {
+  const b = adv?.bezorging && typeof adv.bezorging === "object" ? adv.bezorging : {};
+  if (b.bezorgen === false) return "Ophalen (bezorgen niet mogelijk).";
+  const k = Number(b.kosten) || 0;
+  return k > 0 ? `Bezorgen mogelijk (bezorgkosten € ${k}).` : "Bezorgen mogelijk, gratis in de regio.";
+}
+
 // Vult placeholders ({{breedte}}, {{materiaal}}, {{specificaties}}, ...) in de vaste
 // sjabloon-tekst en verwijdert specificatie-regels die leeg blijven (niet ingevuld).
 function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<string, unknown>): string {
@@ -54,6 +63,7 @@ function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<stri
     vraagprijs: adv?.vraagprijs != null ? String(adv.vraagprijs) : "",
     type: String(adv?.rubriek ?? item?.categorie ?? ""),
     naam: String(item?.naam ?? ""),
+    bezorging: bezorgRegel(adv),
   };
   for (const [k, v] of Object.entries(maten)) map[k] = v == null ? "" : String(v);
 
@@ -266,7 +276,10 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
     const intro = fillPlaceholders(sjab?.vaste_intro ? String(sjab.vaste_intro) : "", adv, item, maten).trim();
     const blokken = fillPlaceholders(sjab?.vaste_blokken ? String(sjab.vaste_blokken) : "", adv, item, maten).trim();
     const introDeel = intro ? intro + "\n\n" : "";
-    const volledige = `${introDeel}${beschrijving.trim()}\n\n${blokken}`.trim();
+    let volledige = `${introDeel}${beschrijving.trim()}\n\n${blokken}`.trim();
+    // Bezorging garanderen: als de sjabloon het niet al noemt (via {{bezorging}} of los),
+    // plakken we de bezorgregel onderaan. Zo verdwijnt de bezorgkeuze niet meer.
+    if (!/bezorg|ophalen/i.test(volledige)) volledige = `${volledige}\n\n${bezorgRegel(adv)}`.trim();
 
     const behoudStatus = ["live", "gereserveerd", "verkocht"].includes(adv.status);
     const nieuweStatus = behoudStatus ? adv.status : "gegenereerd";
