@@ -158,7 +158,12 @@
   function renderLijst() {
     var wrap = E("adv-lijst"); if (!wrap) return;
     var items = (typeof DB === "object" && DB.items) ? DB.items : [];
-    items = items.filter(function (i) { return i.status !== "afgestort"; });
+    // Alleen adverteerbare losse voorraad: geen verkochte/afgestorte items en geen
+    // hele partijen (partij_rest>0) of gesplitste parents — die horen in de peel-flow,
+    // anders adverteer je per ongeluk een verkocht item of een complete partij als één stuk.
+    items = items.filter(function (i) {
+      return i.status !== "afgestort" && i.status !== "verkocht" && i.status !== "gesplitst" && !(Number(i.partij_rest) > 0);
+    });
     if (!items.length) { wrap.innerHTML = '<p style="color:var(--gr,#6b7280)">Nog geen voorraad om te adverteren.</p>'; return; }
     var html = items.map(function (it) {
       var a = advVoorItem(it.id);

@@ -359,7 +359,11 @@
         if (statusEl) statusEl.textContent = "Bezig… " + (klaar + fouten + 1) + "/" + ads.length;
         var stap;
         if (actie === "prijs") {
-          var nieuw = Math.max(1, Math.round(ad.vraagprijs * (1 - pct / 100)));
+          var basis = Number(ad.vraagprijs);
+          // Zonder geldige vraagprijs overslaan: anders wordt de prijs NaN→null (wist
+          // de vraagprijs) of €1 (en pusht bij live advertenties direct naar Marktplaats).
+          if (!(basis > 0)) { fouten++; console.warn("Bulk-prijs overgeslagen (geen vraagprijs)", ad.id); return; }
+          var nieuw = Math.max(1, Math.round(basis * (1 - pct / 100)));
           ad.vraagprijs = nieuw;
           stap = _restPatch("advertenties?id=eq." + encodeURIComponent(ad.id), { vraagprijs: nieuw });
           // Live/gereserveerde advertenties meteen bijwerken op Shopify + Marktplaats
@@ -430,7 +434,9 @@
   }
   // Partijen (gesplitste inkopen met partij_rest > 0) — hieruit peel je losse stukken.
   function laadPartijen() {
-    return _restGet("items?partij_rest=not.is.null&order=aangemaakt_op.desc").then(function (rows) {
+    // status=beschikbaar: een in het dashboard verkochte/afgestorte partij (partij_rest
+    // blijft >0) mag niet meer peelbaar zijn — anders maak je stukken uit weg-voorraad.
+    return _restGet("items?partij_rest=not.is.null&status=eq.beschikbaar&order=aangemaakt_op.desc").then(function (rows) {
       ADV.partijen = (rows || []).filter(function (p) { return Number(p.partij_rest) > 0; });
       return ADV.partijen;
     }).catch(function (e) { console.warn("Partijen laden mislukt", e); ADV.partijen = []; return []; });
@@ -548,6 +554,10 @@
     var deel = parseFloat(val("peel-deel")) || 0;
     var st = E("peel-status");
     if (!naam) { if (st) st.innerHTML = '<div class="alert alert-err">Geef het stuk een naam.</div>'; return; }
+    // Inkoopdeel valideren: 0 ≤ deel ≤ resterende partijprijs, anders klopt de
+    // som van de inkoopdelen niet meer (negatief deel verhoogt de partijprijs).
+    var maxDeel = Math.round((Number(p.prijs) || 0) * 100) / 100;
+    if (deel < 0 || deel > maxDeel) { if (st) st.innerHTML = '<div class="alert alert-err">Inkoopdeel moet tussen € 0 en € ' + maxDeel + ' liggen (resterende partij).</div>'; return; }
     ADV.peelBezig = true;
     document.querySelectorAll("#adv-panel-form button").forEach(function (b) { b.disabled = true; });
     var restNa = (Number(p.partij_rest) || 0) - 1;
@@ -559,7 +569,8 @@
       prijs: deel, verwacht_vp: 0, datum: p.datum || null,
       notitie: "Uit partij: " + (p.naam || "") + (p.artikelnummer ? (" (" + p.artikelnummer + ")") : ""),
       status: "beschikbaar", stortkosten: 0, inkoopbon_nr: p.inkoopbon_nr || null,
-      foto_url: null, bewerkt: [], aangemaakt_op: new Date().toISOString(), partij_rest: null
+      foto_url: null, bewerkt: [], aangemaakt_op: new Date().toISOString(), partij_rest: null,
+      partij_parent_id: p.id // markeer als gepeeld stuk → telt niet als nieuwe inkoop
     };
     if (st) st.innerHTML = '<div style="color:var(--gr);font-size:13px">⏳ Stuk aanmaken…</div>';
     _restPost("items", kind).then(function () {
@@ -575,8 +586,10 @@
     }).then(function () {
       ADV.partijen = (ADV.partijen || []).map(function (x) { return x.id === p.id ? Object.assign({}, x, { partij_rest: restNa, prijs: prijsNa }) : x; }).filter(function (x) { return Number(x.partij_rest) > 0; });
       ADV.peel = null;
+      // Stuk meteen in de voorraadlijst tonen (beide takken), anders lijkt het mislukt
+      // en maakt de gebruiker het nogmaals → duplicaat + dubbele partij-verlaging.
+      if (STATE.items) STATE.items.unshift(kind); else STATE.items = [kind];
       if (maakAd) {
-        if (STATE.items) STATE.items.unshift(kind); else STATE.items = [kind];
         T("✓ Stuk aangemaakt", "#15803d");
         advOpenItem(newId);
       } else {

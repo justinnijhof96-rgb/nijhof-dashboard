@@ -218,6 +218,9 @@ function maakOndertekendeContractPDF(c, naam, ondertekendOp){
 
   // Partijen
   let y=80;
+  // Paginabreek als er onvoldoende ruimte is voor het volgende blok — zonder dit
+  // valt tekst (bij veel termijnen) door de footer of van de pagina af.
+  const pageBreak=(need=10)=>{ if(y+need>272){ doc.addPage(); y=20; } };
   doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
   doc.text('Tussen:',15,y);y+=6;
   doc.setFont('helvetica','normal');doc.setFontSize(10);
@@ -249,6 +252,7 @@ function maakOndertekendeContractPDF(c, naam, ondertekendOp){
   if(c.type_betaling==='aanbetaling'){doc.text('Betaling vindt plaats in 2 termijnen:',15,y);y+=5;}
   else {doc.text(`Betaling vindt plaats in ${termijnen.length} termijnen:`,15,y);y+=5;}
   termijnen.forEach(t=>{
+    pageBreak(6);
     const lbl=t.label||`Termijn ${t.nr}`;
     const datStr=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
     doc.text(`  • ${lbl}: € ${Number(t.bedrag).toFixed(2).replace('.',',')} — vervaldatum ${datStr}`,15,y);y+=5;
@@ -256,30 +260,35 @@ function maakOndertekendeContractPDF(c, naam, ondertekendOp){
   y+=3;
 
   // Artikel 4
+  pageBreak(24);
   doc.setFont('helvetica','bold');doc.text('Artikel 4 — Eigendomsvoorbehoud',15,y);y+=6;
   doc.setFont('helvetica','normal');
   const a4=doc.splitTextToSize('Het verkochte blijft eigendom van verkoper totdat de volledige koopprijs door koper is voldaan. Tot dat moment is het koper niet toegestaan het verkochte te vervreemden, te bezwaren of aan derden over te dragen.',180);
   a4.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
 
   // Artikel 5
+  pageBreak(30);
   doc.setFont('helvetica','bold');doc.text('Artikel 5 — Wanbetaling',15,y);y+=6;
   doc.setFont('helvetica','normal');
   const a5=doc.splitTextToSize('Bij niet-tijdige betaling van een termijn is koper zonder nadere ingebrekestelling in verzuim. Verkoper is alsdan gerechtigd het verkochte terug te nemen, onverminderd zijn recht op vergoeding van geleden schade en redelijke incassokosten conform de Wet incassokosten.',180);
   a5.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
 
   // Artikel 6
+  pageBreak(30);
   doc.setFont('helvetica','bold');doc.text('Artikel 6 — Levering en risico',15,y);y+=6;
   doc.setFont('helvetica','normal');
   const a6=doc.splitTextToSize('Het risico van het verkochte gaat over op koper op het moment van feitelijke aflevering. Koper dient het verkochte bij aflevering te controleren op zichtbare gebreken; klachten dienen binnen 7 dagen schriftelijk te worden gemeld.',180);
   a6.forEach(l=>{doc.text(l,15,y);y+=5;});y+=4;
 
   // Voetnoot incasso
+  pageBreak(24);
   doc.setFontSize(8);doc.setFont('helvetica','italic');doc.setTextColor(107,114,128);
   const voet=doc.splitTextToSize('Aanvullend op artikel 5: bij wanbetaling is koper de wettelijke rente verschuldigd over het openstaande bedrag, alsmede buitengerechtelijke incassokosten conform het Besluit vergoeding voor buitengerechtelijke incassokosten (WIK), met een minimum van € 40,-.',180);
   voet.forEach(l=>{doc.text(l,15,y);y+=4;});y+=4;
   doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(30,47,58);
 
-  if(y>240){doc.addPage();y=20;}
+  // Ondertekenblok in z'n geheel op één pagina houden (naam + datum + regel ≈ 30mm)
+  pageBreak(34);
 
   // Ondertekening — KOPER IS NU INGEVULD
   doc.setFont('helvetica','bold');doc.setFontSize(11);
@@ -294,7 +303,7 @@ function maakOndertekendeContractPDF(c, naam, ondertekendOp){
   doc.text(`Datum: ${dat?new Date(dat).toLocaleDateString('nl-NL'):''}`,15,y);
   doc.text(`Ondertekend: ${new Date(ondertekendOp).toLocaleDateString('nl-NL')}`,110,y);y+=4;
   doc.setFont('helvetica','italic');doc.setTextColor(22,128,61);doc.setFontSize(8);
-  doc.text('✓ Online ondertekend',110,y);
+  doc.text('Online ondertekend',110,y);
 
   // Footer
   doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','normal');

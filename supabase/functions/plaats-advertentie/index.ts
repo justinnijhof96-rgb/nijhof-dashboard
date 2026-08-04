@@ -151,6 +151,12 @@ Deno.serve(async (req: Request) => {
     const offline = isVerwijderen || isVerkocht;
     const shopifyStatus = offline ? "DRAFT" : "ACTIVE";
 
+    // Bij live gaan (plaatsen/reserveren/terug_online) moet er een geldige vraagprijs zijn,
+    // anders staat het product ACTIVE voor € 0 op de webshop/Marktplaats.
+    if (!offline && !(Number(adv.vraagprijs) > 0)) {
+      return json({ error: "Geen geldige vraagprijs — vul eerst een vraagprijs in voordat je de advertentie plaatst." }, 400);
+    }
+
     const tags = ["marktplaats"];
     if (adv.merk) tags.push(String(adv.merk));
     if (adv.kleur) tags.push(String(adv.kleur));
@@ -171,6 +177,15 @@ Deno.serve(async (req: Request) => {
     if (artikelnr) variant.sku = artikelnr;
     if (adv.shopify_variant_id) variant.id = adv.shopify_variant_id;
 
+    // Collectietype + waarschuwing als het niet gemapt kon worden (dan valt het product
+    // buiten de gekoppelde slimme collecties en verschijnt de advertentie niet op Marktplaats).
+    const _cat = String(item?.categorie ?? "").trim().toLowerCase();
+    const _rub = String(adv.rubriek ?? "").trim().toLowerCase();
+    const collectieGemapt = !!(COLLECTIE_TYPE[_cat] || COLLECTIE_TYPE[_rub]);
+    const collWaarschuwing = (!offline && !collectieGemapt)
+      ? `Categorie/rubriek "${item?.categorie || adv.rubriek || "?"}" is niet gekoppeld aan een Marktplaats-collectie — de advertentie verschijnt mogelijk niet op Marktplaats.`
+      : null;
+
     const input: any = {
       title: titel,
       descriptionHtml: descHtml,
@@ -185,7 +200,10 @@ Deno.serve(async (req: Request) => {
     };
 
     const isCreate = !adv.shopify_product_id;
-    const handle = slugify(`${artikelnr || ""}-${baseTitel}`);
+    // Advertentie-id in de handle: twee advertenties met dezelfde titel en zonder
+    // artikelnummer kregen anders dezelfde handle → productSet-upsert overschreef
+    // het Shopify-product van de eerste.
+    const handle = slugify(`${artikelnr || ""}-${baseTitel}-${String(advertentie_id).slice(-6)}`);
     if (isCreate) input.handle = handle;
     // Foto's: bij aanmaken én bij updaten meesturen. productSet behandelt media als een
     // list-field (volledige sync): meegestuurde foto's worden gezet, weggelaten media
@@ -259,13 +277,15 @@ Deno.serve(async (req: Request) => {
       : isReserveren ? "gereserveerd"
       : "live";
 
+    const gecombineerdeWaarschuwing = [pubWaarschuwing, collWaarschuwing].filter(Boolean).join(" | ") || null;
+
     await supabase.from("advertenties").update({
       shopify_product_id: prod.id,
       shopify_variant_id: variantNode?.id || adv.shopify_variant_id || null,
       shopify_inventory_item_id: variantNode?.inventoryItem?.id || adv.shopify_inventory_item_id || null,
       shopify_handle: prod.handle,
       status: nieuweStatus,
-      laatste_fout: pubWaarschuwing,
+      laatste_fout: gecombineerdeWaarschuwing,
       gepubliceerd_op: adv.gepubliceerd_op || new Date().toISOString(),
     }).eq("id", advertentie_id);
 
@@ -282,7 +302,7 @@ Deno.serve(async (req: Request) => {
       } catch (_e) { /* voorraad-sync niet fataal voor de advertentie-actie */ }
     }
 
-    return json({ ok: true, status: nieuweStatus, item_status: itemStatus, shopify_product_id: prod.id, handle: prod.handle, publicatie_waarschuwing: pubWaarschuwing });
+    return json({ ok: true, status: nieuweStatus, item_status: itemStatus, shopify_product_id: prod.id, handle: prod.handle, publicatie_waarschuwing: pubWaarschuwing, collectie_waarschuwing: collWaarschuwing });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }

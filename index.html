@@ -347,7 +347,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
         <div class="foto-progress" id="f-foto-progress"><div class="foto-progress-bar" id="f-foto-progressbar"></div></div>
       </div>
     </div>
-    <button class="btn btn-or" style="margin-top:12px" onclick="voegToe()">✚ Toevoegen aan voorraad</button>
+    <button class="btn btn-or" id="f-add-btn" style="margin-top:12px" onclick="voegToe()">✚ Toevoegen aan voorraad</button>
     <div id="inkoop-target" style="margin-top:14px"></div>
   </div>
 </div>
@@ -366,7 +366,6 @@ main{max-width:1280px;margin:0 auto;padding:16px}
       <select id="flt-s" onchange="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
         <option value="">Alle statussen</option>
         <option value="beschikbaar">Beschikbaar</option><option value="gereserveerd">Gereserveerd</option>
-        <option value="verkocht">Verkocht</option><option value="afgestort">Afgestort</option>
       </select>
       <select id="flt-o" onchange="renderV()" style="border:1.5px solid var(--bd);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
         <option value="nieuwste">Nieuwste eerst</option><option value="oudste">Oudste eerst</option>
@@ -676,7 +675,7 @@ async function _laadOrgId(){
   }
 }
 
-async function _rest(method, path, options={}){
+async function _rest(method, path, options={}, _retry=false){
   const token=_getToken();
   if(!token){_sessieVerlopen();throw new Error('Niet ingelogd');}
   const headers={
@@ -690,6 +689,14 @@ async function _rest(method, path, options={}){
   if(options.body)init.body=JSON.stringify(options.body);
   const res=await fetch(url,init);
   if(res.status===401){
+    // Eerst een stille sessie-refresh proberen (token kan net verlopen zijn na sluimer)
+    // voordat we de gebruiker geforceerd uitloggen terwijl de refresh-token nog geldig is.
+    if(!_retry){
+      try{
+        const{data,error}=await _sb.auth.refreshSession();
+        if(!error && data && data.session)return await _rest(method,path,options,true);
+      }catch(e){/* val door naar uitloggen */}
+    }
     _sessieVerlopen();
     throw new Error('Sessie verlopen — log opnieuw in');
   }
@@ -832,6 +839,7 @@ async function laadAllesVanDB(){
       artikelnummer:r.artikelnummer||null,
       inkoopbon_nr:r.inkoopbon_nr||null,
       partij_rest:(r.partij_rest==null?null:Number(r.partij_rest)),
+      partij_parent_id:r.partij_parent_id||null,
       afgestortOp:r.afgestort_op, aangemaaktOp:r.aangemaakt_op, bewerkt:r.bewerkt||[]
     }));
     const termMap={};
@@ -898,6 +906,7 @@ function _itemRow(i,uid_user,org_id){
     prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum||null,notitie:i.notitie||'',
     status:i.status,del_reden:i.del_reden||null,del_toel:i.del_toel||null,stortkosten:i.stortkosten||0,
     foto_url:i.foto_url||null,
+    partij_parent_id:i.partij_parent_id||null,
     afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
     user_id:uid_user,
     org_id:org_id
@@ -1249,12 +1258,17 @@ function resetForm(){
   wisGekozenFoto();
 }
 
+let _voegToeBezig=false;
 async function voegToe(){
+  if(_voegToeBezig)return; // dubbelklik → geen twee identieke items
   const naam=val('f-naam').trim(),cat=val('f-cat'),stof=val('f-stof').trim();
   const loc=val('f-loc').trim(),ipStr=val('f-ip').trim(),dat=val('f-dat');
   const ip=parseFloat(ipStr);
   if(!naam||!cat||!stof||!loc||!dat||ipStr===''||isNaN(ip)||ip<0){toast('Vul alle verplichte velden (*) in','#dc2626');return;}
   if(!_getOrgId()){toast('⚠️ Org niet geladen — herlaad de pagina','#dc2626');return;}
+  _voegToeBezig=true;
+  const addBtn=el('f-add-btn');if(addBtn){addBtn.disabled=true;addBtn.textContent='⏳ Bezig…';}
+  const klaar=()=>{_voegToeBezig=false;if(addBtn){addBtn.disabled=false;addBtn.textContent='✚ Toevoegen aan voorraad';}};
   const nieuwId=uid();
   let fotoUrl=null;
   if(_gekozenFoto){
@@ -1268,23 +1282,31 @@ async function voegToe(){
     }catch(e){
       prog.classList.remove('on');
       toast('⚠️ Foto upload mislukt: '+e.message,'#dc2626');
+      klaar();
       return;
     }
   }
-  DB.items.unshift({id:nieuwId,naam,categorie:cat,stof,locatie:loc,prijs:ip,verwacht_vp:fval('f-vvp'),datum:dat,notitie:val('f-not').trim(),status:'beschikbaar',del_reden:null,del_toel:null,stortkosten:0,foto_url:fotoUrl,artikelnummer:null,aangemaaktOp:new Date().toISOString(),bewerkt:[]});
-  slaOp();renderV();renderDash();renderDebiteuren();renderInkoopTarget();resetForm();
+  DB.items.unshift({id:nieuwId,naam,categorie:cat,stof,locatie:loc,prijs:ip,verwacht_vp:fval('f-vvp'),datum:dat,notitie:val('f-not').trim(),status:'beschikbaar',del_reden:null,del_toel:null,stortkosten:0,foto_url:fotoUrl,artikelnummer:null,partij_parent_id:null,aangemaaktOp:new Date().toISOString(),bewerkt:[]});
+  renderV();renderDash();renderDebiteuren();renderInkoopTarget();resetForm();
   toast('✚ Item toegevoegd!');
-  // Na sync (1200ms) opnieuw laden om artikelnummer + inkoopbon_nr uit DB op te halen
-  setTimeout(async ()=>{
+  // Wacht op de daadwerkelijke sync (i.p.v. een vaste 1200ms-timer die bij trage
+  // verbinding te vroeg vuurt) en herlaad dan om artikelnummer + inkoopbon_nr op te halen.
+  try{
+    if(_saveTimer){clearTimeout(_saveTimer);_saveTimer=null;}
+    await _syncNaarSupabase();
     await laadAllesVanDB();
     renderV();
-    // Inkoopbon email versturen — items zijn nu opnieuw geladen met artikelnr + inkoopbon_nr
     const versItem=DB.items.find(x=>x.id===nieuwId);
     if(versItem && versItem.inkoopbon_nr){
       toast('📧 Inkoopbon mailen naar invoice@...','#2563eb');
       _verstuurInkoopbonEmail(versItem).then(()=>toast('✅ Inkoopbon verstuurd','#15803d')).catch(()=>{});
     }
-  }, 1200);
+  }catch(e){
+    console.error('Toevoegen/sync mislukt:',e);
+    toast('⚠️ Opslaan mislukt — controleer je verbinding','#dc2626');
+  }finally{
+    klaar();
+  }
 }
 
 function renderV(){
@@ -1875,6 +1897,21 @@ async function bevestigDel(){
   const i=DB.items.find(x=>x.id===_delId);if(!i)return;
   if(_delActie==='verwijderen'){
     if(i.foto_url)await verwijderFotoUitStorage(i.foto_url).catch(()=>{});
+    // Gekoppelde advertentie eerst offline halen + wissen, anders blijft er een
+    // live Shopify/Marktplaats-product staan dat naar een niet-bestaand item wijst.
+    try{
+      const advs=await dbSelect('advertenties','item_id=eq.'+encodeURIComponent(_delId));
+      for(const a of (advs||[])){
+        if(a.shopify_product_id){
+          await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+            method:'POST',
+            headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getToken(),'Content-Type':'application/json'},
+            body:JSON.stringify({advertentie_id:a.id,actie:'verwijderen'})
+          }).catch(e=>console.warn('Advertentie offline halen:',e));
+        }
+        await dbDelete('advertenties','id=eq.'+encodeURIComponent(a.id)).catch(e=>console.warn('Advertentie wissen:',e));
+      }
+    }catch(e){console.warn('Advertentie-opruiming bij item-delete:',e);}
     try{await dbDelete('items','id=eq.'+encodeURIComponent(_delId));}catch(e){toast('⚠️ Verwijderen mislukt','#dc2626');return;}
     DB.items=DB.items.filter(x=>x.id!==_delId);
     renderV();renderDash();sluitModal('m-del');toast('🗑️ Item verwijderd','#6b7280');
@@ -2112,7 +2149,7 @@ function renderVkForm(){
     <div id="vk-term-sect" style="display:none;margin-top:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
         <label style="font-size:12px;font-weight:600;color:var(--gr)">Aantal termijnen:</label>
-        <input type="number" id="vk-nterm" value="3" min="1" max="12" style="width:60px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
+        <input type="number" id="vk-nterm" value="3" min="1" max="12" onchange="genTermijnen()" style="width:60px;border:1.5px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--wd);color:var(--dk);outline:none">
         <button class="btn btn-gy btn-xs" onclick="genTermijnen()">↻ Genereer</button>
       </div>
       <div id="vk-term-rows"></div>
@@ -2215,9 +2252,12 @@ function toggleTermijnen(){
   if(type==='termijn')genTermijnen();
   updateVkPrev();
 }
-function _updateRest(){const r=el('vk-rbed');if(!r)return;const vp=fval('vk-vp'),ab=fval('vk-abed');r.value=vp>ab?( vp-ab).toFixed(2):'';}
+// Termijnen moeten optellen tot het factuurtotaal (verkoopprijs + services),
+// niet alleen tot de verkoopprijs — anders dekt de som de bezorging/montage niet.
+function _vkFactuurTot(){return fval('vk-vp')+_extraServices().reduce((a,s)=>a+s.bedrag,0);}
+function _updateRest(){const r=el('vk-rbed');if(!r)return;const tot=_vkFactuurTot(),ab=fval('vk-abed');r.value=tot>ab?(tot-ab).toFixed(2):'';}
 function genTermijnen(){
-  const vp=fval('vk-vp');
+  const vp=_vkFactuurTot();
   const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
   const per=vp/n;
   let html='';
@@ -2235,7 +2275,7 @@ function genTermijnen(){
 
 // Herverdeel rest evenredig over OVERIGE termijnen wanneer 1 termijn wordt gewijzigd
 function _herverdeelTermijnen(gewijzigdIdx){
-  const vp=fval('vk-vp');
+  const vp=_vkFactuurTot();
   const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
   if(vp<=0||n<=1)return;
   const gewijzigd=fval('t-bed-'+gewijzigdIdx);
@@ -2294,7 +2334,7 @@ function updateVkPrev(){
   // Als termijn-sectie open is: opnieuw evenredig splitsen bij wijziging verkoopprijs
   const termSect=el('vk-term-sect');
   if(termSect && termSect.style.display!=='none'){
-    const vp=fval('vk-vp');
+    const vp=_vkFactuurTot();
     const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
     if(vp>0 && n>0){
       const per=vp/n;
@@ -2413,6 +2453,10 @@ async function bevestigVk(){
     return;
   }
 
+  // Verkoopdatum vast vóór de termijnen: bij een teruggedateerde verkoop hoort de
+  // ontvangst (betaaldOp) op de verkoopdatum, niet op vandaag — anders boekt de omzet
+  // in de verkeerde week/maand.
+  const verkoopDatumVal=val('vk-dat')||vandaag();
   let termijnen=[];
   if(type==='aanbetaling'){
     const abed=fval('vk-abed');
@@ -2429,12 +2473,12 @@ async function bevestigVk(){
     ];
   } else if(type==='termijn'){
     const n=Math.max(1,parseInt(val('vk-nterm'))||3);
-    for(let t=0;t<n;t++) termijnen.push({id:uid(),nr:t+1,bedrag:fval('t-bed-'+t),vervaldatum:val('t-dat-'+t)||vandaag(),betaalmethode:val('t-bet-'+t)||'pin',betaald:chk('t-ok-'+t),betaaldOp:chk('t-ok-'+t)?vandaag():null,label:`Termijn ${t+1}`});
+    for(let t=0;t<n;t++) termijnen.push({id:uid(),nr:t+1,bedrag:fval('t-bed-'+t),vervaldatum:val('t-dat-'+t)||vandaag(),betaalmethode:val('t-bet-'+t)||'pin',betaald:chk('t-ok-'+t),betaaldOp:chk('t-ok-'+t)?verkoopDatumVal:null,label:`Termijn ${t+1}`});
     const som=termijnen.reduce((a,t)=>a+t.bedrag,0);
     if(Math.abs(som-factuurTotaal)>0.02)toast(`⚠️ Som termijnen (${eur(som)}) wijkt af van factuurtotaal (${eur(factuurTotaal)})`,'#c2410c');
   } else {
     const bet=(document.querySelector('input[name="vk-bet"]:checked')||{}).value||'pin';
-    termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:vandaag(),label:'Volledig betaald'}];
+    termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:verkoopDatumVal,label:'Volledig betaald'}];
   }
   const verkoopId=uid();
   // Niet-aangepast voorstel → live hertellen zodat een verkoopapp-nummer niet gedupliceerd wordt
@@ -3119,11 +3163,14 @@ function _volgendContractnr(){
   const d=new Date();
   const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
   // Tellen via _contractenCache (geladen bij dashboard load); fallback: nu maar 1
-  let aantal=1;
+  // Hoogste bestaande volgnummer + 1 (niet count+1): na het verwijderen van een
+  // contract zou count+1 een al bestaand nummer opleveren en de PDF overschrijven.
+  let hoogste=0;
   if(Array.isArray(_contractenCache)){
-    aantal=_contractenCache.filter(c=>c.contractnummer&&c.contractnummer.startsWith(`NB-CT-${datStr}-`)).length+1;
+    const re=new RegExp(`^NB-CT-${datStr}-(\\d+)$`);
+    _contractenCache.forEach(c=>{const m=c.contractnummer&&c.contractnummer.match(re);if(m)hoogste=Math.max(hoogste,parseInt(m[1],10));});
   }
-  return `NB-CT-${datStr}-${aantal}`;
+  return `NB-CT-${datStr}-${hoogste+1}`;
 }
 
 // ── CONTRACT PDF GENEREREN ────────────────────────────────────────
@@ -3438,7 +3485,7 @@ function toggleTermijn(vkId,termId){
       <div class="fg" style="margin-bottom:14px"><label>Notitie (optioneel)</label><input id="bd-not" placeholder='bijv. "contant ontvangen bij levering"'></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-or" onclick="bevestigBetaaldat()">✓ Markeer als betaald</button>
-        <button class="btn btn-gy" onclick="sluitModal('m-betaaldat')">Annuleer</button>
+        <button class="btn btn-gy" onclick="sluitModal('m-betaaldat');renderDebiteuren()">Annuleer</button>
       </div>`;
     openModal('m-betaaldat');
   }
@@ -3613,6 +3660,33 @@ function renderLasten(){
   el('lasten-lijst').innerHTML=sectie('🔒 Vaste kosten',vast,'var(--or)')+sectie('📊 Variabele kosten',variabel,'var(--bl)')+(inactief.length?`<div style="font-size:12px;color:var(--gr);margin-top:8px">+ ${inactief.length} inactieve last(en) verborgen</div>`:'');
 }
 
+// Quote-bewuste CSV-regel: komma's binnen "..." blijven onderdeel van het veld,
+// "" binnen quotes is een letterlijke quote.
+function _parseCsvRegel(regel){
+  const uit=[];let veld='',inQuote=false;
+  for(let i=0;i<regel.length;i++){
+    const c=regel[i];
+    if(inQuote){
+      if(c==='"'){if(regel[i+1]==='"'){veld+='"';i++;}else inQuote=false;}
+      else veld+=c;
+    }else{
+      if(c==='"')inQuote=true;
+      else if(c===',')  {uit.push(veld);veld='';}
+      else veld+=c;
+    }
+  }
+  uit.push(veld);
+  return uit.map(v=>v.replace(/^"|"$/g,''));
+}
+// NL-getalnotatie: "1.234,56" → 1234.56, "1234.56" → 1234.56, "1.234" → 1234.
+// Als er een komma is: punten zijn duizendtallen, komma is decimaal.
+function _parseNlBedrag(s){
+  s=String(s==null?'':s).trim().replace(/[€\s]/g,'');
+  if(!s)return NaN;
+  if(s.includes(',')){s=s.replace(/\./g,'').replace(',','.');}
+  return parseFloat(s);
+}
+
 let _importRijen=[];
 function importLastenExcel(evt){
   const file=evt.target.files[0];evt.target.value='';if(!file)return;
@@ -3623,8 +3697,8 @@ function importLastenExcel(evt){
       if(isCSV){
         const tekst=e.target.result;const regels=tekst.split(/\r?\n/).filter(r=>r.trim());
         if(regels.length<2){toast('Bestand is leeg','#dc2626');return;}
-        const headers=regels[0].split(',').map(h=>h.trim().toLowerCase().replace(/[\s/]/g,'_').replace('%','pct'));
-        rijen=regels.slice(1).map(regel=>{const cellen=regel.split(',').map(c=>c.trim().replace(/^"|"$/g,''));const obj={};headers.forEach((h,i)=>obj[h]=cellen[i]||'');return obj;}).filter(r=>Object.values(r).some(v=>v));
+        const headers=_parseCsvRegel(regels[0]).map(h=>h.trim().toLowerCase().replace(/[\s/]/g,'_').replace('%','pct'));
+        rijen=regels.slice(1).map(regel=>{const cellen=_parseCsvRegel(regel);const obj={};headers.forEach((h,i)=>obj[h]=(cellen[i]||'').trim());return obj;}).filter(r=>Object.values(r).some(v=>v));
       } else {
         if(typeof XLSX==='undefined'){toast('SheetJS niet geladen — gebruik .csv','#dc2626');return;}
         const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
@@ -3636,7 +3710,7 @@ function importLastenExcel(evt){
       const geldig=[],ongeldig=[];
       rijen.forEach((r,idx)=>{
         const naam=get(r,['naam','name','omschrijving','description']);
-        const bedrag=parseFloat(get(r,['bedrag','amount','prijs','price']).replace(',','.'));
+        const bedrag=_parseNlBedrag(get(r,['bedrag','amount','prijs','price']));
         if(!naam||isNaN(bedrag)||bedrag<=0){ongeldig.push(idx+2);return;}
         const btwRaw=get(r,['btwpct','btw','vat','btw_pct']);
         const btwPct=[0,9,21].includes(parseInt(btwRaw))?parseInt(btwRaw):0;
@@ -3751,7 +3825,9 @@ function getGemMarge(){
 function _inkopenInWeek(jr,wk){
   const ma=maandagVanWeek(jr,wk);
   const zo=new Date(ma);zo.setUTCDate(ma.getUTCDate()+6);zo.setUTCHours(23,59,59,999);
-  return DB.items.filter(i=>{if(i.status==='gesplitst')return false;const d=new Date(i.datum);return!isNaN(d)&&d>=ma&&d<=zo;}).length;
+  // Telt inkoop-transacties: een gepeeld stuk (partij_parent_id) hoort bij de
+  // partij-inkoop en telt niet apart; de partij zelf telt één keer (ook 'gesplitst').
+  return DB.items.filter(i=>{if(i.partij_parent_id)return false;const d=new Date(i.datum);return!isNaN(d)&&d>=ma&&d<=zo;}).length;
 }
 function renderInkoopTarget(){
   const TARGET=_instellingen.inkoopTarget||3;
@@ -3954,8 +4030,12 @@ function _calcPeriode(van,tot){
   // Voorbelasting op dezelfde periode-schaal als de lasten zelf (week/maand/jaar)
   const btwKosten=_periodeType==='week'?btwKostenM/4.33:_periodeType==='jaar'?btwKostenM*12:btwKostenM;
   const btwSaldo=btw-btwKosten;
+  // inkopen (waarde-som): gesplitste partij-parent eruit (prijs=0), gepeelde stukken
+  //   erin — samen houden ze de oorspronkelijke inkoopwaarde compleet.
   const inkopen=DB.items.filter(i=>{if(i.status==='gesplitst')return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
-  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen};
+  // inkopenTel (aantal transacties): gepeelde stukken eruit, partij telt één keer.
+  const inkopenTel=DB.items.filter(i=>{if(i.partij_parent_id)return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel};
 }
 
 function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
@@ -3990,9 +4070,11 @@ function _renderDashMain(range){
   const cur=_calcPeriode(range.van,range.tot);
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
-  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen}=cur;
-  // Waarde in loods: verwachte verkoopprijs (fallback op inkoopprijs als vvp niet ingevuld)
-  const inkW=beschikbaar.reduce((a,i)=>a+(i.verwacht_vp>0?i.verwacht_vp:i.prijs),0);
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel}=cur;
+  // Waarde in loods: verwachte verkoopprijs (fallback op inkoopprijs als vvp niet ingevuld).
+  // Voor een lopende partij (partij_rest>0) is verwacht_vp nog de volle waarde terwijl
+  // stukken al gepeeld zijn → gebruik de restant-inkoopprijs, anders dubbeltelling.
+  const inkW=beschikbaar.reduce((a,i)=>a+(Number(i.partij_rest)>0?i.prijs:(i.verwacht_vp>0?i.verwacht_vp:i.prijs)),0);
   const zonderVvp=beschikbaar.filter(i=>!(i.verwacht_vp>0)).length;
   const inkBed=inkopen.reduce((a,i)=>a+i.prijs,0);
 
@@ -4164,9 +4246,9 @@ function _renderDashMain(range){
   const inkoopBlok=`<div class="db-card">
     <div class="db-card-title">Inkoop deze periode</div>
     <div class="mgrid" style="margin-bottom:0">
-      <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv num">${inkopen.length}</div></div>
+      <div class="mc"><div class="ml">Aantal inkopen</div><div class="mv num">${inkopenTel.length}</div></div>
       <div class="mc"><div class="ml">Totaal inkoopbedrag</div><div class="mv num">${eur(inkBed)}</div></div>
-      <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv num">${inkopen.length?eur(inkBed/inkopen.length):'—'}</div></div>
+      <div class="mc"><div class="ml">Gem. inkoopprijs</div><div class="mv num">${inkopenTel.length?eur(inkBed/inkopenTel.length):'—'}</div></div>
       <div class="mc blue"><div class="ml">Waarde in loods</div><div class="mv num">${eur(inkW)}</div><div class="mt" style="color:var(--gr)">${beschikbaar.length} items${zonderVvp>0?` · ⚠️ ${zonderVvp} zonder VVP`:''}</div></div>
     </div>
   </div>`;
@@ -4276,7 +4358,15 @@ function startConf(){const cv=el('cv');cv.width=window.innerWidth;cv.height=wind
 function stopConf(){if(_cRAF){cancelAnimationFrame(_cRAF);_cRAF=null;}const cv=el('cv');if(cv)cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
 
 function dlBlob(blob,naam){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=naam;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);}
-function exportJSON(){dlBlob(new Blob([JSON.stringify({...DB,geexporteerd:new Date().toISOString()},null,2)],{type:'application/json'}),`nijhof-backup-${vandaag()}.json`);toast('⬇️ Backup gedownload');}
+async function exportJSON(){
+  // Volledige backup: naast DB (items/verkopen/lasten) ook facturen, contracten en
+  // klanten — die wist reset óók, dus ze horen in een "veilige" backup thuis.
+  let facturen=_facturenCache||[], contracten=_contractenCache||[], klanten=[];
+  try{klanten=await dbSelect('klanten')||[];}catch(e){console.warn('Klanten voor backup:',e);}
+  const payload={...DB,facturen,contracten,klanten,geexporteerd:new Date().toISOString()};
+  dlBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`nijhof-backup-${vandaag()}.json`);
+  toast('⬇️ Backup gedownload');
+}
 
 function diagnoseExport(){
   // Volledige diagnose: items, verkopen, termijnen, facturen, lasten + doorgerekende waarden
@@ -4423,7 +4513,9 @@ function importJSON(evt){
 function aiExport(periode,formaat){
   const nu=new Date(),jr=nu.getFullYear(),mn=nu.getMonth(),isYTD=periode==='ytd';
   const df=v=>{const d=new Date(v.datum||v.aangemaaktOp||'');return isNaN(d)?false:isYTD?d.getFullYear()===jr:d.getFullYear()===jr&&d.getMonth()===mn;};
-  const vkSel=DB.verkopen.filter(df),inkSel=DB.items.filter(i=>df(i)&&i.status!=='gesplitst');
+  const vkSel=DB.verkopen.filter(df);
+  const inkSel=DB.items.filter(i=>df(i)&&i.status!=='gesplitst');   // waarde-som (gepeelde stukken erin)
+  const inkSelTel=DB.items.filter(i=>df(i)&&!i.partij_parent_id);   // aantal transacties (stukken eruit)
   const besch=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
   const ontvTot=isYTD?jaarOntvangenOmzet(jr):ontvangenOmzet(jr,mn);
   const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
@@ -4431,14 +4523,14 @@ function aiExport(periode,formaat){
   const lastTot=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
   const pfx=isYTD?`nijhof-ai-${jr}-ytd`:`nijhof-ai-${jr}-${pad(mn+1)}-mtd`;
   if(formaat==='json'){
-    dlBlob(new Blob([JSON.stringify({meta:{bedrijf:'Nijhof Brothers Furniture',periode:isYTD?`${jr} YTD`:`${MN[mn]} ${jr}`,gegenereerd:new Date().toISOString()},omzet:{geboekt:vkSel.reduce((a,v)=>a+v.verkoopprijs,0),ontvangen:ontvTot,openstaand:openBed,achterstallig:achtBed},marge:{bruto:vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),netto_na_btw:vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0),btw:vkSel.reduce((a,v)=>a+(v.btw||0),0)},inkopen:{aantal:inkSel.length,totaal:inkSel.reduce((a,i)=>a+i.prijs,0)},voorraad:{aantal:besch.length,inkoopwaarde:besch.reduce((a,i)=>a+i.prijs,0),verwachte_vp:besch.reduce((a,i)=>a+(i.verwacht_vp||0),0)},lasten:{maandelijks:lastTot},verkopen_detail:vkSel.map(v=>{const i=DB.items.find(x=>x.id===v.itemId);return{naam:i?.naam,artikelnummer:i?.artikelnummer,categorie:i?.categorie,inkoop:i?.prijs,verkoop:v.verkoopprijs,marge:v.brutoMarge||0,datum:v.datum,type:v.type};})},null,2)],{type:'application/json'}),pfx+'.json');
+    dlBlob(new Blob([JSON.stringify({meta:{bedrijf:'Nijhof Brothers Furniture',periode:isYTD?`${jr} YTD`:`${MN[mn]} ${jr}`,gegenereerd:new Date().toISOString()},omzet:{geboekt:vkSel.reduce((a,v)=>a+v.verkoopprijs,0),ontvangen:ontvTot,openstaand:openBed,achterstallig:achtBed},marge:{bruto:vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),netto_na_btw:vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0),btw:vkSel.reduce((a,v)=>a+(v.btw||0),0)},inkopen:{aantal:inkSelTel.length,totaal:inkSel.reduce((a,i)=>a+i.prijs,0)},voorraad:{aantal:besch.length,inkoopwaarde:besch.reduce((a,i)=>a+i.prijs,0),verwachte_vp:besch.reduce((a,i)=>a+(i.verwacht_vp||0),0)},lasten:{maandelijks:lastTot},verkopen_detail:vkSel.map(v=>{const i=DB.items.find(x=>x.id===v.itemId);return{naam:i?.naam,artikelnummer:i?.artikelnummer,categorie:i?.categorie,inkoop:i?.prijs,verkoop:v.verkoopprijs,marge:v.brutoMarge||0,datum:v.datum,type:v.type};})},null,2)],{type:'application/json'}),pfx+'.json');
   } else if(formaat==='csv'){
     let csv='Artikelnummer,Naam,Categorie,Inkoopprijs,Verkoopprijs,Bruto marge,Datum,Type\n';
     vkSel.forEach(v=>{const i=DB.items.find(x=>x.id===v.itemId);const q=s=>`"${String(s||'').replace(/"/g,'""')}"`;csv+=`${q(i?.artikelnummer)},${q(i?.naam)},${q(i?.categorie)},${i?.prijs||0},${v.verkoopprijs||0},${v.brutoMarge||0},${q(v.datum)},${q(v.type||'volledig')}\n`;});
     dlBlob(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}),pfx+'.csv');
   } else {
     const brt=vkSel.reduce((a,v)=>a+(v.brutoMarge||0),0),ntt=vkSel.reduce((a,v)=>a+(v.nettoNaBtw||0),0);
-    dlBlob(new Blob([[`NIJHOF BROTHERS FURNITURE — AI ANALYSE EXPORT`,'='.repeat(50),`Periode: ${isYTD?jr+' jaar tot nu':MN[mn]+' '+jr}`,`Gegenereerd: ${fmtDT(nu)}`,'','--- OMZET ---',`Ontvangen: ${eur(ontvTot)}`,`Openstaand: ${eur(openBed)}`,`Achterstallig: ${eur(achtBed)}`,'','--- MARGE ---',`Bruto: ${eur(brt)}`,`Netto na BTW: ${eur(ntt)}`,`Marge %: ${ontvTot>0?Math.round((ntt/ontvTot)*100):0}%`,'','--- INKOPEN ---',`Aantal: ${inkSel.length}`,`Totaal: ${eur(inkSel.reduce((a,i)=>a+i.prijs,0))}`,'','--- VOORRAAD ---',`Items: ${besch.length}`,`Inkoopwaarde: ${eur(besch.reduce((a,i)=>a+i.prijs,0))}`,'','--- VASTE LASTEN ---',`Maandelijks: ${eur(lastTot)}`].join('\n')],{type:'text/plain;charset=utf-8'}),`nijhof-ai-samenvatting-${isYTD?jr+'-ytd':`${jr}-${pad(mn+1)}-mtd`}.txt`);
+    dlBlob(new Blob([[`NIJHOF BROTHERS FURNITURE — AI ANALYSE EXPORT`,'='.repeat(50),`Periode: ${isYTD?jr+' jaar tot nu':MN[mn]+' '+jr}`,`Gegenereerd: ${fmtDT(nu)}`,'','--- OMZET ---',`Ontvangen: ${eur(ontvTot)}`,`Openstaand: ${eur(openBed)}`,`Achterstallig: ${eur(achtBed)}`,'','--- MARGE ---',`Bruto: ${eur(brt)}`,`Netto na BTW: ${eur(ntt)}`,`Marge %: ${ontvTot>0?Math.round((ntt/ontvTot)*100):0}%`,'','--- INKOPEN ---',`Aantal: ${inkSelTel.length}`,`Totaal: ${eur(inkSel.reduce((a,i)=>a+i.prijs,0))}`,'','--- VOORRAAD ---',`Items: ${besch.length}`,`Inkoopwaarde: ${eur(besch.reduce((a,i)=>a+i.prijs,0))}`,'','--- VASTE LASTEN ---',`Maandelijks: ${eur(lastTot)}`].join('\n')],{type:'text/plain;charset=utf-8'}),`nijhof-ai-samenvatting-${isYTD?jr+'-ytd':`${jr}-${pad(mn+1)}-mtd`}.txt`);
   }
   toast('📤 Export gedownload');
 }
@@ -4448,10 +4540,12 @@ async function resetAll(){
   if(bevestiging!=='WIS ALLES'){toast('Reset geannuleerd','#6b7280');return;}
   toast('🗑️ Bezig met opruimen...','#c2410c');
   try{
-    // 1. Storage buckets legen (eerst PDFs voor we DB records verliezen)
+    // 1. Storage buckets legen (eerst PDFs + foto's voor we DB records verliezen)
     await _wisStorageBucket('facturen-pdf');
     await _wisStorageBucket('contracten-pdf');
+    await _wisStorageBucket(FOTO_BUCKET); // item-fotos: anders blijven weesfoto's staan
     // 2. DB tabellen in juiste volgorde (kinderen eerst, dan ouders)
+    await dbDelete('advertenties','id=neq.0'); // verwijst naar items → vóór items wissen
     await dbDelete('contracten','id=neq.0');
     await dbDelete('facturen','id=neq.0');
     await dbDelete('termijnen','id=neq.0');

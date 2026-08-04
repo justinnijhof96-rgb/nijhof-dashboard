@@ -39,6 +39,9 @@ const CM_KEYS = new Set([
   "breedte", "diepte", "diepte_lounge", "zitdiepte", "zitdiepte_lounge",
   "zithoogte", "hoogte", "lengte", "diameter",
 ]);
+// Labels van maat-specificaties (kleingeschreven) — alleen déze lege "Label:"-regels
+// worden opgeschoond, zodat bewuste sjabloonkopjes ("Afmetingen:", "Kenmerken:") blijven.
+const MAAT_LABEL_SET = new Set(Object.values(MAAT_LABELS).map((l) => l.toLowerCase()));
 
 // Zet de bezorgkeuze van de advertentie om in een nette regel voor de tekst.
 // bezorging = { bezorgen: boolean, kosten: number }. 0 kosten = gratis.
@@ -76,9 +79,13 @@ function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<stri
   }
   map["specificaties"] = specLines.join("\n");
 
-  let out = tekst.replace(/\{\{(\w+)\}\}/g, (_m, k) => (k in map ? map[k] : ""));
-  // Verwijder lege specificatie-regels: "Label:" (evt. gevolgd door 'cm') zonder waarde
-  out = out.split("\n").filter((line) => !/^\s*[^:\n]+:\s*(cm)?\s*$/i.test(line)).join("\n");
+  let out = tekst.replace(/\{\{(\w+)\}\}/g, (_m, k) => (Object.hasOwn(map, k) ? map[k] : ""));
+  // Verwijder lege specificatie-regels ("Label:" evt. met 'cm'), maar ALLEEN als het label
+  // een bekende maat is — anders zou een bewust kopje als "Afmetingen:" ook sneuvelen.
+  out = out.split("\n").filter((line) => {
+    const m = line.match(/^\s*([^:\n]+):\s*(cm)?\s*$/i);
+    return !m || !MAAT_LABEL_SET.has(m[1].trim().toLowerCase());
+  }).join("\n");
   out = out.replace(/\n{3,}/g, "\n\n");
   return out;
 }
@@ -194,27 +201,37 @@ Deno.serve(async (req: Request) => {
     const _materiaal = _norm(adv.materiaal || item?.stof);
     const _kleur = _norm(adv.kleur);
     const _hoofd = _categorie || _rubriek; // basiswoord voor combinaties (bv. "hoekbank")
-    const _kandidaten: string[] = [_categorie, _rubriek, _merk, _materiaal, _kleur];
+    // Combinaties EERST: die zijn het specifiekst en mogen niet door de cap sneuvelen
+    // (bij een meerwoordig materiaal vulden de losse woorden anders de 7 plekken).
+    const _kandidaten: string[] = [];
+    if (_hoofd && _materiaal && _materiaal !== _hoofd) _kandidaten.push(`${_hoofd} ${_materiaal}`);
+    if (_hoofd && _kleur) _kandidaten.push(`${_hoofd} ${_kleur}`);
+    _kandidaten.push(_categorie, _rubriek, _merk, _materiaal, _kleur);
     // Samengesteld materiaal "ribstof" → ook los "rib" meepakken.
     if (_materiaal.endsWith("stof") && _materiaal.length > 5) _kandidaten.push(_materiaal.slice(0, -4));
     // Losse woorden uit een meerwoordig materiaal (bv. "gerecycled leer" → "leer").
     for (const w of _materiaal.split(/\s+/)) if (w.length > 2) _kandidaten.push(w);
-    // Combinaties met het hoofdwoord: "hoekbank ribstof", "hoekbank grijs".
-    if (_hoofd && _materiaal && _materiaal !== _hoofd) _kandidaten.push(`${_hoofd} ${_materiaal}`);
-    if (_hoofd && _kleur) _kandidaten.push(`${_hoofd} ${_kleur}`);
     const zoekBasis = _kandidaten
       .map(_norm)
       .filter((s: string, i: number, a: string[]) => s && s.length > 1 && a.indexOf(s) === i)
       .slice(0, 7);
-    const mmResultaten = await Promise.all(zoekBasis.map((w: string) => haalMarktMonitorTermen(w)));
-    const mmTermen: MMTerm[] = [];
-    for (const lijst of mmResultaten) {
-      for (const t of lijst) {
-        if (!mmTermen.some((x) => x.keyword === t.keyword)) mmTermen.push(t);
+    // Alleen kleur/merk (zonder hoofdwoord) leveren vaak niet-meubel-termen op; die queries
+    // markeren we als "zwak" zodat hun resultaten lager wegen dan meubel-specifieke queries.
+    const _zwak = new Set([_merk, _kleur].filter((s) => s && !s.includes(" ")));
+    const mmResultaten = await Promise.all(zoekBasis.map((w: string) => haalMarktMonitorTermen(w).then((r) => ({ w, r }))));
+    const mmTermen: (MMTerm & { _score: number })[] = [];
+    for (const { w, r } of mmResultaten) {
+      const zwak = _zwak.has(w);
+      for (const t of r) {
+        if (mmTermen.some((x) => x.keyword === t.keyword)) continue;
+        // Score: volume, gehalveerd voor zwakke bronqueries, verdubbeld als de term het
+        // hoofdwoord bevat (dan is hij bijna zeker relevant voor dit meubel).
+        const bevatHoofd = _hoofd && t.keyword.toLowerCase().includes(_hoofd);
+        mmTermen.push({ ...t, _score: t.volume * (zwak ? 0.5 : 1) * (bevatHoofd ? 2 : 1) });
       }
     }
-    mmTermen.sort((a, b) => b.volume - a.volume);
-    const topTermen = mmTermen.slice(0, 10);
+    mmTermen.sort((a, b) => b._score - a._score);
+    const topTermen: MMTerm[] = mmTermen.slice(0, 10).map(({ _score, ...t }) => t);
     const mmBlok = topTermen.length
       ? `\nActuele populaire zoektermen op Marktplaats voor dit type meubel (zoekvolume afgelopen 12 maanden, vandaag opgehaald):\n` +
         topTermen.map((t) => `- ${t.keyword} (${t.volume.toLocaleString("nl-NL")}${t.trend > 5 ? ", stijgend" : t.trend < -5 ? ", dalend" : ""})`).join("\n") +
