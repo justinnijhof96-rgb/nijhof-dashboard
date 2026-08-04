@@ -352,16 +352,8 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
       <h1>Prijs & services</h1>
       <h2>Stap 2 van 4 — verkoopprijs en eventuele extra's</h2>
 
-      <!-- Gekozen item -->
-      <div class="card" id="s2-item-card"></div>
-
-      <!-- Verkoopprijs -->
-      <div class="card">
-        <div class="fg" style="margin-bottom:0">
-          <label>Verkoopprijs (€)</label>
-          <input type="number" id="s2-vp" inputmode="decimal" min="0" step="0.01" placeholder="0,00" oninput="updateS2()">
-        </div>
-      </div>
+      <!-- Gekozen item(s) + prijs per item -->
+      <div id="s2-item-card"></div>
 
       <!-- BTW methode -->
       <div class="card">
@@ -571,8 +563,9 @@ const STATE = {
   items: [],
   stap: 1,
   // verkoop in opbouw:
-  gekozen: null, // gekozen item
-  prijs: 0,
+  gekozen: null, // eerste gekozen item (alias van regels[0].item, backward-compat)
+  regels: [],    // meerdere items per verkoop: [{item, prijs}]
+  prijs: 0,      // som van de verkoopprijzen (goederen-subtotaal)
   services: [],
   extrasVis: 'samen',
   btwMethode: 'marge',
@@ -678,9 +671,10 @@ function toonStap(n){
 function _updateNextEnabled(){
   const btn=$('btn-next');
   if(STATE.stap===1){
-    btn.disabled = !STATE.gekozen;
+    btn.disabled = STATE.regels.length===0;
   } else if(STATE.stap===2){
-    btn.disabled = !(STATE.prijs>0);
+    // elke gekozen regel moet een prijs > 0 hebben
+    btn.disabled = STATE.regels.length===0 || STATE.regels.some(r=>!(Number(r.prijs)>0));
   } else if(STATE.stap===3){
     // Klant verplicht als emailen aan, of als termijn/aanbetaling
     const wilMail=STATE.wilEmailen;
@@ -711,9 +705,10 @@ function vorigeStap(){
 }
 
 function herstart(){
-  const stateVuil = STATE.gekozen || STATE.prijs>0 || STATE.klant.naam || STATE.termijnen.length>0;
+  const stateVuil = STATE.regels.length>0 || STATE.klant.naam || STATE.termijnen.length>0;
   if(stateVuil && !confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
   STATE.gekozen=null;
+  STATE.regels=[];
   STATE.prijs=0;
   STATE.services=[];
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
@@ -1408,14 +1403,20 @@ function renderItems(){
     lijst.innerHTML=`<div class="empty">${zk?'Geen items voor "'+esc(zk)+'"':'Geen voorraad'}</div>`;
     return;
   }
-  lijst.innerHTML=items.map(i=>{
-    const gekozen=STATE.gekozen?.id===i.id;
+  const aantalSel=STATE.regels.length;
+  const kop=`<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px;padding:0 2px">
+      <span style="font-size:13px;color:var(--gr)">Tik meerdere items aan voor één verkoop</span>
+      ${aantalSel>0?`<span style="background:var(--or);color:#fff;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:700">${aantalSel} gekozen</span>`:''}
+    </div>`;
+  lijst.innerHTML=kop+items.map(i=>{
+    const gekozen=_regelIdx(i.id)>=0;
     const fotoHTML = i.foto_url
       ? `<img src="${esc(i.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;background:#f3f4f6">`
       : '<div style="width:60px;height:60px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:24px">📦</div>';
     return `
-      <div class="card" style="padding:14px;cursor:pointer;border:2px solid ${gekozen?'var(--or)':'transparent'};transition:.15s" onclick="kiesItem('${esc(i.id)}')">
+      <div class="card" style="padding:14px;margin-bottom:10px;cursor:pointer;border:2px solid ${gekozen?'var(--or)':'transparent'};transition:.15s" onclick="toggleItem('${esc(i.id)}')">
         <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:24px;height:24px;border-radius:6px;border:2px solid ${gekozen?'var(--or)':'var(--bd)'};background:${gekozen?'var(--or)':'#fff'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0">${gekozen?'✓':''}</div>
           ${fotoHTML}
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam||'?')}</div>
@@ -1424,46 +1425,62 @@ function renderItems(){
               ${i.categorie?` · ${esc(i.categorie)}`:''}
             </div>
           </div>
-          ${gekozen?'<div style="color:var(--or);font-size:24px">✓</div>':''}
         </div>
       </div>`;
   }).join('');
 }
 
-function kiesItem(id){
+// Index van een item in de verkoopregels (−1 = niet gekozen)
+function _regelIdx(id){return STATE.regels.findIndex(r=>r.item&&r.item.id===id);}
+
+function toggleItem(id){
   const item=STATE.items.find(x=>x.id===id);
   if(!item)return;
-  STATE.gekozen=item;
+  const idx=_regelIdx(id);
+  if(idx>=0){STATE.regels.splice(idx,1);}
+  else{STATE.regels.push({item,prijs:0});toast('✓ '+item.naam);}
+  STATE.gekozen=STATE.regels[0]?STATE.regels[0].item:null; // backward-compat alias
   renderItems();
   _updateNextEnabled();
-  toast('✓ '+item.naam);
 }
 
 // ── STAP 2 ────────────────────────────────────────────────────────
 function renderS2(){
-  // Gekozen item card
-  const i=STATE.gekozen;
-  if(!i)return;
-  const fotoHTML = i.foto_url
-    ? `<img src="${esc(i.foto_url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px">`
-    : '<div style="width:50px;height:50px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>';
-  $('s2-item-card').innerHTML=`
-    <div style="display:flex;align-items:center;gap:12px">
-      ${fotoHTML}
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</div>
-        <div style="font-size:12px;color:var(--gr);margin-top:2px">
-          ${i.artikelnummer?`<span style="background:var(--orl);color:var(--or);padding:2px 7px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace;font-size:11px">${esc(i.artikelnummer)}</span> · `:''}
-          Inkoop: ${eur(i.prijs||0)}
+  const card=$('s2-item-card');
+  if(!card)return;
+  if(!STATE.regels.length){card.innerHTML='<div class="empty" style="padding:20px">Geen items gekozen — ga terug naar stap 1.</div>';return;}
+  // Per gekozen item een eigen prijs-invoer (klant kan meekijken: GEEN inkoop tonen)
+  card.innerHTML=STATE.regels.map((r,idx)=>{
+    const i=r.item;
+    const fotoHTML=i.foto_url
+      ? `<img src="${esc(i.foto_url)}" style="width:46px;height:46px;object-fit:cover;border-radius:8px">`
+      : '<div style="width:46px;height:46px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:20px">📦</div>';
+    return `<div class="card" style="padding:12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        ${fotoHTML}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</div>
+          <div style="font-size:11px;color:var(--gr)">${i.artikelnummer?esc(i.artikelnummer):''}${i.categorie?' · '+esc(i.categorie):''}</div>
         </div>
+        ${STATE.regels.length>1?`<button onclick="verwijderRegel(${idx})" title="Uit verkoop halen" style="background:none;border:none;color:var(--rd);font-size:18px;cursor:pointer;padding:4px">✕</button>`:''}
+      </div>
+      <div class="fg" style="margin-bottom:0">
+        <label>Verkoopprijs (€)</label>
+        <input type="number" id="s2-vp-${idx}" inputmode="decimal" min="0" step="0.01" placeholder="0,00" value="${Number(r.prijs)>0?r.prijs:''}" oninput="updateS2()">
       </div>
     </div>`;
-  // Velden vooraf invullen vanuit STATE
-  if(STATE.prijs>0) $('s2-vp').value=STATE.prijs;
+  }).join('');
   // BTW segments
   kiesBTW(STATE.btwMethode,true);
   kiesVis(STATE.extrasVis,true);
   updateS2();
+}
+
+function verwijderRegel(idx){
+  STATE.regels.splice(idx,1);
+  STATE.gekozen=STATE.regels[0]?STATE.regels[0].item:null;
+  if(!STATE.regels.length){toonStap(1);renderItems();return;}
+  renderS2();
 }
 
 function kiesBTW(methode,silent){
@@ -1522,27 +1539,25 @@ function _huidigeServices(){
 }
 
 function updateS2(){
-  const item=STATE.gekozen;
-  const vp=parseFloat($('s2-vp').value)||0;
-  STATE.prijs=vp;
+  // Prijs per item uitlezen in STATE.regels
+  STATE.regels.forEach((r,idx)=>{ r.prijs=parseFloat($('s2-vp-'+idx)?.value)||0; });
+  const goods=STATE.regels.reduce((a,r)=>a+(Number(r.prijs)||0),0);
+  STATE.prijs=goods; // goederen-subtotaal (backward-compat)
   const services=_huidigeServices();
   STATE.services=services;
   const servTot=services.reduce((a,s)=>a+s.bedrag,0);
-  const factTot=vp+servTot;
-  const bruto=vp-(item?.prijs||0);
-  const netto=bruto+servTot;
-  const btw=STATE.btwMethode==='standaard'?factTot/1.21*0.21:Math.max(0,(factTot-(item?.prijs||0))/1.21*0.21); // marge incl. bijverkopen
-  const nNaBtw=netto-btw;
+  const factTot=goods+servTot;
 
-  // Klant kan meekijken tijdens het invoeren: hier bewust GEEN inkoop of marge tonen.
-  // Marge staat alleen in het dashboard. bruto/netto/btw blijven intern berekend voor
-  // de factuur, maar worden hier niet weergegeven.
+  // Klant kan meekijken: bewust GEEN inkoop of marge tonen — alleen wat de klant betaalt.
+  const itemRijen=STATE.regels.map(r=>
+    `<div class="prev-rij"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:66%;display:inline-block">${esc(r.item.naam)}</span><span>${eur(r.prijs)}</span></div>`
+  ).join('');
   const servRijen=services.map(s=>
     `<div class="prev-rij" style="color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
   ).join('');
   $('s2-preview').innerHTML=`
-    <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px">🧾 Overzicht</div>
-    <div class="prev-rij"><span>Verkoopprijs</span><span>${eur(vp)}</span></div>
+    <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px">🧾 Overzicht${STATE.regels.length>1?' ('+STATE.regels.length+' items)':''}</div>
+    ${itemRijen}
     ${servRijen}
     <div class="prev-rij tot"><span>📋 Klant betaalt</span><span>${eur(factTot)}</span></div>
   `;
@@ -1748,14 +1763,23 @@ function updateS3(){
 
 // ── STAP 4 — PREVIEW + AFRONDEN ───────────────────────────────────
 function renderS4(){
-  const i=STATE.gekozen;
-  if(!i){$('s4-preview').innerHTML='';return;}
+  if(!STATE.regels.length){$('s4-preview').innerHTML='';return;}
   const servTot=(STATE.services||[]).reduce((a,s)=>a+s.bedrag,0);
   const factTot=STATE.prijs+servTot;
-  const bruto=STATE.prijs-(i.prijs||0);
-  const fotoHTML = i.foto_url
-    ? `<img src="${esc(i.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:8px">`
-    : '<div style="width:60px;height:60px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:24px">📦</div>';
+  const itemRijen=STATE.regels.map(r=>{
+    const it=r.item;
+    const foto=it.foto_url
+      ? `<img src="${esc(it.foto_url)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px">`
+      : '<div style="width:40px;height:40px;border-radius:6px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:18px">📦</div>';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+      ${foto}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.naam)}</div>
+        <div style="font-size:11px;color:var(--gr)">${it.artikelnummer?esc(it.artikelnummer):''}</div>
+      </div>
+      <div style="font-weight:600">${eur(r.prijs)}</div>
+    </div>`;
+  }).join('');
 
   let typeOmschr='';
   if(STATE.type==='volledig')typeOmschr=`Volledige betaling (${STATE._bet?.vol||'pin'})`;
@@ -1782,19 +1806,13 @@ function renderS4(){
 
   $('s4-preview').innerHTML=`
     <div class="card">
-      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">📦 Product</div>
-      <div style="display:flex;align-items:center;gap:12px">
-        ${fotoHTML}
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;color:var(--nav)">${esc(i.naam)}</div>
-          <div style="font-size:12px;color:var(--gr);margin-top:2px">${i.artikelnummer?esc(i.artikelnummer):''}</div>
-        </div>
-      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">📦 ${STATE.regels.length>1?STATE.regels.length+' producten':'Product'}</div>
+      ${itemRijen}
     </div>
 
     <div class="card">
       <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💰 Prijs</div>
-      <div class="prev-rij"><span>Verkoopprijs</span><span>${eur(STATE.prijs)}</span></div>
+      ${STATE.regels.length>1?`<div class="prev-rij"><span>Subtotaal producten</span><span>${eur(STATE.prijs)}</span></div>`:''}
       ${servRijen}
       <div class="prev-rij" style="color:var(--gr);font-size:12px"><span>BTW-methode</span><span>${STATE.btwMethode==='marge'?'Margeregeling':'21% standaard'}</span></div>
       <div class="prev-rij" style="color:var(--gr);font-size:12px"><span>Op factuur</span><span>${STATE.extrasVis==='samen'?'Samen op 1 regel':'Uitgesplitst'}</span></div>
@@ -1872,18 +1890,24 @@ function _maakFactuurPDFmobiel(data){
   let rY=tabelY+15;
   doc.setTextColor(30,47,58);doc.setFont('helvetica','normal');doc.setFontSize(10);
 
-  if(_zichtbaar && _services.length>0){
-    const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
-    doc.text(omschr,18,rY);
-    doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
-    rY+=7;
+  // Elk verkocht item op een eigen regel; bij meerdere items altijd uitgesplitst.
+  const _items=(data.items&&data.items.length)?data.items:[{naam:item.naam,artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
+  const toonApart = _zichtbaar || _items.length>1;
+  if(toonApart){
+    _items.forEach(it=>{
+      const omschr=`${it.naam}${it.artikelnummer?` (${it.artikelnummer})`:''}`;
+      const sl=doc.splitTextToSize(omschr,140);
+      sl.forEach((l,idx)=>doc.text(l,18,rY+idx*5));
+      doc.text('€ '+(Number(it.prijs)||0).toFixed(2).replace('.',','),192,rY,{align:'right'});
+      rY+=Math.max(7,sl.length*5+2);
+    });
     _services.forEach(s=>{
       doc.text(s.naam,18,rY);
       doc.text('€ '+s.bedrag.toFixed(2).replace('.',','),192,rY,{align:'right'});
       rY+=7;
     });
   } else {
-    let omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    let omschr=`${_items[0].naam}${_items[0].artikelnummer?` (${_items[0].artikelnummer})`:''}`;
     if(_services.length>0){
       const servNamen=_services.map(s=>s.naam.toLowerCase()).join(', ');
       omschr+=`  (incl. ${servNamen})`;
@@ -1984,9 +2008,18 @@ function _maakContractPDFmobiel(data){
   // Artikel 1
   doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
   doc.setFont('helvetica','normal');
-  const omschr=`${item.naam}${item.stof?' ('+item.stof+')':''}${item.artikelnummer?' — '+item.artikelnummer:''}`;
-  const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
-  lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+  const _ctItems=(data.items&&data.items.length)?data.items:[{naam:item.naam,stof:item.stof,artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
+  if(_ctItems.length>1){
+    doc.text('Verkoper verkoopt aan koper, die accepteert:',15,y);y+=5;
+    _ctItems.forEach(it=>{
+      const o=`• ${it.naam}${it.stof?' ('+it.stof+')':''}${it.artikelnummer?' — '+it.artikelnummer:''} — € ${(Number(it.prijs)||0).toFixed(2).replace('.',',')}`;
+      doc.splitTextToSize(o,175).forEach(l=>{doc.text(l,18,y);y+=5;});
+    });y+=3;
+  } else {
+    const omschr=`${_ctItems[0].naam}${_ctItems[0].stof?' ('+_ctItems[0].stof+')':''}${_ctItems[0].artikelnummer?' — '+_ctItems[0].artikelnummer:''}`;
+    const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
+    lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
+  }
 
   // Artikel 2
   doc.setFont('helvetica','bold');doc.text('Artikel 2 — Koopprijs',15,y);y+=6;
@@ -2304,9 +2337,9 @@ function _genToken(){
 // ── AFRONDEN — HOOFDFLOW ──────────────────────────────────────────
 async function afronden(){
   const btn=$('btn-next');
-  // Vangnet: zonder gekozen item kan er niets afgerond worden (kwam voor bij snelle 2e verkoop)
-  if(!STATE.gekozen||!STATE.gekozen.id){
-    $('s4-status').innerHTML='<div class="alert alert-err">⚠️ Geen meubel gekozen — ga terug naar stap 1 en kies het item opnieuw.</div>';
+  // Vangnet: zonder gekozen items kan er niets afgerond worden
+  if(!STATE.regels.length || STATE.regels.some(r=>!r.item||!r.item.id)){
+    $('s4-status').innerHTML='<div class="alert alert-err">⚠️ Geen items gekozen — ga terug naar stap 1.</div>';
     btn.disabled=false;
     return;
   }
@@ -2322,33 +2355,47 @@ async function afronden(){
   $('s4-status').innerHTML='<div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">⏳ Verkoop wordt verwerkt...</div>';
 
   try {
-    const item=STATE.gekozen;
-    const verkoopId=_genId();
+    // Eerste item = "primair": daaraan hangen services, termijnen, factuur en contract.
+    const item=STATE.regels[0].item; // backward-compat referentie (primair item)
+    const verkoopId=_genId();        // primaire verkoop-id (voor termijnen/factuur/contract)
     const factuurnr=await _volgendeFactuurnr();
     const verkoopDatum=new Date().toISOString().slice(0,10);
     const servTot=STATE.services.reduce((a,s)=>a+s.bedrag,0);
-    const factuurTotaal=STATE.prijs+servTot;
-    const bruto=STATE.prijs-(item.prijs||0);
-    const netto=bruto+servTot;
-    const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(factuurTotaal-(item.prijs||0))/1.21*0.21); // marge incl. bijverkopen
+    const goods=STATE.regels.reduce((a,r)=>a+(Number(r.prijs)||0),0);
+    const totInkoop=STATE.regels.reduce((a,r)=>a+(Number(r.item.prijs)||0),0);
+    const factuurTotaal=goods+servTot;
+    const impregneerTot=STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0);
+    // Factuur-brede BTW (voor factuurrecord + PDF): margeregeling over factuurtotaal − totale inkoop
+    const btw=STATE.btwMethode==='standaard'?factuurTotaal/1.21*0.21:Math.max(0,(factuurTotaal-totInkoop)/1.21*0.21);
 
-    // 1. Verkoop in DB (geen termijnen veld — dat is aparte tabel)
-    const verkoopData={
-      id:verkoopId,user_id:STATE.user.id,org_id:STATE.org_id,
-      item_id:item.id,verkoopprijs:STATE.prijs,
-      verkooplocatie:'verkoop-app',
-      factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
-      impregneer:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
-      services_json:STATE.services||[],
-      factuur_totaal:factuurTotaal,
-      extras_zichtbaar:!!STATE.extrasZichtbaar,
-      btw_methode:STATE.btwMethode||'marge',
-      bruto_marge:bruto,netto_marge:netto,btw:btw,netto_na_btw:netto-btw,
-      datum_registratie:new Date().toISOString()
-    };
-    await _restPost('verkopen',verkoopData);
+    // 1. Eén verkoop-rij PER item; allemaal met hetzelfde factuurnummer. Services + termijnen
+    //    op de primaire (eerste) rij. Zo behoudt het dashboard de marge per item.
+    const verkoopIds=[];
+    const verkoopRijen=STATE.regels.map((r,idx)=>{
+      const vid=idx===0?verkoopId:_genId();
+      verkoopIds.push(vid);
+      const inkoop=Number(r.item.prijs)||0;
+      const extra=idx===0?servTot:0;                 // bijverkopen op de primaire regel
+      const factTotRij=(Number(r.prijs)||0)+extra;
+      const brutoRij=(Number(r.prijs)||0)-inkoop+extra;
+      const btwRij=STATE.btwMethode==='standaard'?factTotRij/1.21*0.21:Math.max(0,(factTotRij-inkoop)/1.21*0.21);
+      return {
+        id:vid,user_id:STATE.user.id,org_id:STATE.org_id,
+        item_id:r.item.id,verkoopprijs:Number(r.prijs)||0,
+        verkooplocatie:'verkoop-app',
+        factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
+        impregneer:idx===0?impregneerTot:0,
+        services_json:idx===0?(STATE.services||[]):[],
+        factuur_totaal:factTotRij,
+        extras_zichtbaar:!!STATE.extrasZichtbaar,
+        btw_methode:STATE.btwMethode||'marge',
+        bruto_marge:brutoRij,netto_marge:brutoRij,btw:btwRij,netto_na_btw:brutoRij-btwRij,
+        datum_registratie:new Date().toISOString()
+      };
+    });
+    await _restPost('verkopen',verkoopRijen);
 
-    // 1b. Termijnen aparte INSERTs in termijnen tabel
+    // 1b. Termijnen aparte INSERTs — hangen aan de primaire verkoop (betaalregeling = hele order)
     if(STATE.termijnen && STATE.termijnen.length>0){
       const termijnRijen=STATE.termijnen.map(t=>({
         id:_genId(),
@@ -2371,23 +2418,23 @@ async function afronden(){
       }
     }
 
-    // 2. Item status → verkocht
-    await _restPatch(`items?id=eq.${encodeURIComponent(item.id)}`,{status:'verkocht'});
-
-    // 2b. Advertentie automatisch offline halen (Marktplaats + webshop). Alleen als het
-    //     meubel ook echt online staat/stond (shopify_product_id gezet). Niet-blokkerend:
-    //     een verkoop mag nooit falen omdat het offline halen misgaat.
-    try{
-      const advs=await _restGet(`advertenties?select=id,shopify_product_id&item_id=eq.${encodeURIComponent(item.id)}&limit=1`);
-      const a=advs&&advs[0];
-      if(a&&a.shopify_product_id){
-        await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
-          method:'POST',
-          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
-          body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
-        });
-      }
-    }catch(e){console.warn('Advertentie offline halen mislukt:',e);}
+    // 2. Alle verkochte items → status verkocht + hun advertenties offline halen (niet-blokkerend)
+    for(const r of STATE.regels){
+      const itId=r.item.id;
+      try{ await _restPatch(`items?id=eq.${encodeURIComponent(itId)}`,{status:'verkocht'}); }
+      catch(e){ console.warn('Itemstatus verkocht mislukt:',itId,e); }
+      try{
+        const advs=await _restGet(`advertenties?select=id,shopify_product_id&item_id=eq.${encodeURIComponent(itId)}&limit=1`);
+        const a=advs&&advs[0];
+        if(a&&a.shopify_product_id){
+          await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+            method:'POST',
+            headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+            body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
+          });
+        }
+      }catch(e){console.warn('Advertentie offline halen mislukt:',itId,e);}
+    }
 
     // 3. Factuur wordt ALTIJD gemaakt — klant opslaan en contract alleen bij ingevulde klantgegevens
     let factuurId=null,contractId=null,klantId=null;
@@ -2425,8 +2472,13 @@ async function afronden(){
       const fKlant=heeftKlant
         ?{naam:STATE.klant.naam,email:STATE.klant.email,tel:STATE.klant.tel,adres:STATE.klant.adres,pc:STATE.klant.pc,plts:STATE.klant.plts}
         :{naam:STATE.klant.naam||'Particuliere verkoop',email:STATE.klant.email||'',tel:STATE.klant.tel||'',adres:STATE.klant.adres||'',pc:STATE.klant.pc||'',plts:STATE.klant.plts||''};
+      // Samenvattende productnaam voor factuurrecord + e-mail (PDF toont alle regels apart)
+      const prodSamenv=STATE.regels.length===1
+        ?`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`
+        :`${item.naam} + ${STATE.regels.length-1} ander${STATE.regels.length-1>1?'e':''} item${STATE.regels.length-1>1?'s':''}`;
+      const factuurItems=STATE.regels.map(r=>({naam:r.item.naam,artikelnummer:r.item.artikelnummer||'',prijs:Number(r.prijs)||0}));
       const pdfData={
-        item,factuurnr,verkoopDatum,verkoopprijs:STATE.prijs,
+        items:factuurItems,item,factuurnr,verkoopDatum,verkoopprijs:STATE.prijs,
         services:STATE.services,extrasVis:STATE.extrasVis,factuurTotaal,
         btwMethode:STATE.btwMethode,btw,termijnen:STATE.termijnen,
         klant:fKlant,
@@ -2456,7 +2508,7 @@ async function afronden(){
           klant_naam:fKlant.naam,klant_email:fKlant.email||null,
           klant_telefoon:fKlant.tel||null,klant_adres:fKlant.adres||null,
           klant_postcode:fKlant.pc||null,klant_plaats:fKlant.plts||null,
-          product_naam:item.naam,product_omschr:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+          product_naam:prodSamenv,product_omschr:factuurItems.map(x=>`${x.naam}${x.artikelnummer?' ('+x.artikelnummer+')':''} — €${x.prijs.toFixed(2)}`).join('; '),
           item_id:item.id,product_bedrag:STATE.prijs,
           impregneer_bedrag:STATE.services.filter(s=>s.naam==='Impregneerbehandeling').reduce((a,s)=>a+s.bedrag,0),
           bezorging_bedrag:STATE.services.filter(s=>s.naam==='Bezorging').reduce((a,s)=>a+s.bedrag,0),
@@ -2483,7 +2535,7 @@ async function afronden(){
           const emailPayload={
             klantEmail:mailNaar,klantNaam:fKlant.naam,
             factuurnummer:factuurnr,totaalBedrag:factuurTotaal,
-            productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+            productNaam:prodSamenv,
             pdfBase64,pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
             termijnSchema,extraAdressen,testMode:false
           };
@@ -2510,6 +2562,7 @@ async function afronden(){
           const ondertekendToken=_genToken();
           // PDF
           const ctData={
+            items:STATE.regels.map(r=>({naam:r.item.naam,artikelnummer:r.item.artikelnummer||'',stof:r.item.stof||'',prijs:Number(r.prijs)||0})),
             item,contractnr,verkoopDatum,
             verkoopprijs:factuurTotaal, // contract toont totaal incl services
             termijnen:STATE.termijnen,
@@ -2534,7 +2587,7 @@ async function afronden(){
             klant_naam:STATE.klant.naam,klant_email:STATE.klant.email,
             klant_telefoon:STATE.klant.tel||null,klant_adres:STATE.klant.adres||null,
             klant_postcode:STATE.klant.pc||null,klant_plaats:STATE.klant.plts||null,
-            product_naam:item.naam,
+            product_naam:prodSamenv,
             product_artikelnummer:item.artikelnummer||null,
             product_stof:item.stof||null,
             type_betaling:STATE.type||null,
@@ -2555,7 +2608,7 @@ async function afronden(){
             body:JSON.stringify({
               klantEmail:STATE.klant.email,klantNaam:STATE.klant.naam,
               contractnummer:contractnr,totaalBedrag:factuurTotaal,
-              productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+              productNaam:prodSamenv,
               tekenUrl,pdfBase64:ctBase64,pdfBestandsnaam:`contract-${contractnr}.pdf`
             })
           });
@@ -2571,7 +2624,7 @@ async function afronden(){
 
     // SUCCES
     $('klaar-info').innerHTML=`
-      <div style="margin-bottom:8px"><strong>${esc(item.naam)}</strong> verkocht</div>
+      <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(item.naam)}</strong> verkocht</div>
       <div>Factuurnr: <span style="font-family:ui-monospace,monospace">${esc(factuurnr)}</span></div>
       <div style="margin-top:6px">Totaal: <strong>${eur(factuurTotaal)}</strong></div>
       ${(STATE.wilEmailen&&heeftKlant)?'<div style="margin-top:10px;color:var(--gn)">📧 Factuur verstuurd naar klant</div>':(STATE.factuurEmail?'<div style="margin-top:10px;color:var(--gn)">📥 Factuur naar eigen invoice-adres gestuurd</div>':'<div style="margin-top:10px;color:#c2410c">💾 Factuur opgeslagen — stel een invoice-adres in via het dashboard (⚙️ Instellingen)</div>')}
@@ -2594,6 +2647,7 @@ async function afronden(){
 async function nieuweVerkoop(){
   // Reset alles — óók opties die van de vorige verkoop bleven staan
   STATE.gekozen=null;
+  STATE.regels=[];
   STATE.prijs=0;
   STATE.services=[];
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
