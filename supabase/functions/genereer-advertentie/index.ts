@@ -170,15 +170,29 @@ Deno.serve(async (req: Request) => {
       .filter(([, v]) => v !== "" && v != null)
       .map(([k, v]) => `${k}: ${v}`).join(", ") || "niet opgegeven";
 
-    // Realtime MarktMonitor-zoektermen (type + merk), parallel en fail-soft.
-    // Rubrieken met "|" (Marktplaats-notatie) zijn geen zoektermen — dan de eigen categorie.
-    const zoekBasis = [
-      item?.categorie ?? "",
-      adv.rubriek && !String(adv.rubriek).includes("|") ? adv.rubriek : "",
-      adv.merk ?? "",
-    ]
-      .map((s: string) => String(s).trim().toLowerCase())
-      .filter((s: string, i: number, a: string[]) => s && a.indexOf(s) === i);
+    // Realtime MarktMonitor-zoektermen — DIEPER dan alleen categorie/merk. We zoeken op
+    // meerdere ingangen zodat je specifieke termen als "ribstof" of "rib" ook meepakt,
+    // niet alleen "hoekbank". Parallel (Promise.all → wall-clock ≈ traagste, niet som) en
+    // fail-soft. Cap op 7 queries ivm rate-limiting op de publieke MarktMonitor.
+    const _norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
+    const _categorie = _norm(item?.categorie);
+    const _rubriek = adv.rubriek && !String(adv.rubriek).includes("|") ? _norm(adv.rubriek) : "";
+    const _merk = _norm(adv.merk);
+    const _materiaal = _norm(adv.materiaal || item?.stof);
+    const _kleur = _norm(adv.kleur);
+    const _hoofd = _categorie || _rubriek; // basiswoord voor combinaties (bv. "hoekbank")
+    const _kandidaten: string[] = [_categorie, _rubriek, _merk, _materiaal, _kleur];
+    // Samengesteld materiaal "ribstof" → ook los "rib" meepakken.
+    if (_materiaal.endsWith("stof") && _materiaal.length > 5) _kandidaten.push(_materiaal.slice(0, -4));
+    // Losse woorden uit een meerwoordig materiaal (bv. "gerecycled leer" → "leer").
+    for (const w of _materiaal.split(/\s+/)) if (w.length > 2) _kandidaten.push(w);
+    // Combinaties met het hoofdwoord: "hoekbank ribstof", "hoekbank grijs".
+    if (_hoofd && _materiaal && _materiaal !== _hoofd) _kandidaten.push(`${_hoofd} ${_materiaal}`);
+    if (_hoofd && _kleur) _kandidaten.push(`${_hoofd} ${_kleur}`);
+    const zoekBasis = _kandidaten
+      .map(_norm)
+      .filter((s: string, i: number, a: string[]) => s && s.length > 1 && a.indexOf(s) === i)
+      .slice(0, 7);
     const mmResultaten = await Promise.all(zoekBasis.map((w: string) => haalMarktMonitorTermen(w)));
     const mmTermen: MMTerm[] = [];
     for (const lijst of mmResultaten) {
