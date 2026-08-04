@@ -85,9 +85,22 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // ── Autorisatie: de anon key is publiek, dus zonder deze check kan iedereen
+    // met een advertentie_id advertenties live/offline zetten en voorraaditems
+    // omzetten. Vereist: geldige gebruikers-JWT + lidmaatschap van de org.
+    const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const { data: authData, error: authErr } = await supabase.auth.getUser(jwt);
+    const gebruiker = authData?.user;
+    if (authErr || !gebruiker) return json({ error: "Niet ingelogd" }, 401);
+
     const { data: adv } = await supabase
       .from("advertenties").select("*").eq("id", advertentie_id).single();
     if (!adv) return json({ error: "Advertentie niet gevonden" }, 404);
+
+    let lidQuery = supabase.from("org_members").select("org_id").eq("user_id", gebruiker.id);
+    if (adv.org_id) lidQuery = lidQuery.eq("org_id", adv.org_id);
+    const { data: lid } = await lidQuery.limit(1).maybeSingle();
+    if (!lid) return json({ error: "Geen toegang tot deze advertentie" }, 403);
     const { data: item } = await supabase
       .from("items").select("*").eq("id", adv.item_id).single();
 

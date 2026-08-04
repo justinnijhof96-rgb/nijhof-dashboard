@@ -680,8 +680,11 @@ function _updateNextEnabled(){
     const wilMail=STATE.wilEmailen;
     const isTrmAan=STATE.type==='termijn'||STATE.type==='aanbetaling';
     const klantOK = STATE.klant.naam.length>0 && STATE.klant.email.includes('@');
+    // Aanbetaling met restbedrag: leverdatum verplicht — zonder vervaldatum weigert
+    // de database de resttermijn en verdwijnt het hele betaalschema stil
+    const restZonderDatum = STATE.type==='aanbetaling' && (STATE.termijnen||[]).some(t=>!t.betaald && !t.vervaldatum);
     if(wilMail || isTrmAan){
-      btn.disabled = !klantOK;
+      btn.disabled = !klantOK || restZonderDatum;
     } else {
       btn.disabled = false; // alleen volledige betaling zonder mail mag zonder klant
     }
@@ -1732,6 +1735,7 @@ function updateS3(){
   const factTot=_factuurTotaal();
   if(STATE.type==='volledig'){
     STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:new Date().toISOString().slice(0,10),betaalmethode:STATE._bet?.vol||'pin',betaald:true,label:'Volledig betaald'}];
+    $('s3-warn').innerHTML='';
   } else if(STATE.type==='aanbetaling'){
     const abed=parseFloat($('s3-aan-bed').value)||0;
     const adat=$('s3-aan-dat').value||new Date().toISOString().slice(0,10);
@@ -1743,6 +1747,10 @@ function updateS3(){
     if(rbed>0){
       STATE.termijnen.push({nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:STATE._bet?.rest||'pin',betaald:false,label:'Restbetaling bij levering'});
     }
+    // Leverdatum is de vervaldatum van de restbetaling — verplicht zolang er een restbedrag is
+    $('s3-warn').innerHTML=(rbed>0&&!rdat)
+      ?'<div class="alert" style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c">⚠️ Vul de verwachte leverdatum in — die wordt de vervaldatum van de restbetaling</div>'
+      :'';
     // Info onder aanbetaling
     $('s3-aan-info').innerHTML=`
       <strong>Aanbetaling:</strong> ${eur(abed)}<br>
@@ -2300,6 +2308,9 @@ async function afronden(){
     const verkoopId=_genId();        // primaire verkoop-id (voor termijnen/factuur/contract)
     const factuurnr=await _volgendeFactuurnr();
     const verkoopDatum=new Date().toISOString().slice(0,10);
+    // Vangnet: een termijn zonder vervaldatum (bv. aanbetaling zonder leverdatum) krijgt de
+    // verkoopdatum — een lege datum laat de database-insert falen en zet "Invalid Date" op de factuur
+    (STATE.termijnen||[]).forEach(t=>{if(!t.vervaldatum)t.vervaldatum=verkoopDatum;});
     const servTot=STATE.services.reduce((a,s)=>a+s.bedrag,0);
     const goods=STATE.regels.reduce((a,r)=>a+(Number(r.prijs)||0),0);
     const totInkoop=STATE.regels.reduce((a,r)=>a+(Number(r.item.prijs)||0),0);
@@ -2353,8 +2364,9 @@ async function afronden(){
       try{
         await _restPost('termijnen',termijnRijen);
       }catch(e){
-        console.warn('Termijnen opslaan mislukt:',e);
-        // niet kritisch, verkoop staat al wel
+        console.error('Termijnen opslaan mislukt:',e);
+        toast('⚠️ Betaalschema opslaan mislukt — zet de termijnen handmatig in het dashboard (Debiteuren)','#dc2626');
+        $('s4-status').innerHTML+='<div class="alert alert-err">⚠️ Let op: het betaalschema kon niet worden opgeslagen. De verkoop staat wel geregistreerd — voeg de termijnen toe via het dashboard.</div>';
       }
     }
 

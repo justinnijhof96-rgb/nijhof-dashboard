@@ -870,6 +870,7 @@ async function laadAllesVanDB(){
       _instellingen.inkoopTarget=inst.inkoop_target||3;
       _instellingen.gemMargeOverride=inst.gem_marge_override||null;
     }
+    _herbouwSyncSnap();
   } catch(e) {
     console.error('Laden mislukt:',e);
     toast('⚠️ Laden mislukt — controleer je verbinding','#dc2626');
@@ -880,7 +881,77 @@ let _saveTimer=null;
 function slaOp(){
   if(_saveTimer)clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>_syncNaarSupabase(),300);
-  const bi=el('backup-info');if(bi)bi.textContent='Opgeslagen: '+fmtDT(new Date());
+  const bi=el('backup-info');if(bi)bi.textContent='Opslaan…';
+}
+
+// ── SYNC-MODEL ─────────────────────────────────────────────────────
+// Alleen rijen die in het dashboard zelf zijn gewijzigd sinds de laatste
+// laad/sync gaan naar Supabase. Een open dashboard overschrijft zo geen
+// wijzigingen die de verkoopapp of een edge function intussen maakte.
+// Voor bestaande items gaan status en prijs bovendien nooit via de bulk-
+// sync: die worden op het mutatiemoment gericht gepatcht (_patchItem).
+const _syncSnap={items:new Map(),verkopen:new Map(),termijnen:new Map(),lasten:new Map()};
+
+function _itemRow(i,uid_user,org_id){
+  return {
+    id:i.id,naam:i.naam,categorie:i.categorie,stof:i.stof||'',locatie:i.locatie||'',
+    prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum,notitie:i.notitie||'',
+    status:i.status,del_reden:i.del_reden||null,del_toel:i.del_toel||null,stortkosten:i.stortkosten||0,
+    foto_url:i.foto_url||null,
+    afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
+    user_id:uid_user,
+    org_id:org_id
+    // artikelnummer + inkoopbon_nr worden door database triggers gegenereerd, niet meesturen
+  };
+}
+function _verkoopRow(v,uid_user,org_id){
+  return {
+    id:v.id,item_id:v.itemId,verkoopprijs:v.verkoopprijs,verkooplocatie:v.verkooplocatie||'',
+    factuur:v.factuur||'',datum:v.datum,type:v.type||'volledig',impregneer:v.impregneer||0,
+    services_json:Array.isArray(v.services)?v.services:null,
+    factuur_totaal:v.factuurTotaal||null,
+    extras_zichtbaar:!!v.extrasZichtbaar,
+    btw_methode:v.btwMethode||'marge',
+    bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
+    netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie||new Date().toISOString(),
+    user_id:uid_user, org_id:org_id
+  };
+}
+function _termijnRow(t,verkoopId,org_id){
+  return {
+    id:t.id,verkoop_id:verkoopId,nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum||null,
+    betaalmethode:t.betaalmethode||'pin',betaald:!!t.betaald,betaald_op:t.betaaldOp||null,
+    label:t.label||'',notitie:t.notitie||'',org_id:org_id
+  };
+}
+function _lastRow(l,uid_user,org_id){
+  return {
+    id:l.id,naam:l.naam,bedrag:l.bedrag,btw_pct:l.btwPct||0,btw_type:l.btwType||'excl',
+    betaalmethode:l.betaalmethode||'pin',betaaldatum:l.betaaldatum||null,
+    type_kosten:l.typeKosten||'vast',terugkerend:!!l.terugkerend,fluctuerend:!!l.fluctuerend,
+    betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp||new Date().toISOString(),
+    user_id:uid_user, org_id:org_id
+  };
+}
+// Na elke volledige laad: onthoud per rij wat er in de database staat, zodat
+// de sync alleen echt gewijzigde rijen hoeft te sturen.
+function _herbouwSyncSnap(){
+  const uid_user=_getUserId(),org_id=_getOrgId();
+  _syncSnap.items.clear();_syncSnap.verkopen.clear();_syncSnap.termijnen.clear();_syncSnap.lasten.clear();
+  if(!uid_user||!org_id)return;
+  DB.items.forEach(i=>_syncSnap.items.set(i.id,JSON.stringify(_itemRow(i,uid_user,org_id))));
+  DB.verkopen.forEach(v=>{
+    _syncSnap.verkopen.set(v.id,JSON.stringify(_verkoopRow(v,uid_user,org_id)));
+    (v.termijnen||[]).forEach(t=>_syncSnap.termijnen.set(t.id,JSON.stringify(_termijnRow(t,v.id,org_id))));
+  });
+  DB.lasten.forEach(l=>_syncSnap.lasten.set(l.id,JSON.stringify(_lastRow(l,uid_user,org_id))));
+}
+// Status-/prijswijziging van een bestaand item direct en gericht persisteren
+function _patchItem(id,data){
+  return dbUpdate('items',id,data).catch(e=>{
+    console.error('Item bijwerken mislukt:',id,data,e);
+    toast('⚠️ Wijziging opslaan mislukt — controleer je verbinding','#dc2626');
+  });
 }
 async function _syncNaarSupabase(){
   try{
@@ -888,53 +959,72 @@ async function _syncNaarSupabase(){
     const org_id=_getOrgId();
     if(!uid_user){console.error('Niet ingelogd');return;}
     if(!org_id){console.error('Geen org_id beschikbaar — sync overgeslagen'); toast('⚠️ Org niet geladen — herlaad de pagina','#dc2626'); return;}
-    if(DB.items.length){
-      const rows=DB.items.map(i=>({
-        id:i.id,naam:i.naam,categorie:i.categorie,stof:i.stof||'',locatie:i.locatie||'',
-        prijs:i.prijs,verwacht_vp:i.verwacht_vp||0,datum:i.datum,notitie:i.notitie||'',
-        status:i.status,del_reden:i.del_reden||null,del_toel:i.del_toel||null,stortkosten:i.stortkosten||0,
-        foto_url:i.foto_url||null,
-        afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
-        user_id:uid_user,
-        org_id:org_id
-        // artikelnummer + inkoopbon_nr worden door database triggers gegenereerd, niet meesturen
-      }));
-      try{await dbUpsert('items',rows);}catch(e){console.error('Items sync fout:',e);}
-    }
-    if(DB.verkopen.length){
-      const vkRows=DB.verkopen.map(v=>({
-        id:v.id,item_id:v.itemId,verkoopprijs:v.verkoopprijs,verkooplocatie:v.verkooplocatie||'',
-        factuur:v.factuur||'',datum:v.datum,type:v.type||'volledig',impregneer:v.impregneer||0,
-        services_json:Array.isArray(v.services)?v.services:null,
-        factuur_totaal:v.factuurTotaal||null,
-        extras_zichtbaar:!!v.extrasZichtbaar,
-        btw_methode:v.btwMethode||'marge',
-        bruto_marge:v.brutoMarge||0,netto_marge:v.nettoMarge||0,btw:v.btw||0,
-        netto_na_btw:v.nettoNaBtw||0,datum_registratie:v.datum_registratie||new Date().toISOString(),
-        user_id:uid_user, org_id:org_id
-      }));
-      try{await dbUpsert('verkopen',vkRows);}catch(e){console.error('Verkopen sync fout:',e);}
-      const allTerm=[];
-      DB.verkopen.forEach(v=>(v.termijnen||[]).forEach(t=>allTerm.push({
-        id:t.id,verkoop_id:v.id,nr:t.nr,bedrag:t.bedrag,vervaldatum:t.vervaldatum||null,
-        betaalmethode:t.betaalmethode||'pin',betaald:!!t.betaald,betaald_op:t.betaaldOp||null,
-        label:t.label||'',notitie:t.notitie||'',org_id:org_id
-      })));
-      if(allTerm.length){
-        try{await dbUpsert('termijnen',allTerm);}catch(e){console.error('Termijnen sync fout:',e);}
+    let fouten=0;
+    // Items — alleen gewijzigde rijen; bestaande rijen zonder status/prijs (zie _patchItem).
+    // Nieuw en bestaand apart upserten: PostgREST eist dezelfde kolommen per bulk-call.
+    const itemNieuw=[],itemBestaand=[];
+    DB.items.forEach(i=>{
+      const row=_itemRow(i,uid_user,org_id);
+      const key=JSON.stringify(row);
+      if(_syncSnap.items.get(i.id)===key)return;
+      if(_syncSnap.items.has(i.id)){
+        const payload={...row};delete payload.status;delete payload.prijs;
+        itemBestaand.push({id:i.id,key,payload});
+      }else{
+        itemNieuw.push({id:i.id,key,payload:row});
       }
+    });
+    for(const groep of [itemNieuw,itemBestaand]){
+      if(!groep.length)continue;
+      try{
+        await dbUpsert('items',groep.map(w=>w.payload));
+        groep.forEach(w=>_syncSnap.items.set(w.id,w.key));
+      }catch(e){fouten++;console.error('Items sync fout:',e);}
     }
-    if(DB.lasten.length){
-      const lRows=DB.lasten.map(l=>({
-        id:l.id,naam:l.naam,bedrag:l.bedrag,btw_pct:l.btwPct||0,btw_type:l.btwType||'excl',
-        betaalmethode:l.betaalmethode||'pin',betaaldatum:l.betaaldatum||null,
-        type_kosten:l.typeKosten||'vast',terugkerend:!!l.terugkerend,fluctuerend:!!l.fluctuerend,
-        betaald:l.betaald!==false,actief:l.actief!==false,aangemaakt_op:l.aangemaaktOp||new Date().toISOString(),
-        user_id:uid_user, org_id:org_id
-      }));
-      try{await dbUpsert('lasten',lRows);}catch(e){console.error('Lasten sync fout:',e);}
+    // Verkopen + termijnen — alleen gewijzigde rijen (verkopen vóór termijnen ivm foreign key)
+    const vkWijzig=[],termWijzig=[];
+    DB.verkopen.forEach(v=>{
+      const row=_verkoopRow(v,uid_user,org_id);
+      const key=JSON.stringify(row);
+      if(_syncSnap.verkopen.get(v.id)!==key)vkWijzig.push({id:v.id,key,payload:row});
+      (v.termijnen||[]).forEach(t=>{
+        const trow=_termijnRow(t,v.id,org_id);
+        const tkey=JSON.stringify(trow);
+        if(_syncSnap.termijnen.get(t.id)!==tkey)termWijzig.push({id:t.id,key:tkey,payload:trow});
+      });
+    });
+    if(vkWijzig.length){
+      try{
+        await dbUpsert('verkopen',vkWijzig.map(w=>w.payload));
+        vkWijzig.forEach(w=>_syncSnap.verkopen.set(w.id,w.key));
+      }catch(e){fouten++;console.error('Verkopen sync fout:',e);}
     }
-    console.log('✓ Sync naar Supabase gelukt');
+    if(termWijzig.length){
+      try{
+        await dbUpsert('termijnen',termWijzig.map(w=>w.payload));
+        termWijzig.forEach(w=>_syncSnap.termijnen.set(w.id,w.key));
+      }catch(e){fouten++;console.error('Termijnen sync fout:',e);}
+    }
+    // Lasten — alleen gewijzigde rijen
+    const lastWijzig=[];
+    DB.lasten.forEach(l=>{
+      const row=_lastRow(l,uid_user,org_id);
+      const key=JSON.stringify(row);
+      if(_syncSnap.lasten.get(l.id)!==key)lastWijzig.push({id:l.id,key,payload:row});
+    });
+    if(lastWijzig.length){
+      try{
+        await dbUpsert('lasten',lastWijzig.map(w=>w.payload));
+        lastWijzig.forEach(w=>_syncSnap.lasten.set(w.id,w.key));
+      }catch(e){fouten++;console.error('Lasten sync fout:',e);}
+    }
+    if(fouten>0){
+      toast('⚠️ Opslaan (deels) mislukt — controleer je verbinding','#dc2626');
+      const bi=el('backup-info');if(bi)bi.textContent='⚠️ Niet alles opgeslagen';
+    }else{
+      const bi=el('backup-info');if(bi)bi.textContent='Opgeslagen: '+fmtDT(new Date());
+      console.log('✓ Sync naar Supabase gelukt');
+    }
   }catch(e){console.error('Sync mislukt:',e);toast('⚠️ Opslaan mislukt — check console','#dc2626');}
 }
 
@@ -1650,6 +1740,7 @@ function toggleRes(id){
   const i=DB.items.find(x=>x.id===id);
   if(!i||i.status==='verkocht'||i.status==='afgestort')return;
   i.status=i.status==='gereserveerd'?'beschikbaar':'gereserveerd';
+  _patchItem(i.id,{status:i.status});
   slaOp();renderV();toast(i.status==='gereserveerd'?'📌 Gereserveerd':'📌 Reservering opgeheven','#2563eb');
 }
 
@@ -1681,8 +1772,10 @@ function slaBewerk(){
   const naam=val('bw-naam').trim(),cat=val('bw-cat');
   if(!naam||!cat){toast('Naam en categorie zijn verplicht','#dc2626');return;}
   i.naam=naam;i.categorie=cat;i.stof=val('bw-stof').trim();i.locatie=val('bw-loc').trim();
+  const oudePrijs=i.prijs;
   i.prijs=fval('bw-ip');i.verwacht_vp=fval('bw-vvp');i.datum=val('bw-dat');
   i.notitie=val('bw-not').trim();
+  if(i.prijs!==oudePrijs)_patchItem(i.id,{prijs:i.prijs});
   if(!Array.isArray(i.bewerkt))i.bewerkt=[];
   i.bewerkt.push({ts:new Date().toISOString()});
   slaOp();renderV();renderDash();sluitModal('m-bewerk');toast('✏️ Item bijgewerkt');
@@ -1781,6 +1874,7 @@ async function bevestigDel(){
     i.del_toel=val('del-toel').trim();
     i.stortkosten=fval('del-stortk');
     i.afgestortOp=vandaag();
+    _patchItem(i.id,{status:'afgestort'});
     slaOp();renderV();renderDash();sluitModal('m-del');
     toast(`🚮 Afgestort — verlies ${eur(i.prijs+(i.stortkosten||0))}`,'#6b7280');
   }
@@ -1918,6 +2012,7 @@ async function ongedaanVerkoop(itemId) {
   if(factuur)_facturenCache=_facturenCache.filter(f=>f.id!==factuur.id);
   if(contract)_contractenCache=_contractenCache.filter(c=>c.id!==contract.id);
   item.status='beschikbaar';
+  _patchItem(item.id,{status:'beschikbaar'});
   slaOp();renderV();renderDash();renderDebiteuren();renderFacturen?.();renderContracten?.();
   toast('↩️ Verkoop ongedaan gemaakt' + (factuur||contract?' (incl. factuur/contract)':''),'#2563eb');
 }
@@ -2299,6 +2394,7 @@ async function bevestigVk(){
     datum_registratie:new Date().toISOString()
   });
   item.status='verkocht';
+  _patchItem(item.id,{status:'verkocht'});
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
 
