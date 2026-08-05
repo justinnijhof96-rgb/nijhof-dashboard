@@ -32,8 +32,12 @@ function escapeHtml(s: unknown): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function textToHtml(t: unknown): string {
-  return String(t ?? "").split(/\n{2,}/)
-    .map((p) => "<p>" + escapeHtml(p).replace(/\n/g, "<br>") + "</p>").join("");
+  // Marktplaats (via de Woosify/Marktplaats Pro-sync) zet de Shopify-body_html om naar
+  // platte tekst: elke <br> wordt één regeleinde, maar <p>-alineagrenzen werden tot één
+  // regel samengeperst — daardoor verdwenen alle witregels op Marktplaats. We coderen
+  // daarom ELK regeleinde als <br> (lege regel = <br><br>), zodat de opmaak 1-op-1
+  // meekomt op Marktplaats én op de webshop.
+  return escapeHtml(String(t ?? "").replace(/\r\n/g, "\n")).replace(/\n/g, "<br>");
 }
 function slugify(s: unknown): string {
   const base = String(s ?? "").toLowerCase()
