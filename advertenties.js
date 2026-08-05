@@ -250,8 +250,8 @@
       '<button class="btn btn-gy" onclick="advOpslaan(false)">💾 Opslaan</button>' +
       '<button class="btn btn-or" id="adv-genbtn" onclick="advGenereer()">✨ Genereer advertentietekst</button>' +
       "</div>" +
-      '<div style="margin-top:12px"><label style="font-size:12px;font-weight:600;color:var(--gr,#6b7280)">Gegenereerde titel</label>' +
-      '<input id="adv-aititel" value="' + esc(a.ai_titel || "") + '" style="width:100%;border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:7px 9px;font-size:13px;box-sizing:border-box"></div>' +
+      '<div style="margin-top:12px"><label style="font-size:12px;font-weight:600;color:var(--gr,#6b7280)">Gegenereerde titel <span id="adv-titel-tel"></span> <span style="font-weight:400">(max 60 — Marktplaats-limiet)</span></label>' +
+      '<input id="adv-aititel" maxlength="60" oninput="advTitelTel()" value="' + esc((a.ai_titel || "").slice(0, 60)) + '" style="width:100%;border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:7px 9px;font-size:13px;box-sizing:border-box"></div>' +
       '<div style="margin-top:8px"><label style="font-size:12px;font-weight:600;color:var(--gr,#6b7280)">Volledige advertentietekst (aanpasbaar)</label>' +
       '<textarea id="adv-volledig" style="width:100%;min-height:150px;border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:9px;font-size:12.5px;box-sizing:border-box;resize:vertical">' + esc(a.volledige_tekst || "") + "</textarea></div>" +
       '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
@@ -261,6 +261,7 @@
 
     renderFotos();
     renderSlim();
+    advTitelTel();
     if (a.laatste_fout) E("adv-status").innerHTML = '<span style="color:#dc2626">Laatste fout: ' + esc(a.laatste_fout) + "</span>";
     try { openModal("m-adv"); } catch (e) { E("m-adv").classList.add("open"); }
   }
@@ -554,6 +555,14 @@
     if (d.materiaal && E("adv-materiaal")) E("adv-materiaal").value = d.materiaal;
     if (d.kleur && E("adv-kleur")) E("adv-kleur").value = d.kleur;
   }
+  // Titel-teller: Marktplaats accepteert max 60 tekens; langer laat de upload mislukken.
+  function advTitelTel() {
+    var i = E("adv-aititel"), t = E("adv-titel-tel");
+    if (!i || !t) return;
+    var n = (i.value || "").length;
+    t.textContent = n + "/60";
+    t.style.color = n >= 60 ? "#dc2626" : "var(--gr,#6b7280)";
+  }
 
   /* ---- Opslaan / genereren / plaatsen ---- */
   function bouwRow() {
@@ -616,7 +625,8 @@
       if (res.error) throw new Error(res.error.message || "Functie-fout");
       var d = res.data || {};
       if (d.error) throw new Error(d.error + (d.detail ? " — " + d.detail : ""));
-      if (E("adv-aititel")) E("adv-aititel").value = d.titel || "";
+      if (E("adv-aititel")) E("adv-aititel").value = (d.titel || "").slice(0, 60);
+      advTitelTel();
       if (E("adv-volledig")) E("adv-volledig").value = d.volledige_tekst || "";
       toastX("✨ Tekst gegenereerd");
     }).catch(function (e) {
@@ -665,6 +675,7 @@
   window.advFotoCrop = advFotoCrop;
   window.advSlimKies = advSlimKies;
   window.advSlimWis = advSlimWis;
+  window.advTitelTel = advTitelTel;
 
   // init na load (na het hoofdscript)
   if (document.readyState === "loading") {

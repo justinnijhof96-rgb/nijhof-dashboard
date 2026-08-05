@@ -702,7 +702,7 @@
 
       '<div class="adv-card">' +
       '<button class="abtn abtn-or" id="adv-genbtn" onclick="advGenereer()">✨ Genereer advertentietekst</button>' +
-      '<div class="fld" style="margin-top:14px;margin-bottom:10px"><label class="al">Gegenereerde titel</label><input id="adv-aititel" class="ai" value="' + X(a.ai_titel || "") + '"></div>' +
+      '<div class="fld" style="margin-top:14px;margin-bottom:10px"><label class="al">Gegenereerde titel <span id="adv-titel-tel" style="font-weight:400;color:var(--gr)"></span> <span style="font-weight:400;color:var(--gr);font-size:11px">(max 60 — Marktplaats-limiet)</span></label><input id="adv-aititel" class="ai" maxlength="60" oninput="advTitelTel()" value="' + X((a.ai_titel || "").slice(0, 60)) + '"></div>' +
       '<div class="fld" style="margin-bottom:0"><label class="al">Volledige advertentietekst <span style="font-weight:400;color:var(--gr)">(aanpasbaar)</span></label><textarea id="adv-volledig" class="at" style="min-height:170px">' + X(a.volledige_tekst || "") + '</textarea></div>' +
       '</div>' +
 
@@ -715,6 +715,7 @@
 
     renderFotos();
     renderSlim();
+    advTitelTel();
     if (a.laatste_fout) E("adv-status").innerHTML = '<span style="color:#dc2626">Laatste fout: ' + X(a.laatste_fout) + '</span>';
     if (!isLive) { /* concept: laat alle knoppen staan, geen extra melding */ }
     toonScherm("screen-adverteren"); // ook vanuit het advertentiecentrum naar het formulier
@@ -1020,6 +1021,14 @@
     if (d.materiaal && E("adv-materiaal")) E("adv-materiaal").value = d.materiaal;
     if (d.kleur && E("adv-kleur")) E("adv-kleur").value = d.kleur;
   }
+  // Titel-teller: Marktplaats accepteert max 60 tekens; langer laat de upload mislukken.
+  function advTitelTel() {
+    var i = E("adv-aititel"), t = E("adv-titel-tel");
+    if (!i || !t) return;
+    var n = (i.value || "").length;
+    t.textContent = n + "/60";
+    t.style.color = n >= 60 ? "#dc2626" : "var(--gr)";
+  }
   function advFotoWis(i) { ADV.fotos.splice(i, 1); renderFotos(); }
   function advFotoMove(i, d) {
     var j = i + d; if (j < 0 || j >= ADV.fotos.length) return;
@@ -1109,7 +1118,8 @@
     advOpslaan(true).then(function (saved) {
       return roepFunctie("genereer-advertentie", { advertentie_id: saved.id });
     }).then(function (d) {
-      if (E("adv-aititel")) E("adv-aititel").value = d.titel || "";
+      if (E("adv-aititel")) E("adv-aititel").value = (d.titel || "").slice(0, 60);
+      advTitelTel();
       if (E("adv-volledig")) E("adv-volledig").value = d.volledige_tekst || "";
       if (st) { st.style.color = "#15803d"; st.textContent = "✨ Tekst gegenereerd — controleer en pas eventueel aan."; }
       T("✨ Tekst gegenereerd");
@@ -1177,6 +1187,7 @@
   window.advFotoCrop = advFotoCrop;
   window.advSlimKies = advSlimKies;
   window.advSlimWis = advSlimWis;
+  window.advTitelTel = advTitelTel;
   window.advPeelStart = advPeelStart;
   window.advPeelDoen = advPeelDoen;
   window.advPeelAnnuleer = advPeelAnnuleer;
