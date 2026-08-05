@@ -210,6 +210,7 @@
     if (!it) { toastX("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it };
+    ADV.slim = null; // hulpfoto reset per item
     // Bestaande advertentie: opgeslagen foto's. Nieuwe advertentie: begin met de vaste foto.
     if (Array.isArray(a.fotos)) {
       ADV.fotos = a.fotos.slice();
@@ -224,6 +225,11 @@
     E("adv-titel").textContent = "Advertentie · " + (it.naam || "");
     E("adv-body").innerHTML =
       '<div class="adv-form">' +
+      '<div class="full" style="border:1.5px dashed #a5b4fc;background:#f5f3ff;border-radius:10px;padding:10px">' +
+      '<label style="color:#4338ca">🪄 Slimme foto <span style="font-weight:400;color:var(--gr,#6b7280)">— hulpfoto met de maten erop; vult rubriek, maten, materiaal en kleur vanzelf in</span></label>' +
+      '<div id="adv-slim"></div>' +
+      '<div id="adv-slim-status" style="margin-top:8px;font-size:13px;color:var(--gr,#6b7280)"></div>' +
+      "</div>" +
       '<div class="full"><label>Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + "</div>" +
       '<div class="full"><label>Foto\'s (eerste = hoofdfoto, sleep-volgorde via pijltjes)</label><div class="adv-fotos" id="adv-fotos"></div></div>' +
       '<div class="full"><label>Afmetingen</label><div class="adv-form" id="adv-maten" style="margin:0">' + matenHtml(profiel, a.maten) + "</div></div>" +
@@ -245,14 +251,11 @@
       '<textarea id="adv-volledig" style="width:100%;min-height:150px;border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:9px;font-size:12.5px;box-sizing:border-box;resize:vertical">' + esc(a.volledige_tekst || "") + "</textarea></div>" +
       '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn btn-gn" onclick="advPlaats(\'plaatsen\')">🚀 Plaats op Shopify + Marktplaats</button>' +
-      '<button class="btn btn-gy" onclick="advPlaats(\'reserveren\')">🔖 Zet op gereserveerd</button>' +
-      '<button class="btn btn-gy" onclick="advPlaats(\'terug_online\')">↩︎ Terug online</button>' +
-      '<button class="btn btn-gy" onclick="advPlaats(\'verkocht\')">✅ Markeer verkocht</button>' +
-      '<button class="btn btn-rd" onclick="advPlaats(\'verwijderen\')">⛔ Haal van Marktplaats</button>' +
       "</div>" +
       '<div id="adv-status" style="margin-top:10px;font-size:12px;color:var(--gr,#6b7280)"></div>';
 
     renderFotos();
+    renderSlim();
     if (a.laatste_fout) E("adv-status").innerHTML = '<span style="color:#dc2626">Laatste fout: ' + esc(a.laatste_fout) + "</span>";
     try { openModal("m-adv"); } catch (e) { E("m-adv").classList.add("open"); }
   }
@@ -376,6 +379,82 @@
     var t = ADV.fotos[i]; ADV.fotos[i] = ADV.fotos[j]; ADV.fotos[j] = t; renderFotos();
   }
 
+  /* ---- Slimme (hulp)foto: leest velden uit, is GEEN advertentiefoto ---- */
+  function _rubriekLijstPlat() {
+    var out = [];
+    Object.keys(RUBRIEKEN).forEach(function (g) { RUBRIEKEN[g].forEach(function (r) { out.push(r); }); });
+    return out;
+  }
+  function renderSlim() {
+    var wrap = E("adv-slim"); if (!wrap) return;
+    if (ADV.slim && ADV.slim.dataUrl) {
+      wrap.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' +
+        '<img src="' + esc(ADV.slim.dataUrl) + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--bd,#e5e7eb)">' +
+        '<button class="btn btn-gy" onclick="advSlimOpnieuw()">🔄 Andere foto</button>' +
+        "</div>";
+    } else {
+      wrap.innerHTML = '<button class="btn" style="background:#eef2ff;color:#4338ca;border:none" onclick="advSlimKies()">📐 Voeg slimme foto toe</button>';
+    }
+  }
+  function advSlimKies() {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*";
+    inp.onchange = function () {
+      var file = inp.files && inp.files[0];
+      if (!file || (file.type || "").indexOf("image/") !== 0) return;
+      compressFoto(file).then(function (blob) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var dataUrl = String(fr.result || "");
+          ADV.slim = { dataUrl: dataUrl };
+          renderSlim();
+          advSlimAnalyseer(dataUrl.split(",")[1] || "");
+        };
+        fr.readAsDataURL(blob);
+      }).catch(function (e) { toastX("Kon foto niet lezen: " + (e.message || e), "#dc2626"); });
+    };
+    inp.click();
+  }
+  function advSlimOpnieuw() {
+    ADV.slim = null;
+    var s = E("adv-slim-status"); if (s) s.textContent = "";
+    renderSlim();
+    advSlimKies();
+  }
+  function advSlimAnalyseer(b64) {
+    var st = E("adv-slim-status");
+    if (st) { st.style.color = "var(--gr,#6b7280)"; st.textContent = "✨ AI leest de foto uit…"; }
+    _sb.functions.invoke("analyseer-foto", { body: { image_base64: b64, media_type: "image/jpeg", rubrieken: _rubriekLijstPlat() } })
+      .then(function (res) {
+        if (res.error) throw new Error(res.error.message || "Functie-fout");
+        var d = res.data || {};
+        if (d.error) throw new Error(d.error);
+        _slimVul(d);
+        if (st) { st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe."; }
+        toastX("✨ Velden ingevuld vanaf de foto");
+      }).catch(function (e) {
+        if (st) { st.style.color = "#dc2626"; st.textContent = "Uitlezen mislukt: " + (e.message || e); }
+      });
+  }
+  function _slimVul(d) {
+    if (d.rubriek) {
+      var sel = E("adv-rubriek");
+      if (sel) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === d.rubriek) { sel.value = d.rubriek; advRubriekWijzig(); break; }
+        }
+      }
+    }
+    if (d.maten && typeof d.maten === "object") {
+      Object.keys(d.maten).forEach(function (k) {
+        var inp = document.querySelector('#adv-maten [data-maat="' + k + '"]');
+        if (inp && d.maten[k] != null && String(d.maten[k]) !== "") inp.value = d.maten[k];
+      });
+    }
+    if (d.materiaal && E("adv-materiaal")) E("adv-materiaal").value = d.materiaal;
+    if (d.kleur && E("adv-kleur")) E("adv-kleur").value = d.kleur;
+  }
+
   /* ---- Opslaan / genereren / plaatsen ---- */
   function bouwRow() {
     var h = ADV.huidig;
@@ -483,6 +562,8 @@
   window.advFotoWis = advFotoWis;
   window.advFotoMove = advFotoMove;
   window.advFotoRetry = advFotoRetry;
+  window.advSlimKies = advSlimKies;
+  window.advSlimOpnieuw = advSlimOpnieuw;
 
   // init na load (na het hoofdscript)
   if (document.readyState === "loading") {

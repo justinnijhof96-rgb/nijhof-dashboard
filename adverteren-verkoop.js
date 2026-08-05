@@ -698,12 +698,6 @@
       '<div class="adv-card">' +
       '<button class="abtn abtn-gy abtn-sm" style="margin-bottom:10px" onclick="advOpslaan(false)">💾 Alleen opslaan (concept)</button>' +
       '<button class="abtn abtn-gn" onclick="advPlaats(\'plaatsen\')">🚀 Plaats op Shopify + Marktplaats</button>' +
-      '<div class="grid2" style="margin-top:10px">' +
-      '<button class="abtn abtn-gy abtn-sm" onclick="advPlaats(\'reserveren\')">🔖 Gereserveerd</button>' +
-      '<button class="abtn abtn-gy abtn-sm" onclick="advPlaats(\'terug_online\')">↩︎ Terug online</button>' +
-      '<button class="abtn abtn-gy abtn-sm" onclick="advPlaats(\'verkocht\')">✅ Verkocht</button>' +
-      '<button class="abtn abtn-rd abtn-sm" onclick="advPlaats(\'verwijderen\')">⛔ Offline halen</button>' +
-      '</div>' +
       '<div id="adv-status" style="margin-top:12px;font-size:13px;color:var(--gr)"></div>' +
       '</div>';
 
