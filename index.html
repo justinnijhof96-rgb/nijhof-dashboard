@@ -294,6 +294,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div class="side-link" data-view="s-facturen" onclick="showView('s-facturen')"><span class="ic">🧾</span>Facturen &amp; contracten</div>
     <div class="side-group">Marketing</div>
     <div class="side-link" data-view="s-mp" onclick="showView('s-mp')"><span class="ic">📣</span>Marktplaats advertenties</div>
+    <div class="side-link" data-view="s-wa" onclick="showView('s-wa')"><span class="ic">🌐</span>Webshop analytics</div>
     <div class="side-group">Financieel</div>
     <div class="side-link" data-view="s-lasten" onclick="showView('s-lasten')"><span class="ic">💸</span>Vaste lasten</div>
     <div class="side-link" data-view="s-archief" onclick="showView('s-archief')"><span class="ic">🗃️</span>Archief</div>
@@ -543,6 +544,24 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     </label>
     <span id="mp-bestand" style="font-size:12px;color:var(--gr);margin-left:12px"></span>
     <div id="mp-body" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<!-- WEBSHOP ANALYTICS -->
+<div class="sec" id="s-wa">
+  <div class="sec-hdr" onclick="tog(this)"><h2>🌐 Webshop analytics</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px">
+      Live bezoekerscijfers van je Shopify-webshop <strong>nijhofbrothers.nl</strong>. Zie hoeveel bezoekers je krijgt, waar ze vandaan komen, met welk apparaat, welke pagina's ze binnenkomen — en <strong>op welke dagen en tijden je het drukst bent</strong>, handig om te bepalen wanneer je nieuwe advertenties plaatst.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--gr)">Periode:</span>
+      <button class="btn btn-sm" id="wa-p7" onclick="waZet(7)">7 dagen</button>
+      <button class="btn btn-sm" id="wa-p30" onclick="waZet(30)">30 dagen</button>
+      <button class="btn btn-sm" id="wa-p90" onclick="waZet(90)">90 dagen</button>
+      <button class="btn btn-sm" onclick="waLaad(true)" style="margin-left:auto">↻ Ververs</button>
+    </div>
+    <div id="wa-body" style="margin-top:16px"></div>
   </div>
 </div>
 
@@ -1091,7 +1110,7 @@ const VIEW_TITELS = {
   's-dash':'Dashboard','s-status':'Hoe staan we ervoor?','s-voorraad':'Voorraad',
   's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-klanten':'Klanten','s-facturen':'Facturen & contracten',
   's-lasten':'Vaste lasten','s-archief':'Archief',
-  's-mp':'Marktplaats advertenties',
+  's-mp':'Marktplaats advertenties','s-wa':'Webshop analytics',
   's-export':'Export & data','s-instellingen':'Instellingen'
 };
 function showView(id){
@@ -1101,6 +1120,7 @@ function showView(id){
   const t=el('topbar-title');if(t)t.textContent=VIEW_TITELS[id];
   try{localStorage.setItem('nb-view',id);}catch(e){}
   if(id==='s-mp'){try{renderMp();}catch(e){console.warn('MP render:',e);}}
+  if(id==='s-wa'){try{waEnsure();}catch(e){console.warn('WA render:',e);}}
   closeSidebar();
   window.scrollTo(0,0);
 }
@@ -1130,12 +1150,13 @@ const ICONS={
   undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
   fileplus:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/>',
   logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
-  megafoon:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'
+  megafoon:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'
 };
 function ic(naam,maat=14,cls=''){
   return `<svg class="${cls}" width="${maat}" height="${maat}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[naam]||''}</svg>`;
 }
-const SIDE_ICONS={'s-dash':'dashboard','s-status':'activity','s-voorraad':'package','s-inkoop':'inbox','s-debiteuren':'clipboard','s-klanten':'users','s-facturen':'filetext','s-mp':'megafoon','s-lasten':'banknote','s-archief':'archive','s-export':'upload','s-instellingen':'settings'};
+const SIDE_ICONS={'s-dash':'dashboard','s-status':'activity','s-voorraad':'package','s-inkoop':'inbox','s-debiteuren':'clipboard','s-klanten':'users','s-facturen':'filetext','s-mp':'megafoon','s-wa':'globe','s-lasten':'banknote','s-archief':'archive','s-export':'upload','s-instellingen':'settings'};
 function _initSideIcons(){
   document.querySelectorAll('.side-link').forEach(a=>{
     const n=SIDE_ICONS[a.dataset.view];
@@ -4727,6 +4748,162 @@ function renderMp(){
       <tbody>${rijenHtml}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--gr);margin-top:12px">Bedragen omgerekend uit "micros" (÷ 1.000.000). "Leads" = e-mailcontacten via de advertentie. Een nieuwe import vervangt de vorige — download op Marktplaats steeds het meest volledige rapport.</div>`;
+}
+
+/* ══════════ WEBSHOP ANALYTICS (Shopify sessies via ShopifyQL) ══════════ */
+let _waData=null,_waDays=30,_waBusy=false;
+const _waNf=n=>Number(n||0).toLocaleString('nl-NL');
+const _WA_BRON={direct:'Direct',search:'Zoekmachine',social:'Social media',referral:'Verwijzing',email:'E-mail',unknown:'Onbekend'};
+const _WA_APP={mobile:'Mobiel',desktop:'Desktop',tablet:'Tablet',other:'Overig',unknown:'Onbekend'};
+const _WA_DAG=['Ma','Di','Wo','Do','Vr','Za','Zo'];
+const _WA_DAGVOL=['maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag','zondag'];
+
+function waZet(d){_waDays=d;waLaad(true);}
+function waEnsure(){_waSyncPeriodeBtns();if(!_waData&&!_waBusy)waLaad(false);}
+function _waSyncPeriodeBtns(){
+  [7,30,90].forEach(d=>{const b=el('wa-p'+d);if(!b)return;
+    const aan=d===_waDays;
+    b.style.background=aan?'var(--or)':'';b.style.color=aan?'#fff':'';b.style.borderColor=aan?'var(--or)':'';});
+}
+async function waLaad(force){
+  const wrap=el('wa-body');if(!wrap)return;
+  _waSyncPeriodeBtns();_waBusy=true;
+  wrap.innerHTML='<div style="padding:26px;color:var(--gr);text-align:center">⏳ Bezoekerscijfers ophalen uit Shopify…</div>';
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/webshop-analytics',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},
+      body:JSON.stringify({days:_waDays})
+    });
+    const j=await res.json().catch(()=>({error:'ongeldig antwoord'}));
+    if(!res.ok||j.error)throw new Error(j.error||('HTTP '+res.status));
+    _waData=j;renderWa();
+  }catch(e){
+    console.error('WA:',e);
+    wrap.innerHTML='<div style="padding:20px;color:var(--rd);background:#fef2f2;border:1px solid #fecaca;border-radius:10px">Kon de webshop-cijfers niet laden: '+esc(String(e.message||e))+'</div>';
+  }finally{_waBusy=false;}
+}
+// Bouw een 7×24 raster (weekdag × uur) uit de uur-reeks, in Amsterdamse tijd.
+function _waHeat(hourly){
+  const grid=Array.from({length:7},()=>new Array(24).fill(0));
+  const wdMap={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+  let fmt;try{fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Amsterdam',weekday:'short',hour:'2-digit',hour12:false});}catch(_e){fmt=null;}
+  (hourly||[]).forEach(h=>{
+    const s=Number(h.sessions)||0;if(!s)return;
+    const d=new Date(h.ts);if(isNaN(d))return;
+    let wi,hi;
+    if(fmt){
+      const p=fmt.formatToParts(d);
+      const wd=p.find(x=>x.type==='weekday');const hh=p.find(x=>x.type==='hour');
+      if(!wd||!hh)return;wi=wdMap[wd.value];hi=parseInt(hh.value,10)%24;
+    }else{wi=(d.getDay()+6)%7;hi=d.getHours();}
+    if(wi==null||isNaN(hi))return;grid[wi][hi]+=s;
+  });
+  return grid;
+}
+function _waBar(label,val,total,max,kleur){
+  const pct=max>0?Math.max(2,val/max*100):0;
+  const share=total>0?val/total*100:0;
+  return '<div style="display:flex;align-items:center;gap:8px;margin:6px 0">'
+    +'<div style="width:108px;font-size:12px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(label)+'">'+esc(label)+'</div>'
+    +'<div style="flex:1;background:#eef2f6;border-radius:5px;height:16px;min-width:40px"><div style="width:'+pct+'%;background:'+(kleur||'var(--or)')+';height:100%;border-radius:5px"></div></div>'
+    +'<div style="width:82px;font-size:12px;text-align:right"><strong>'+_waNf(val)+'</strong> <span style="color:var(--gr)">'+share.toFixed(0)+'%</span></div>'
+  +'</div>';
+}
+function renderWa(){
+  const wrap=el('wa-body');if(!wrap||!_waData)return;
+  const d=_waData,T=d.totals||{};
+  const kpi=(lbl,val,sub)=>'<div class="mc"><div class="ml">'+esc(lbl)+'</div><div class="mv num">'+val+'</div>'+(sub?'<div class="mt" style="color:var(--gr)">'+sub+'</div>':'')+'</div>';
+  const perLbl=d.days+' dagen';
+
+  // ── Heatmap + drukte-inzicht ──
+  const heat=_waHeat(d.hourly);
+  const perDag=heat.map(r=>r.reduce((a,b)=>a+b,0));
+  const perUur=new Array(24).fill(0);heat.forEach(r=>r.forEach((v,h)=>perUur[h]+=v));
+  const maxCell=Math.max(1,...heat.flat());
+  const drukDag=perDag.indexOf(Math.max(...perDag));
+  const drukUur=perUur.indexOf(Math.max(...perUur));
+  const heeftVerkeer=heat.flat().some(v=>v>0);
+  let cel='';
+  for(let w=0;w<7;w++){
+    cel+='<tr><td style="font-size:11px;color:var(--gr);padding:0 6px 0 0;text-align:right;white-space:nowrap">'+_WA_DAG[w]+'</td>';
+    for(let h=0;h<24;h++){
+      const v=heat[w][h];const a=v>0?0.15+0.85*(v/maxCell):0;
+      const bg=v>0?'rgba(234,88,12,'+a.toFixed(2)+')':'#f1f5f9';
+      cel+='<td title="'+_WA_DAGVOL[w]+' '+String(h).padStart(2,'0')+':00 — '+v+' sessies" style="width:15px;height:15px;background:'+bg+';border-radius:2px"></td>';
+    }
+    cel+='</tr>';
+  }
+  let uurHead='<tr><td></td>';
+  for(let h=0;h<24;h++)uurHead+='<td style="font-size:9px;color:var(--gr);text-align:center">'+(h%3===0?h:'')+'</td>';
+  uurHead+='</tr>';
+  const heatmap='<div style="overflow-x:auto"><table style="border-collapse:separate;border-spacing:2px">'+uurHead+cel+'</table></div>'
+    +'<div style="font-size:11px;color:var(--gr);margin-top:6px">Kleurintensiteit = aantal sessies. Tijden in Nederlandse tijd (uur 0–23).</div>';
+  const inzicht=heeftVerkeer
+    ? '<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px 12px;border-radius:9px;font-size:13px;margin-bottom:12px">🕑 Je drukste moment is rond <strong>'+String(drukUur).padStart(2,'0')+':00</strong> uur, en <strong>'+_WA_DAGVOL[drukDag]+'</strong> is je drukste dag. Plan je advertenties en updates het beste rond die tijd.</div>'
+    : '';
+
+  // ── Trend (dag) ──
+  const daily=d.daily||[];
+  const maxDag=Math.max(1,...daily.map(x=>x.sessions));
+  const trend=daily.length
+    ? '<div style="display:flex;align-items:flex-end;gap:2px;height:90px;padding-top:6px">'+daily.map(x=>{
+        const hh=Math.round(x.sessions/maxDag*80);
+        const dag=(x.day||'').slice(0,10);
+        return '<div title="'+dag+' — '+x.sessions+' sessies, '+x.visitors+' bezoekers" style="flex:1;min-width:3px;height:'+Math.max(2,hh)+'px;background:var(--or);border-radius:2px 2px 0 0;opacity:.85"></div>';
+      }).join('')+'</div>'
+      +'<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gr);margin-top:4px"><span>'+esc((daily[0]?.day||'').slice(0,10))+'</span><span>'+esc((daily[daily.length-1]?.day||'').slice(0,10))+'</span></div>'
+    : '<div style="color:var(--gr);font-size:13px">Geen dagelijkse cijfers.</div>';
+
+  // ── Bronnen / apparaat / land ──
+  const bronMax=Math.max(1,...(d.by_source||[]).map(x=>x.sessions));
+  const bronTot=(d.by_source||[]).reduce((a,x)=>a+x.sessions,0);
+  const bronHtml=(d.by_source||[]).length?(d.by_source).map(x=>_waBar(_WA_BRON[x.label]||x.label,x.sessions,bronTot,bronMax,'#2563eb')).join(''):'<div style="color:var(--gr);font-size:13px">Geen data.</div>';
+  const appMax=Math.max(1,...(d.by_device||[]).map(x=>x.sessions));
+  const appTot=(d.by_device||[]).reduce((a,x)=>a+x.sessions,0);
+  const appHtml=(d.by_device||[]).length?(d.by_device).map(x=>_waBar(_WA_APP[x.label]||x.label,x.sessions,appTot,appMax,'#0d9488')).join(''):'<div style="color:var(--gr);font-size:13px">Geen data.</div>';
+  const landMax=Math.max(1,...(d.by_country||[]).map(x=>x.sessions));
+  const landTot=(d.by_country||[]).reduce((a,x)=>a+x.sessions,0);
+  const landHtml=(d.by_country||[]).length?(d.by_country).map(x=>_waBar(x.label,x.sessions,landTot,landMax,'#7c3aed')).join(''):'<div style="color:var(--gr);font-size:13px">Geen data.</div>';
+
+  // ── Top pagina's ──
+  const pag=d.top_pages||[];
+  const pagHtml=pag.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+    +'<thead><tr style="border-bottom:2px solid var(--bd)"><th style="text-align:left;padding:7px">Landingspagina</th><th style="text-align:right;padding:7px">Sessies</th></tr></thead><tbody>'
+    +pag.map(x=>'<tr><td style="padding:7px;border-top:1px solid var(--bd)"><span style="font-family:monospace;font-size:12px">'+esc(x.path)+'</span></td><td class="num" style="padding:7px;border-top:1px solid var(--bd);text-align:right">'+_waNf(x.sessions)+'</td></tr>').join('')
+    +'</tbody></table></div>':'<div style="color:var(--gr);font-size:13px">Geen data.</div>';
+
+  // ── Funnel ──
+  const stappen=[['Sessies',T.sessions],['In winkelwagen',T.cart_adds],['Naar afrekenen',T.reached_checkout],['Besteld',T.completed_checkout]];
+  const funMax=Math.max(1,T.sessions||0);
+  const funnel=stappen.map((s,i)=>{
+    const pct=Math.max(2,(s[1]||0)/funMax*100);
+    const kl=['#2563eb','#0d9488','#ea580c','#16a34a'][i];
+    return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><div style="width:120px;font-size:12px;text-align:right">'+s[0]+'</div>'
+      +'<div style="flex:1;background:#eef2f6;border-radius:5px;height:20px"><div style="width:'+pct+'%;background:'+kl+';height:100%;border-radius:5px;min-width:2px"></div></div>'
+      +'<div style="width:44px;text-align:right"><strong>'+_waNf(s[1])+'</strong></div></div>';
+  }).join('');
+
+  const sec=(titel,inhoud)=>'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px"><div style="font-weight:700;font-size:14px;margin-bottom:10px">'+titel+'</div>'+inhoud+'</div>';
+
+  wrap.innerHTML=
+    '<div class="mgrid">'
+      +kpi('Sessies',_waNf(T.sessions),'bezoeken in '+perLbl)
+      +kpi('Unieke bezoekers',_waNf(T.visitors),'losse personen')
+      +kpi('Conversie',(Number(T.conversion_rate)||0).toFixed(1)+'%',T.completed_checkout>0?T.completed_checkout+' bestellingen':'nog geen bestellingen')
+      +kpi('In winkelwagen',_waNf(T.cart_adds),T.sessions>0?((T.cart_adds/T.sessions*100).toFixed(1)+'% van sessies'):'')
+    +'</div>'
+    +'<div style="font-weight:700;font-size:15px;margin:22px 0 10px">🕑 Wanneer is het druk? (uur × weekdag)</div>'
+    +inzicht+heatmap
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:22px">'
+      +sec('🔗 Verkeersbronnen',bronHtml)
+      +sec('📱 Apparaat',appHtml)
+      +sec('🌍 Landen',landHtml)
+      +sec('🛒 Verkoop-funnel',funnel+(T.cart_adds===0?'<div style="font-size:11px;color:var(--gr);margin-top:8px">Nog niemand legt iets in de winkelwagen — de meeste bezoekers kijken alleen. Focus op sterke productfoto\'s en een duidelijke prijs/CTA.</div>':''))
+    +'</div>'
+    +'<div style="margin-top:22px">'+sec('📈 Sessies per dag',trend)+'</div>'
+    +'<div style="margin-top:16px">'+sec('📄 Top landingspagina\'s',pagHtml)+'</div>'
+    +'<div style="font-size:11px;color:var(--gr);margin-top:14px">Live opgehaald uit Shopify Analytics. Sessies = bezoeken aan je webshop; bots worden door Shopify grotendeels uitgefilterd.</div>';
 }
 
 async function resetAll(){
