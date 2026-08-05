@@ -210,7 +210,7 @@
     if (!it) { toastX("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it };
-    ADV.slim = null; // hulpfoto reset per item
+    ADV.slim = []; // hulpfoto('s) reset per item (max 2)
     // Bestaande advertentie: opgeslagen foto's. Nieuwe advertentie: begin met de vaste foto.
     if (Array.isArray(a.fotos)) {
       ADV.fotos = a.fotos.slice();
@@ -392,16 +392,21 @@
   }
   function renderSlim() {
     var wrap = E("adv-slim"); if (!wrap) return;
-    if (ADV.slim && ADV.slim.dataUrl) {
-      wrap.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' +
-        '<img src="' + esc(ADV.slim.dataUrl) + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--bd,#e5e7eb)">' +
-        '<button class="btn btn-gy" onclick="advSlimOpnieuw()">🔄 Andere foto</button>' +
+    var arr = ADV.slim || [];
+    var tiles = arr.map(function (s, i) {
+      return '<div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--bd,#e5e7eb)">' +
+        '<img src="' + esc(s.dataUrl) + '" style="width:100%;height:100%;object-fit:cover">' +
+        '<button onclick="advSlimWis(' + i + ')" style="position:absolute;top:2px;right:2px;background:#dc2626;color:#fff;border:none;border-radius:6px;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer">✕</button>' +
         "</div>";
-    } else {
-      wrap.innerHTML = '<button class="btn" style="background:#eef2ff;color:#4338ca;border:none" onclick="advSlimKies()">📐 Voeg slimme foto toe</button>';
+    }).join("");
+    if (arr.length < 2) {
+      tiles += '<div onclick="advSlimKies()" style="width:80px;height:80px;border:2px dashed #a5b4fc;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#6d28d9;cursor:pointer;background:#eef2ff">📐</div>';
     }
+    wrap.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:8px">' + tiles + "</div>" +
+      '<div style="font-size:11px;color:var(--gr,#6b7280);margin-top:6px">Max 2 hulpfoto\'s (bv. één met de maten, één die het meubel goed toont).</div>';
   }
   function advSlimKies() {
+    if ((ADV.slim || []).length >= 2) return;
     var inp = document.createElement("input");
     inp.type = "file"; inp.accept = "image/*";
     inp.onchange = function () {
@@ -411,35 +416,53 @@
         var fr = new FileReader();
         fr.onload = function () {
           var dataUrl = String(fr.result || "");
-          ADV.slim = { dataUrl: dataUrl };
+          if (!Array.isArray(ADV.slim)) ADV.slim = [];
+          ADV.slim.push({ dataUrl: dataUrl, b64: dataUrl.split(",")[1] || "" });
           renderSlim();
-          advSlimAnalyseer(dataUrl.split(",")[1] || "");
+          advSlimAnalyseer();
         };
         fr.readAsDataURL(blob);
       }).catch(function (e) { toastX("Kon foto niet lezen: " + (e.message || e), "#dc2626"); });
     };
     inp.click();
   }
-  function advSlimOpnieuw() {
-    ADV.slim = null;
-    var s = E("adv-slim-status"); if (s) s.textContent = "";
+  function advSlimWis(i) {
+    if (!Array.isArray(ADV.slim)) return;
+    ADV.slim.splice(i, 1);
     renderSlim();
-    advSlimKies();
+    if (ADV.slim.length) advSlimAnalyseer();
+    else { var s = E("adv-slim-status"); if (s) s.textContent = ""; }
   }
-  function advSlimAnalyseer(b64) {
+  function advSlimAnalyseer() {
+    var arr = ADV.slim || []; if (!arr.length) return;
     var st = E("adv-slim-status");
-    if (st) { st.style.color = "var(--gr,#6b7280)"; st.textContent = "✨ AI leest de foto uit…"; }
-    _sb.functions.invoke("analyseer-foto", { body: { image_base64: b64, media_type: "image/jpeg", rubrieken: _rubriekLijstPlat() } })
-      .then(function (res) {
-        if (res.error) throw new Error(res.error.message || "Functie-fout");
-        var d = res.data || {};
-        if (d.error) throw new Error(d.error);
-        _slimVul(d);
-        if (st) { st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe."; }
-        toastX("✨ Velden ingevuld vanaf de foto");
-      }).catch(function (e) {
-        if (st) { st.style.color = "#dc2626"; st.textContent = "Uitlezen mislukt: " + (e.message || e); }
+    if (st) { st.style.color = "var(--gr,#6b7280)"; st.textContent = "✨ AI leest de foto('s) uit…"; }
+    var rubr = _rubriekLijstPlat();
+    Promise.all(arr.map(function (s) {
+      return _sb.functions.invoke("analyseer-foto", { body: { image_base64: s.b64, media_type: "image/jpeg", rubrieken: rubr } })
+        .then(function (res) { return res.error ? { error: res.error.message || "Functie-fout" } : (res.data || {}); });
+    })).then(function (results) {
+      var merged = { rubriek: "", maten: {}, materiaal: "", kleur: "" };
+      var fout = null;
+      results.forEach(function (d) {
+        if (!d || d.error) { fout = (d && d.error) || "onbekende fout"; return; }
+        if (!merged.rubriek && d.rubriek) merged.rubriek = d.rubriek;
+        if (!merged.materiaal && d.materiaal) merged.materiaal = d.materiaal;
+        if (!merged.kleur && d.kleur) merged.kleur = d.kleur;
+        if (d.maten) Object.keys(d.maten).forEach(function (k) { if (!merged.maten[k] && d.maten[k]) merged.maten[k] = d.maten[k]; });
       });
+      _slimVul(merged);
+      if (st) {
+        if (merged.rubriek || merged.materiaal || merged.kleur || Object.keys(merged.maten).length) {
+          st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe.";
+          toastX("✨ Velden ingevuld vanaf de foto('s)");
+        } else {
+          st.style.color = "#c2410c"; st.textContent = "Kon niets uitlezen" + (fout ? " (" + fout + ")" : "") + " — vul de velden handmatig in.";
+        }
+      }
+    }).catch(function (e) {
+      if (st) { st.style.color = "#dc2626"; st.textContent = "Uitlezen mislukt: " + (e.message || e); }
+    });
   }
   function _slimVul(d) {
     if (d.rubriek) {
@@ -568,7 +591,7 @@
   window.advFotoMove = advFotoMove;
   window.advFotoRetry = advFotoRetry;
   window.advSlimKies = advSlimKies;
-  window.advSlimOpnieuw = advSlimOpnieuw;
+  window.advSlimWis = advSlimWis;
 
   // init na load (na het hoofdscript)
   if (document.readyState === "loading") {
