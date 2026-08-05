@@ -1412,13 +1412,26 @@ async function laadVoorraad(){
   try{
     // Partijen (partij_rest gezet) horen niet in de gewone verkoop-/adverteerlijst — daar peel je losse stukken uit.
     const rows=await _restGet('items?status=eq.beschikbaar&partij_rest=is.null&order=aangemaakt_op.desc');
-    STATE.items=rows||[];
+    const items=rows||[];
+    // Advertentietitel per item ophalen: de KLANT ziet overal de advertentietitel i.p.v.
+    // onze interne inkoopnaam (op de factuur, het contract, de mail en het verkoopscherm).
+    try{
+      const ids=items.map(i=>i.id).filter(Boolean);
+      if(ids.length){
+        const advs=await _restGet('advertenties?select=item_id,ai_titel&item_id=in.('+ids.join(',')+')');
+        const map={};(advs||[]).forEach(a=>{if(a.ai_titel&&a.ai_titel.trim())map[a.item_id]=a.ai_titel.trim();});
+        items.forEach(i=>{i.adv_titel=map[i.id]||null;});
+      }
+    }catch(e){console.warn('Advertentietitels laden:',e);}
+    STATE.items=items;
     renderItems();
   }catch(e){
     console.error('Voorraad laden:',e);
     $('items-lijst').innerHTML='<div class="alert alert-err">⚠️ Voorraad laden mislukt: '+esc(e.message)+'</div>';
   }
 }
+// Naam die de KLANT te zien krijgt: advertentietitel indien aanwezig, anders de interne naam.
+function _klantNaam(item){ return (item&&(item.adv_titel||item.naam))||''; }
 
 function renderItems(){
   const lijst=$('items-lijst');
@@ -1583,7 +1596,7 @@ function updateS2(){
 
   // Klant kan meekijken: bewust GEEN inkoop of marge tonen — alleen wat de klant betaalt.
   const itemRijen=STATE.regels.map(r=>
-    `<div class="prev-rij"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:66%;display:inline-block">${esc(r.item.naam)}</span><span>${eur(r.prijs)}</span></div>`
+    `<div class="prev-rij"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:66%;display:inline-block">${esc(_klantNaam(r.item))}</span><span>${eur(r.prijs)}</span></div>`
   ).join('');
   const servRijen=services.map(s=>
     `<div class="prev-rij" style="color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
@@ -1940,7 +1953,7 @@ function _maakFactuurPDFmobiel(data){
   doc.setTextColor(30,47,58);doc.setFont('helvetica','normal');doc.setFontSize(10);
 
   // Elk verkocht item op een eigen regel; bij meerdere items altijd uitgesplitst.
-  const _items=(data.items&&data.items.length)?data.items:[{naam:item.naam,artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
+  const _items=(data.items&&data.items.length)?data.items:[{naam:_klantNaam(item),artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
   const toonApart = _zichtbaar || _items.length>1;
   if(toonApart){
     _items.forEach(it=>{
@@ -2057,7 +2070,7 @@ function _maakContractPDFmobiel(data){
   // Artikel 1
   doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
   doc.setFont('helvetica','normal');
-  const _ctItems=(data.items&&data.items.length)?data.items:[{naam:item.naam,stof:item.stof,artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
+  const _ctItems=(data.items&&data.items.length)?data.items:[{naam:_klantNaam(item),stof:item.stof,artikelnummer:item.artikelnummer,prijs:verkoopprijs}];
   if(_ctItems.length>1){
     doc.text('Verkoper verkoopt aan koper, die accepteert:',15,y);y+=5;
     _ctItems.forEach(it=>{
@@ -2532,9 +2545,9 @@ async function afronden(){
         :{naam:STATE.klant.naam||'Particuliere verkoop',email:STATE.klant.email||'',tel:STATE.klant.tel||'',adres:STATE.klant.adres||'',pc:STATE.klant.pc||'',plts:STATE.klant.plts||''};
       // Samenvattende productnaam voor factuurrecord + e-mail (PDF toont alle regels apart)
       const prodSamenv=STATE.regels.length===1
-        ?`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`
-        :`${item.naam} + ${STATE.regels.length-1} ander${STATE.regels.length-1>1?'e':''} item${STATE.regels.length-1>1?'s':''}`;
-      const factuurItems=STATE.regels.map(r=>({naam:r.item.naam,artikelnummer:r.item.artikelnummer||'',prijs:Number(r.prijs)||0}));
+        ?`${_klantNaam(item)}${item.artikelnummer?' ('+item.artikelnummer+')':''}`
+        :`${_klantNaam(item)} + ${STATE.regels.length-1} ander${STATE.regels.length-1>1?'e':''} item${STATE.regels.length-1>1?'s':''}`;
+      const factuurItems=STATE.regels.map(r=>({naam:_klantNaam(r.item),artikelnummer:r.item.artikelnummer||'',prijs:Number(r.prijs)||0}));
       const pdfData={
         items:factuurItems,item,factuurnr,verkoopDatum,verkoopprijs:STATE.prijs,
         services:STATE.services,extrasVis:STATE.extrasVis,factuurTotaal,
@@ -2624,7 +2637,7 @@ async function afronden(){
           const ondertekendToken=_genToken();
           // PDF
           const ctData={
-            items:STATE.regels.map(r=>({naam:r.item.naam,artikelnummer:r.item.artikelnummer||'',stof:r.item.stof||'',prijs:Number(r.prijs)||0})),
+            items:STATE.regels.map(r=>({naam:_klantNaam(r.item),artikelnummer:r.item.artikelnummer||'',stof:r.item.stof||'',prijs:Number(r.prijs)||0})),
             item,contractnr,verkoopDatum,
             verkoopprijs:factuurTotaal, // contract toont totaal incl services
             termijnen:STATE.termijnen,
@@ -2686,7 +2699,7 @@ async function afronden(){
 
     // SUCCES
     $('klaar-info').innerHTML=`
-      <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(item.naam)}</strong> verkocht</div>
+      <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(_klantNaam(item))}</strong> verkocht</div>
       <div>Factuurnr: <span style="font-family:ui-monospace,monospace">${esc(factuurnr)}</span></div>
       <div style="margin-top:6px">Totaal: <strong>${eur(factuurTotaal)}</strong></div>
       ${(STATE.wilEmailen&&heeftKlant)

@@ -809,6 +809,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 const VER = 4;
 const LEEG = () => ({ version:VER, items:[], verkopen:[], lasten:[] });
 let DB = LEEG();
+// Naam die de KLANT te zien krijgt: advertentietitel indien aanwezig, anders de interne naam.
+function _klantNaam(item){ return (item&&(item.adv_titel||item.naam))||''; }
 
 async function laadAllesVanDB(){
   try {
@@ -878,6 +880,13 @@ async function laadAllesVanDB(){
       _instellingen.inkoopTarget=inst.inkoop_target||3;
       _instellingen.gemMargeOverride=inst.gem_marge_override||null;
     }
+    // Advertentietitel per item: de KLANT ziet overal de advertentietitel i.p.v. onze
+    // interne inkoopnaam (factuur, contract, mails). Fallback op de interne naam.
+    try{
+      const advs=await dbSelect('advertenties','select=item_id,ai_titel');
+      const advMap={};(advs||[]).forEach(a=>{if(a.ai_titel&&a.ai_titel.trim())advMap[a.item_id]=a.ai_titel.trim();});
+      DB.items.forEach(i=>{i.adv_titel=advMap[i.id]||null;});
+    }catch(e){console.warn('Advertentietitels laden:',e);}
     _herbouwSyncSnap();
   } catch(e) {
     console.error('Laden mislukt:',e);
@@ -2694,8 +2703,8 @@ async function _slaFactuurOpInDB({pdfData,klantId,pdfUrl,wilEmailen}){
     klant_adres:klant.adres||null,
     klant_postcode:klant.postcode||null,
     klant_plaats:klant.plaats||null,
-    product_naam:item.naam,
-    product_omschr:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+    product_naam:_klantNaam(item),
+    product_omschr:`${_klantNaam(item)}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
     item_id:item.id,
     product_bedrag:verkoopprijs,
     impregneer_bedrag:_impregneer,
@@ -3088,7 +3097,7 @@ function _maakFactuurPDF(data){
 
   if(_zichtbaar && _services.length>0){
     // UITGESPLITST: elke regel apart
-    const omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    const omschr=`${_klantNaam(item)}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
     doc.text(omschr,18,rY);
     doc.text('€ '+verkoopprijs.toFixed(2).replace('.',','),192,rY,{align:'right'});
     rY+=7;
@@ -3099,7 +3108,7 @@ function _maakFactuurPDF(data){
     });
   } else {
     // SAMEN: 1 regel met optioneel toelichting tussen haakjes
-    let omschr=`${item.naam}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
+    let omschr=`${_klantNaam(item)}${item.artikelnummer?` (${item.artikelnummer})`:''}`;
     if(_services.length>0){
       // Compacte service-namen tussen haakjes
       const servNamen=_services.map(s=>s.naam.toLowerCase()).join(', ');
@@ -3187,7 +3196,7 @@ async function _verstuurFactuurEmail(data){
       klantNaam:klant.naam,
       factuurnummer:factuurnr,
       totaalBedrag:verkoopprijs,
-      productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+      productNaam:`${_klantNaam(item)}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
       pdfBase64,
       pdfBestandsnaam:`factuur-${factuurnr}.pdf`,
       termijnSchema,
@@ -3278,7 +3287,7 @@ function _maakContractPDF(data){
   // Artikel 1 - Object
   doc.setFont('helvetica','bold');doc.text('Artikel 1 — Het verkochte',15,y);y+=6;
   doc.setFont('helvetica','normal');
-  const omschr=`${item.naam}${item.stof?' ('+item.stof+')':''}${item.artikelnummer?' — '+item.artikelnummer:''}`;
+  const omschr=`${_klantNaam(item)}${item.stof?' ('+item.stof+')':''}${item.artikelnummer?' — '+item.artikelnummer:''}`;
   const lines=doc.splitTextToSize(`Verkoper verkoopt aan koper, die accepteert: ${omschr}.`,180);
   lines.forEach(l=>{doc.text(l,15,y);y+=5;});y+=3;
 
@@ -3413,7 +3422,7 @@ async function _slaContractOpInDB({data,klantId,factuurId,pdfPad,ondertekendToke
     klant_adres:klant.adres||null,
     klant_postcode:klant.postcode||null,
     klant_plaats:klant.plaats||null,
-    product_naam:item.naam,
+    product_naam:_klantNaam(item),
     product_artikelnummer:item.artikelnummer||null,
     product_stof:item.stof||null,
     type_betaling:type||null,
@@ -3457,7 +3466,7 @@ async function _verstuurContractEmail({data,pdfBase64,ondertekendToken}){
       klantNaam:klant.naam,
       contractnummer:contractnr,
       totaalBedrag:verkoopprijs,
-      productNaam:`${item.naam}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
+      productNaam:`${_klantNaam(item)}${item.artikelnummer?' ('+item.artikelnummer+')':''}`,
       tekenUrl,
       pdfBase64,
       pdfBestandsnaam:`contract-${contractnr}.pdf`
