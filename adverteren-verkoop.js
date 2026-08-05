@@ -643,6 +643,7 @@
     if (!it) { T("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it, bestaatInDb: !!a.id };
+    ADV.slim = null; // hulpfoto reset per item
     // Bestaande advertentie: gebruik de opgeslagen foto's. Nieuwe advertentie: begin met
     // de vaste standaard-laatste-foto er alvast in.
     if (Array.isArray(a.fotos)) {
@@ -661,6 +662,14 @@
       (it.foto_url ? '<img src="' + X(it.foto_url) + '" style="width:48px;height:48px;border-radius:10px;object-fit:cover">' : '<div style="width:48px;height:48px;border-radius:10px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>') +
       '<div style="min-width:0"><h1 style="margin:0;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(it.naam || "") + '</h1>' +
       '<div style="font-size:12px;color:var(--gr)">' + X(it.artikelnummer || "") + '</div></div></div>' +
+
+      // Slimme (hulp)foto bovenin: leest rubriek/maten/materiaal/kleur uit een foto met
+      // de maten erop. Geen advertentiefoto — komt niet in de advertentie/Marktplaats.
+      '<div class="adv-card" style="border:1.5px dashed #a5b4fc;background:#f5f3ff">' +
+      '<label class="al" style="color:#4338ca">🪄 Slimme foto <span style="font-weight:400;color:var(--gr)">— hulpfoto met de maten erop; vult rubriek, maten, materiaal en kleur vanzelf in</span></label>' +
+      '<div id="adv-slim"></div>' +
+      '<div id="adv-slim-status" style="margin-top:8px;font-size:13px;color:var(--gr)"></div>' +
+      '</div>' +
 
       '<div class="adv-card">' +
       '<div class="fld"><label class="al">Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + '</div>' +
@@ -699,6 +708,7 @@
       '</div>';
 
     renderFotos();
+    renderSlim();
     if (a.laatste_fout) E("adv-status").innerHTML = '<span style="color:#dc2626">Laatste fout: ' + X(a.laatste_fout) + '</span>';
     if (!isLive) { /* concept: laat alle knoppen staan, geen extra melding */ }
     toonScherm("screen-adverteren"); // ook vanuit het advertentiecentrum naar het formulier
@@ -821,6 +831,87 @@
   function advFotoRetry(tmpId) {
     var ph = (ADV.fotos || []).find(function (f) { return f.tmpId === tmpId; });
     if (ph && ph.file) _advUpload(ph, ADV.huidig.itemId);
+  }
+
+  /* ---- Slimme (hulp)foto: leest velden uit, is GEEN advertentiefoto ---- */
+  function _rubriekLijstPlat() {
+    var out = [];
+    Object.keys(RUBRIEKEN).forEach(function (g) { RUBRIEKEN[g].forEach(function (r) { out.push(r); }); });
+    return out;
+  }
+  function renderSlim() {
+    var wrap = E("adv-slim"); if (!wrap) return;
+    if (ADV.slim && ADV.slim.dataUrl) {
+      wrap.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' +
+        '<img src="' + X(ADV.slim.dataUrl) + '" style="width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--bd)">' +
+        '<button class="abtn abtn-gy abtn-sm" style="width:auto;padding:9px 12px" onclick="advSlimOpnieuw()">🔄 Andere foto</button>' +
+        '</div>';
+    } else {
+      wrap.innerHTML = '<button class="abtn abtn-sm" style="background:#eef2ff;color:#4338ca" onclick="advSlimKies()">📐 Voeg slimme foto toe</button>';
+    }
+  }
+  function advSlimKies() {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*";
+    inp.onchange = function () {
+      var file = inp.files && inp.files[0];
+      if (!file || (file.type || "").indexOf("image/") !== 0) return;
+      _compressInkFoto(file).then(function (blob) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var dataUrl = String(fr.result || "");
+          ADV.slim = { dataUrl: dataUrl };
+          renderSlim();
+          advSlimAnalyseer(dataUrl.split(",")[1] || "");
+        };
+        fr.readAsDataURL(blob);
+      }).catch(function (e) { T("Kon foto niet lezen: " + (e.message || e), "#dc2626"); });
+    };
+    inp.click();
+  }
+  function advSlimOpnieuw() {
+    ADV.slim = null;
+    var s = E("adv-slim-status"); if (s) s.textContent = "";
+    renderSlim();
+    advSlimKies();
+  }
+  function advSlimAnalyseer(b64) {
+    var st = E("adv-slim-status");
+    if (st) { st.style.color = "var(--gr)"; st.textContent = "✨ AI leest de foto uit…"; }
+    fetch(SUPABASE_URL + "/functions/v1/analyseer-foto", {
+      method: "POST",
+      headers: { "apikey": SUPABASE_ANON, "Authorization": "Bearer " + tok(), "Content-Type": "application/json" },
+      body: JSON.stringify({ image_base64: b64, media_type: "image/jpeg", rubrieken: _rubriekLijstPlat() })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+    }).then(function (d) {
+      _slimVul(d);
+      if (st) { st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe."; }
+      T("✨ Velden ingevuld vanaf de foto");
+    }).catch(function (e) {
+      if (st) { st.style.color = "#dc2626"; st.textContent = "Uitlezen mislukt: " + (e.message || e); }
+    });
+  }
+  function _slimVul(d) {
+    if (d.rubriek) {
+      var sel = E("adv-rubriek");
+      if (sel) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === d.rubriek) { sel.value = d.rubriek; advRubriekWijzig(); break; }
+        }
+      }
+    }
+    if (d.maten && typeof d.maten === "object") {
+      Object.keys(d.maten).forEach(function (k) {
+        var inp = document.querySelector('#adv-maten [data-maat="' + k + '"]');
+        if (inp && d.maten[k] != null && String(d.maten[k]) !== "") inp.value = d.maten[k];
+      });
+    }
+    if (d.materiaal && E("adv-materiaal")) E("adv-materiaal").value = d.materiaal;
+    if (d.kleur && E("adv-kleur")) E("adv-kleur").value = d.kleur;
   }
   function advFotoWis(i) { ADV.fotos.splice(i, 1); renderFotos(); }
   function advFotoMove(i, d) {
@@ -976,6 +1067,8 @@
   window.advFotoWis = advFotoWis;
   window.advFotoMove = advFotoMove;
   window.advFotoRetry = advFotoRetry;
+  window.advSlimKies = advSlimKies;
+  window.advSlimOpnieuw = advSlimOpnieuw;
   window.advPeelStart = advPeelStart;
   window.advPeelDoen = advPeelDoen;
   window.advPeelAnnuleer = advPeelAnnuleer;
