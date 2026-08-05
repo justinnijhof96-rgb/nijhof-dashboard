@@ -486,8 +486,8 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <div class="sec-body">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       <div class="seg">
-        <button id="tog-week" class="on" onclick="setPeriode('week')">Week</button>
-        <button id="tog-maand" onclick="setPeriode('maand')">Maand</button>
+        <button id="tog-week" onclick="setPeriode('week')">Week</button>
+        <button id="tog-maand" class="on" onclick="setPeriode('maand')">Maand</button>
         <button id="tog-jaar" onclick="setPeriode('jaar')">Jaar</button>
       </div>
       <button onclick="chPeriode(-1)" class="btn btn-gy btn-sm">◀</button>
@@ -818,7 +818,10 @@ async function _startApp(){
   await _laadOrgId();
   await laadAllesVanDB();
   renderAll();
-  showView('s-dash'); // start altijd op het Dashboard
+  // Herstel de laatst geopende pagina (bv. na verversen op mobiel) i.p.v. altijd Dashboard.
+  // showView valideert de id en valt zelf terug op 's-dash' als 'ie onbekend is.
+  var _startView='s-dash'; try{ var _v=localStorage.getItem('nb-view'); if(_v)_startView=_v; }catch(e){}
+  showView(_startView);
 }
 function _toonLogin(){
   el('login-scherm').style.display='flex';
@@ -3970,7 +3973,7 @@ function renderInkoopTarget(){
   </div>`;
 }
 
-let _periodeType='week',_periodeOffset=0;
+let _periodeType='maand',_periodeOffset=0;
 
 function isoWeek(d){
   const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
