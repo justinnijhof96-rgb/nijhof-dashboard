@@ -85,6 +85,10 @@
       ".adv-foto .mv{position:absolute;bottom:2px;left:2px;display:flex;gap:2px}" +
       ".adv-foto .mv button{background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:5px;width:20px;height:18px;font-size:11px;cursor:pointer;line-height:1}" +
       ".adv-foto.eerste::after{content:'1e';position:absolute;top:2px;left:2px;background:#15803d;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 4px}" +
+      ".adv-foto.laden{display:flex;align-items:center;justify-content:center;background:#eef2f7}" +
+      ".adv-foto .spin{width:24px;height:24px;border:3px solid #cbd5e1;border-top-color:var(--or,#e87722);border-radius:50%;animation:advspin .7s linear infinite}" +
+      "@keyframes advspin{to{transform:rotate(360deg)}}" +
+      ".adv-foto.fout{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#fef2f2;border-color:#fecaca}" +
       ".adv-add{width:80px;height:80px;border:2px dashed var(--bd,#cbd5e1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:26px;color:#9ca3af;cursor:pointer;background:transparent}" +
       "#m-adv .adv-preview{border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:10px;background:#f8fafc;white-space:pre-wrap;font-size:12.5px;max-height:220px;overflow:auto}";
     document.head.appendChild(s);
@@ -289,9 +293,19 @@
   }
   function renderFotos() {
     var wrap = E("adv-fotos"); if (!wrap) return;
-    // Hoofdfoto = eerste ECHTE foto (niet de vaste kaart); die krijgt het "1e"-label.
-    var coverIdx = ADV.fotos.findIndex(function (f) { return !f.standaard; });
+    // Hoofdfoto = eerste ECHTE, klaargeladen foto (niet de vaste kaart, niet aan het laden).
+    var coverIdx = ADV.fotos.findIndex(function (f) { return f.url && !f.standaard && !f.loading; });
     var html = ADV.fotos.map(function (f, i) {
+      if (f.loading) {
+        return '<div class="adv-foto laden"><div class="spin"></div>' +
+          '<button class="x" onclick="advFotoWis(' + i + ')">✕</button></div>';
+      }
+      if (f.error) {
+        return '<div class="adv-foto fout">' +
+          '<span style="font-size:18px">⚠️</span>' +
+          '<button onclick="advFotoRetry(\'' + esc(f.tmpId) + '\')" style="background:none;border:none;color:#dc2626;font-size:11px;font-weight:700;cursor:pointer;padding:0">opnieuw</button>' +
+          '<button class="x" onclick="advFotoWis(' + i + ')">✕</button></div>';
+      }
       return '<div class="adv-foto' + (i === coverIdx ? " eerste" : "") + '"><img src="' + esc(f.url) + '">' +
         '<button class="x" onclick="advFotoWis(' + i + ')">✕</button>' +
         (f.standaard ? '<div style="position:absolute;bottom:2px;right:2px;background:#334155;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px">vast</div>' : '') +
@@ -305,31 +319,56 @@
     var inp = document.createElement("input");
     inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
     inp.onchange = function () {
-      var files = Array.prototype.slice.call(inp.files || []);
+      var files = Array.prototype.slice.call(inp.files || [])
+        .filter(function (f) { return f.type && f.type.indexOf("image/") === 0; })
+        .slice(0, 12);
       if (!files.length) return;
       var itemId = ADV.huidig.itemId;
-      toastX("📤 Foto's uploaden…", "#2563eb");
-      var chain = Promise.resolve();
-      files.slice(0, 12).forEach(function (file, idx) {
-        chain = chain.then(function () { return uploadEenFoto(file, itemId, idx); });
+      // Direct een laad-tegel per gekozen foto tonen -> je ziet meteen hoeveel foto's er
+      // komen én dat ze bezig zijn. Elke tegel wordt vervangen zodra zijn foto klaar is.
+      var phs = files.map(function (file) {
+        var ph = { loading: true, tmpId: "ph-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), file: file };
+        _voegFotoToe(ph);
+        return ph;
       });
-      chain.then(function () { renderFotos(); toastX("📷 Foto's toegevoegd"); })
-        .catch(function (e) { toastX("Upload mislukt: " + (e.message || e), "#dc2626"); });
+      renderFotos();
+      _advUploadPool(phs, itemId, 3); // parallel, max 3 tegelijk
     };
     inp.click();
   }
-  function uploadEenFoto(file, itemId, idx) {
-    if (!file.type || file.type.indexOf("image/") !== 0) return Promise.resolve();
+  function _advUploadPool(phs, itemId, conc) {
+    var i = 0, actief = 0;
+    function volgende() {
+      while (actief < conc && i < phs.length) {
+        (function (ph) { actief++; _advUpload(ph, itemId).then(function () { actief--; volgende(); }); })(phs[i]);
+        i++;
+      }
+    }
+    volgende();
+  }
+  // Comprimeert + uploadt één foto naar zijn placeholder. Faalt nooit hard (voor de pool).
+  function _advUpload(ph, itemId) {
+    ph.loading = true; ph.error = false; renderFotos();
     var org = _getOrgId();
-    return compressFoto(file).then(function (blob) {
-      var pad = org + "/adv/" + itemId + "-" + Date.now() + "-" + idx + ".jpg";
+    return compressFoto(ph.file).then(function (blob) {
+      var pad = org + "/adv/" + itemId + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + ".jpg";
       return _sb.storage.from(FOTO_BUCKET).upload(pad, blob, { contentType: "image/jpeg", upsert: false })
         .then(function (res) {
           if (res.error) throw res.error;
+          if (ADV.fotos.indexOf(ph) < 0) return; // tegel is tussentijds verwijderd
           var pub = _sb.storage.from(FOTO_BUCKET).getPublicUrl(pad);
-          _voegFotoToe({ url: pub.data.publicUrl, pad: pad }); // blijft vóór de vaste laatste foto
+          ph.url = pub.data.publicUrl; ph.pad = pad; ph.loading = false; ph.error = false; delete ph.file;
+          renderFotos();
         });
+    }).catch(function (e) {
+      console.warn("Foto-upload mislukt", e);
+      if (ADV.fotos.indexOf(ph) < 0) return;
+      ph.loading = false; ph.error = true; renderFotos();
     });
+  }
+  function advFotoRetry(tmpId) {
+    var ph = (ADV.fotos || []).find(function (f) { return f.tmpId === tmpId; });
+    if (ph && ph.file) _advUpload(ph, ADV.huidig.itemId);
   }
   function advFotoWis(i) { ADV.fotos.splice(i, 1); renderFotos(); }
   function advFotoMove(i, d) {
@@ -364,8 +403,9 @@
       bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: 0 },
       notitie: val("adv-notitie").trim(),
       niet_vermelden: val("adv-niet").trim(),
-      // Vaste kaart altijd als laatste wegschrijven, zodat de eerste echte foto de cover wordt.
-      fotos: ADV.fotos.slice().sort(function (a, b) { return (a.standaard ? 1 : 0) - (b.standaard ? 1 : 0); }),
+      // Alleen echte, klaargeladen foto's opslaan (laad-/fouttegels hebben geen url).
+      // Vaste kaart altijd als laatste, zodat de eerste echte foto de cover wordt.
+      fotos: ADV.fotos.filter(function (f) { return f.url; }).sort(function (a, b) { return (a.standaard ? 1 : 0) - (b.standaard ? 1 : 0); }),
       ai_titel: val("adv-aititel"),
       volledige_tekst: E("adv-volledig") ? E("adv-volledig").value : "",
       status: bestaand.status && bestaand.status !== "concept" ? bestaand.status : "concept",
@@ -389,6 +429,7 @@
   }
 
   function advGenereer() {
+    if ((ADV.fotos || []).some(function (f) { return f.loading; })) { toastX("⏳ Wacht tot de foto's klaar zijn met uploaden", "#c2410c"); return; }
     var btn = E("adv-genbtn"); if (btn) { btn.disabled = true; btn.textContent = "✨ Bezig…"; }
     advOpslaan(true).then(function (saved) {
       return _sb.functions.invoke("genereer-advertentie", { body: { advertentie_id: saved.id } });
@@ -408,6 +449,7 @@
   var _advActieBezig = false;
   function advPlaats(actie) {
     if (_advActieBezig) return; // dubbelklik → geen tweede parallelle keten (status-race, dubbel Shopify-product)
+    if ((ADV.fotos || []).some(function (f) { return f.loading; })) { toastX("⏳ Wacht tot de foto's klaar zijn met uploaden", "#c2410c"); return; }
     var labels = { plaatsen: "plaatsen op Shopify + Marktplaats", reserveren: "op gereserveerd zetten", terug_online: "terug online zetten", verkocht: "als verkocht markeren", verwijderen: "van Marktplaats halen" };
     if ((actie === "verkocht" || actie === "verwijderen") && !confirm("Weet je zeker dat je dit meubel wilt " + labels[actie] + "?")) return;
     _advActieBezig = true;
@@ -440,6 +482,7 @@
   window.advFotoKies = advFotoKies;
   window.advFotoWis = advFotoWis;
   window.advFotoMove = advFotoMove;
+  window.advFotoRetry = advFotoRetry;
 
   // init na load (na het hoofdscript)
   if (document.readyState === "loading") {
