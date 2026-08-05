@@ -661,6 +661,12 @@
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
     var bez = a.bezorging || {};
     var isLive = a.status && a.status !== "concept" && a.status !== "gegenereerd";
+    // Knop-labels contextafhankelijk: een bestaande live advertentie WORDT BIJGEWERKT
+    // (productSet met het opgeslagen id), niet gedupliceerd — dus "Wijzig" i.p.v. "Plaats".
+    var _online = a.status === "live" || a.status === "gereserveerd";
+    var _plaatsLabel = _online ? "✏️ Wijzig advertentie" : (isLive ? "↩︎ Weer online zetten" : "🚀 Plaats op Shopify + Marktplaats");
+    var _saveLabel = isLive ? "💾 Opslaan (nog niet doorvoeren)" : "💾 Alleen opslaan (concept)";
+    var _plaatsHint = _online ? '<div style="font-size:12px;color:var(--gr);margin-top:8px;text-align:center">Werkt je bestáánde advertentie bij op Shopify + Marktplaats — maakt géén dubbele.</div>' : "";
 
     E("adv-panel-form").innerHTML =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
@@ -701,8 +707,9 @@
       '</div>' +
 
       '<div class="adv-card">' +
-      '<button class="abtn abtn-gy abtn-sm" style="margin-bottom:10px" onclick="advOpslaan(false)">💾 Alleen opslaan (concept)</button>' +
-      '<button class="abtn abtn-gn" onclick="advPlaats(\'plaatsen\')">🚀 Plaats op Shopify + Marktplaats</button>' +
+      '<button class="abtn abtn-gy abtn-sm" style="margin-bottom:10px" onclick="advOpslaan(false)">' + _saveLabel + '</button>' +
+      '<button class="abtn abtn-gn" onclick="advPlaats(\'plaatsen\')">' + _plaatsLabel + '</button>' +
+      _plaatsHint +
       '<div id="adv-status" style="margin-top:12px;font-size:13px;color:var(--gr)"></div>' +
       '</div>';
 

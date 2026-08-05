@@ -221,6 +221,11 @@
 
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
     var bez = a.bezorging || {};
+    // Contextlabel: bestaande live advertentie WORDT BIJGEWERKT, niet gedupliceerd.
+    var _online = a.status === "live" || a.status === "gereserveerd";
+    var _isLive = a.status && a.status !== "concept" && a.status !== "gegenereerd";
+    var _plaatsLabel = _online ? "✏️ Wijzig advertentie" : (_isLive ? "↩︎ Weer online zetten" : "🚀 Plaats op Shopify + Marktplaats");
+    var _plaatsHint = _online ? '<div style="font-size:12px;color:var(--gr,#6b7280);margin-top:6px">Werkt je bestaande advertentie bij op Shopify + Marktplaats — maakt geen dubbele.</div>' : "";
 
     E("adv-titel").textContent = "Advertentie · " + (it.naam || "");
     E("adv-body").innerHTML =
@@ -250,8 +255,8 @@
       '<div style="margin-top:8px"><label style="font-size:12px;font-weight:600;color:var(--gr,#6b7280)">Volledige advertentietekst (aanpasbaar)</label>' +
       '<textarea id="adv-volledig" style="width:100%;min-height:150px;border:1.5px solid var(--bd,#e5e7eb);border-radius:8px;padding:9px;font-size:12.5px;box-sizing:border-box;resize:vertical">' + esc(a.volledige_tekst || "") + "</textarea></div>" +
       '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
-      '<button class="btn btn-gn" onclick="advPlaats(\'plaatsen\')">🚀 Plaats op Shopify + Marktplaats</button>' +
-      "</div>" +
+      '<button class="btn btn-gn" onclick="advPlaats(\'plaatsen\')">' + _plaatsLabel + "</button>" +
+      "</div>" + _plaatsHint +
       '<div id="adv-status" style="margin-top:10px;font-size:12px;color:var(--gr,#6b7280)"></div>';
 
     renderFotos();
