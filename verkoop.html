@@ -2243,7 +2243,17 @@ function renderSplitForm(){
     <div id="split-perstuk" style="font-size:13px;color:var(--gr);margin-bottom:14px"></div>
     <button class="btn btn-or" onclick="splitOpslaan()" style="width:100%">${isPartij?'Aantal bijwerken':'✂️ Partij aanmaken'}</button>
     <div id="split-status" style="margin-top:12px"></div>
-    <button onclick="herstartSplitsen()" style="width:100%;margin-top:10px;background:none;border:none;color:var(--gr);cursor:pointer;padding:8px">Terug</button>
+    ${isPartij?`
+      <div style="border-top:1px solid var(--bd);margin:18px 0 14px"></div>
+      <div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">Los stuk afsplitsen (voorraad)</div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px;border-radius:8px;font-size:12.5px;margin-bottom:12px">Maak hier direct een benoemd voorraad-item van deze partij — je hoeft er géén advertentie voor aan te maken. Het inkoopdeel gaat van de resterende inkoop af.</div>
+      <div class="fld" style="margin-bottom:10px"><label class="al">Naam van dit stuk</label><input id="peel-naam" class="ai" placeholder="bijv. Eettafel eiken"></div>
+      <div class="fld" style="margin-bottom:10px"><label class="al">Categorie</label><select id="peel-cat" class="ai">${['<option value="">— categorie —</option>'].concat(SPLIT_CATS.map(c=>`<option value="${c[0]}">${esc(c[1])}</option>`)).join('')}</select></div>
+      <div class="fld" style="margin-bottom:12px"><label class="al">Inkoopdeel (€)</label><input id="peel-deel" class="ai" type="number" inputmode="decimal" min="0" step="0.01" value="${((Number(p.prijs)||0)/Math.max(1,Number(p.partij_rest)||1)).toFixed(2)}"></div>
+      <button class="btn btn-or" onclick="splitPeelDoen()" style="width:100%">➕ Stuk aanmaken (voorraad)</button>
+      <div id="peel-status" style="margin-top:10px"></div>
+    `:''}
+    <button onclick="herstartSplitsen()" style="width:100%;margin-top:14px;background:none;border:none;color:var(--gr);cursor:pointer;padding:8px">Terug</button>
   `;
   _splitPerStuk();
 }
@@ -2269,6 +2279,58 @@ async function splitOpslaan(){
   }catch(e){
     SPLIT.bezig=false;
     if(st)st.innerHTML='<div class="alert alert-err">⚠️ Opslaan mislukt: '+esc(e.message)+'</div>';
+  }
+}
+
+// Los stuk afsplitsen als voorraad — zelfde peel-logica als bij adverteren, maar hier
+// beschikbaar zonder dat je een advertentie hoeft te maken.
+async function splitPeelDoen(){
+  const p=SPLIT.partij;if(!p||SPLIT.bezig)return;
+  const naam=($('peel-naam')?.value||'').trim();
+  const cat=$('peel-cat')?.value||'';
+  const deel=parseFloat($('peel-deel')?.value)||0;
+  const st=$('peel-status');
+  if(!naam){if(st)st.innerHTML='<div class="alert alert-err">Geef het stuk een naam.</div>';return;}
+  const maxDeel=Math.round((Number(p.prijs)||0)*100)/100;
+  if(deel<0||deel>maxDeel){if(st)st.innerHTML='<div class="alert alert-err">Inkoopdeel moet tussen € 0 en € '+maxDeel+' liggen (resterende partij).</div>';return;}
+  SPLIT.bezig=true;
+  const restNa=(Number(p.partij_rest)||0)-1;
+  const prijsNa=Math.max(0,Math.round(((Number(p.prijs)||0)-deel)*100)/100);
+  const newId=_genId();
+  const kind={
+    id:newId,user_id:STATE.user&&STATE.user.id,org_id:STATE.org_id,
+    naam:naam,categorie:cat,stof:p.stof||'',locatie:p.locatie||'',
+    prijs:deel,verwacht_vp:0,datum:p.datum||null,
+    notitie:'Uit partij: '+(p.naam||'')+(p.artikelnummer?' ('+p.artikelnummer+')':''),
+    status:'beschikbaar',stortkosten:0,inkoopbon_nr:p.inkoopbon_nr||null,
+    foto_url:null,bewerkt:[],aangemaakt_op:new Date().toISOString(),partij_rest:null,
+    partij_parent_id:p.id
+  };
+  if(st)st.innerHTML='<div style="color:var(--gr);font-size:13px">⏳ Stuk aanmaken…</div>';
+  try{
+    await _restPost('items',kind);
+    const patch=restNa<=0?{partij_rest:0,prijs:0,status:'gesplitst'}:{partij_rest:restNa,prijs:prijsNa};
+    try{
+      await _restPatch('items?id=eq.'+encodeURIComponent(p.id),patch);
+    }catch(e){
+      // Compensatie: partij niet verlaagd → het net aangemaakte stuk weer weg,
+      // anders geeft een nieuwe poging een duplicaat + dubbel inkoopdeel.
+      await fetch(SUPABASE_URL+'/rest/v1/items?id=eq.'+encodeURIComponent(newId),{
+        method:'DELETE',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getStoredAuth()?.access_token||'')}
+      }).catch(()=>{});
+      throw e;
+    }
+    toast('✓ Stuk aangemaakt: '+naam);
+    SPLIT.bezig=false;
+    if(restNa<=0){
+      herstartSplitsen(); // partij volledig gesplitst → terug naar de keuzelijst
+    }else{
+      p.partij_rest=restNa;p.prijs=prijsNa; // partij bijwerken en formulier verversen voor het volgende stuk
+      renderSplitForm();
+    }
+  }catch(e){
+    SPLIT.bezig=false;
+    if(st)st.innerHTML='<div class="alert alert-err">⚠️ Mislukt: '+esc(e.message)+'</div>';
   }
 }
 
