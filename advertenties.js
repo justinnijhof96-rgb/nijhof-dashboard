@@ -206,7 +206,13 @@
     if (!it) { toastX("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it };
-    ADV.fotos = Array.isArray(a.fotos) ? a.fotos.slice() : [];
+    // Bestaande advertentie: opgeslagen foto's. Nieuwe advertentie: begin met de vaste foto.
+    if (Array.isArray(a.fotos)) {
+      ADV.fotos = a.fotos.slice();
+    } else {
+      var _sf = standaardFoto();
+      ADV.fotos = _sf ? [_sf] : [];
+    }
 
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
     var bez = a.bezorging || {};
@@ -267,11 +273,28 @@
   }
 
   /* ---- Foto's ---- */
+  // Vaste "laatste foto" die standaard in elke nieuwe advertentie staat. Ligt op een
+  // eigen pad (los van losse advertenties) zodat hij nooit meeverdwijnt. De vlag
+  // standaard:true houdt hem herkenbaar zodat nieuwe uploads er vóór geschoven worden.
+  function standaardFoto() {
+    var org = _getOrgId();
+    if (!org) return null;
+    var pad = org + "/_standaard/laatste-foto.jpg";
+    var pub = _sb.storage.from(FOTO_BUCKET).getPublicUrl(pad);
+    return { url: pub.data.publicUrl, pad: pad, standaard: true };
+  }
+  // Voegt een foto toe, maar houdt een vaste laatste foto onderaan.
+  function _voegFotoToe(foto) {
+    var n = ADV.fotos.length;
+    if (n && ADV.fotos[n - 1] && ADV.fotos[n - 1].standaard) ADV.fotos.splice(n - 1, 0, foto);
+    else ADV.fotos.push(foto);
+  }
   function renderFotos() {
     var wrap = E("adv-fotos"); if (!wrap) return;
     var html = ADV.fotos.map(function (f, i) {
       return '<div class="adv-foto' + (i === 0 ? " eerste" : "") + '"><img src="' + esc(f.url) + '">' +
         '<button class="x" onclick="advFotoWis(' + i + ')">✕</button>' +
+        (f.standaard ? '<div style="position:absolute;bottom:2px;right:2px;background:#334155;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px">vast</div>' : '') +
         '<div class="mv"><button onclick="advFotoMove(' + i + ',-1)">◀</button><button onclick="advFotoMove(' + i + ',1)">▶</button></div>' +
         "</div>";
     }).join("");
@@ -304,7 +327,7 @@
         .then(function (res) {
           if (res.error) throw res.error;
           var pub = _sb.storage.from(FOTO_BUCKET).getPublicUrl(pad);
-          ADV.fotos.push({ url: pub.data.publicUrl, pad: pad });
+          _voegFotoToe({ url: pub.data.publicUrl, pad: pad }); // blijft vóór de vaste laatste foto
         });
     });
   }

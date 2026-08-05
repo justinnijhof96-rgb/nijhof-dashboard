@@ -638,7 +638,14 @@
     if (!it) { T("Item niet gevonden", "#dc2626"); return; }
     var a = advVoorItem(itemId) || {};
     ADV.huidig = { itemId: itemId, id: a.id || null, item: it, bestaatInDb: !!a.id };
-    ADV.fotos = Array.isArray(a.fotos) ? a.fotos.slice() : [];
+    // Bestaande advertentie: gebruik de opgeslagen foto's. Nieuwe advertentie: begin met
+    // de vaste standaard-laatste-foto er alvast in.
+    if (Array.isArray(a.fotos)) {
+      ADV.fotos = a.fotos.slice();
+    } else {
+      var _sf = standaardFoto();
+      ADV.fotos = _sf ? [_sf] : [];
+    }
 
     var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
     var bez = a.bezorging || {};
@@ -712,11 +719,26 @@
   }
 
   /* ---- Foto's ---- */
+  // Vaste "laatste foto" die standaard in elke nieuwe advertentie staat. Ligt op een
+  // eigen pad (los van losse advertenties) zodat hij nooit meeverdwijnt. De vlag
+  // standaard:true houdt hem herkenbaar zodat nieuwe uploads er vóór geschoven worden.
+  function standaardFoto() {
+    if (!STATE.org_id) return null;
+    var pad = STATE.org_id + "/_standaard/laatste-foto.jpg";
+    return { url: SUPABASE_URL + "/storage/v1/object/public/item-fotos/" + pad, pad: pad, standaard: true };
+  }
+  // Voegt een foto toe, maar houdt een vaste laatste foto onderaan.
+  function _voegFotoToe(foto) {
+    var n = ADV.fotos.length;
+    if (n && ADV.fotos[n - 1] && ADV.fotos[n - 1].standaard) ADV.fotos.splice(n - 1, 0, foto);
+    else ADV.fotos.push(foto);
+  }
   function renderFotos() {
     var wrap = E("adv-fotos"); if (!wrap) return;
     var html = ADV.fotos.map(function (f, i) {
       return '<div class="adv-foto' + (i === 0 ? " eerste" : "") + '"><img src="' + X(f.url) + '">' +
         '<button class="x" onclick="advFotoWis(' + i + ')">✕</button>' +
+        (f.standaard ? '<div style="position:absolute;bottom:2px;right:2px;background:#334155;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px">vast</div>' : '') +
         '<div class="mv"><button onclick="advFotoMove(' + i + ',-1)">◀</button><button onclick="advFotoMove(' + i + ',1)">▶</button></div>' +
         '</div>';
     }).join("");
@@ -751,7 +773,7 @@
       }).then(function (r) {
         if (!r.ok && r.status !== 200) return r.text().then(function (t) { throw new Error(t || ("upload " + r.status)); });
         var pub = SUPABASE_URL + "/storage/v1/object/public/item-fotos/" + pad;
-        ADV.fotos.push({ url: pub, pad: pad });
+        _voegFotoToe({ url: pub, pad: pad }); // blijft vóór de vaste laatste foto
       });
     });
   }
