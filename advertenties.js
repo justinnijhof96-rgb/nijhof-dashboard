@@ -223,13 +223,11 @@
       '<div class="full"><label>Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + "</div>" +
       '<div class="full"><label>Foto\'s (eerste = hoofdfoto, sleep-volgorde via pijltjes)</label><div class="adv-fotos" id="adv-fotos"></div></div>' +
       '<div class="full"><label>Afmetingen</label><div class="adv-form" id="adv-maten" style="margin:0">' + matenHtml(profiel, a.maten) + "</div></div>" +
-      '<div><label>Staat</label><select id="adv-staat">' + STATEN.map(function (s) { return '<option' + (s === a.staat ? " selected" : "") + ">" + esc(s) + "</option>"; }).join("") + "</select></div>" +
       '<div><label>Merk</label><input id="adv-merk" value="' + esc(a.merk || "") + '"></div>' +
       '<div><label>Materiaal</label><input id="adv-materiaal" value="' + esc(a.materiaal || "") + '"></div>' +
       '<div><label>Kleur</label><input id="adv-kleur" value="' + esc(a.kleur || "") + '"></div>' +
       '<div><label>Vraagprijs (€)</label><input id="adv-prijs" type="number" min="0" step="0.01" value="' + esc(a.vraagprijs != null ? a.vraagprijs : (it.verwacht_vp || "")) + '"></div>' +
       '<div><label>Bezorgen mogelijk?</label><select id="adv-bezorgen"><option value="ja"' + (bez.bezorgen !== false ? " selected" : "") + ">Ja</option><option value=\"nee\"" + (bez.bezorgen === false ? " selected" : "") + ">Nee</option></select></div>" +
-      '<div><label>Bezorgkosten (€, 0 = gratis/n.v.t.)</label><input id="adv-bezorgkosten" type="number" min="0" step="1" value="' + esc(bez.kosten != null ? bez.kosten : "") + '"></div>' +
       '<div class="full"><label>Notitie (AI benoemt dit — bv. hoes afritsbaar, kleine kras)</label><textarea id="adv-notitie">' + esc(a.notitie || "") + "</textarea></div>" +
       '<div class="full"><label>Niet vermelden</label><input id="adv-niet" value="' + esc(a.niet_vermelden || "") + '"></div>' +
       "</div>" +
@@ -354,7 +352,7 @@
       rubriek: rubriek,
       maat_profiel: profielVoorRubriek(rubriek),
       maten: leesMaten(),
-      staat: val("adv-staat"),
+      staat: "",
       merk: val("adv-merk").trim(),
       materiaal: val("adv-materiaal").trim(),
       kleur: val("adv-kleur").trim(),
@@ -363,7 +361,7 @@
       // het formulier gehaald; we schrijven vaste defaults zodat bestaande DB-kolommen blijven werken.
       prijstype: "bieden",
       budget: 10,
-      bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: parseFloat(val("adv-bezorgkosten")) || 0 },
+      bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: 0 },
       notitie: val("adv-notitie").trim(),
       niet_vermelden: val("adv-niet").trim(),
       // Vaste kaart altijd als laatste wegschrijven, zodat de eerste echte foto de cover wordt.
