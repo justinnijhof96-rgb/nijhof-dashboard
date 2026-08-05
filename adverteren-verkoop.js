@@ -319,8 +319,12 @@
       '<span style="font-weight:700;color:var(--nav)">' + ids.length + ' geselecteerd</span>' +
       '<button onclick="advCentrumSelWis()" style="background:none;border:none;color:var(--gr);font-size:13px;cursor:pointer;text-decoration:underline">wissen</button></div>' +
       '<div id="advcentrum-bulkstatus" style="font-size:12px;color:var(--gr);margin-bottom:8px;display:none"></div>' +
-      '<div style="display:flex;gap:8px">' +
-      knop("#15803d", "🚀 Online", "plaatsen") + knop("#b45309", "💶 Prijs", "prijs") + knop("#dc2626", "⏸️ Offline", "verwijderen") +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      knop("#15803d", "🚀 Online", "plaatsen") +
+      knop("#b45309", "🔖 Gereserveerd", "reserveren") +
+      knop("#7c3aed", "✅ Verkocht", "verkocht") +
+      knop("#2563eb", "💶 Prijs", "prijs") +
+      knop("#dc2626", "⏸️ Offline", "verwijderen") +
       '</div></div>';
   }
 
@@ -351,7 +355,8 @@
       pct = parseFloat(String(s).replace(",", "."));
       if (!(pct > 0 && pct < 90)) { T("Vul een percentage tussen 1 en 89 in", "#dc2626"); return; }
     } else {
-      var wat = actie === "plaatsen" ? "online zetten" : "offline halen";
+      var watMap = { plaatsen: "online zetten", verwijderen: "offline halen", reserveren: "op gereserveerd zetten", verkocht: "als verkocht markeren" };
+      var wat = watMap[actie] || actie;
       if (!confirm(ads.length + " advertentie(s) " + wat + "?")) return;
     }
 
