@@ -1814,18 +1814,20 @@ function slaBewerk(){
 }
 
 // ── PARTIJ SPLITSEN (dashboard): 1 gezamenlijke inkoop → meerdere losse items ──
-// Lui splitsen: alleen aantal instellen. De losse stukken peel je in de verkoopapp bij het
-// adverteren (druk daar op de partij). Aanpasbaar, ook nadat je al een stuk hebt verkocht.
-let _split={item:null};
+// Lui splitsen: alleen aantal instellen. Losse stukken kun je hier direct afsplitsen als
+// voorraad (of later in de verkoopapp bij het adverteren). Aanpasbaar, ook na een verkoop.
+const _SPLIT_CATS=[['bank','Bank'],['hoekbank','Hoekbank'],['fauteuil','Fauteuil'],['loveseat','Loveseat'],['kast','Kast'],['dressoir','Dressoir'],['overig','Overig']];
+let _split={item:null,bezig:false};
 function openSplits(id){
   const p=DB.items.find(x=>x.id===id);if(!p)return;
-  _split.item=p;
+  _split.item=p;_split.bezig=false;
   const isPartij=Number(p.partij_rest)>0;
   const aantal=isPartij?Number(p.partij_rest):2;
+  const catOpts=['<option value="">— categorie —</option>'].concat(_SPLIT_CATS.map(c=>`<option value="${c[0]}">${esc(c[1])}</option>`)).join('');
   el('m-splits-body').innerHTML=`
     <div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px">
       <strong>${esc(p.naam||'Partij')}</strong>${p.artikelnummer?' · '+esc(p.artikelnummer):''} · ${isPartij?'resterende':'totale'} inkoop <strong>${eur(Number(p.prijs)||0)}</strong>${p.inkoopbon_nr?' · bon '+esc(p.inkoopbon_nr):''}<br>
-      Geef aan in hoeveel stukken je deze inkoop verdeelt. De losse stukken benoem je later in de verkoopapp, bij het adverteren (druk daar op de partij). Aanpasbaar, ook nadat je al een stuk hebt verkocht.
+      Geef aan in hoeveel stukken je deze inkoop verdeelt${isPartij?', en splits hieronder direct losse stukken af als voorraad':''}. Aanpasbaar, ook nadat je al een stuk hebt verkocht.
     </div>
     <div class="fg" style="margin-bottom:6px"><label class="r">Aantal stukken</label>
       <input id="split-d-aantal" type="number" min="1" step="1" value="${aantal}" oninput="_splitDashPer()" style="font-size:16px;font-weight:700"></div>
@@ -1834,7 +1836,17 @@ function openSplits(id){
       <button class="btn btn-or" onclick="splitDashDoen()">${isPartij?'Aantal bijwerken':'✂️ Partij aanmaken'}</button>
       <button class="btn btn-gy" onclick="sluitModal('m-splits')">Annuleer</button>
     </div>
-    <div id="split-d-status" style="margin-top:10px"></div>`;
+    <div id="split-d-status" style="margin-top:10px"></div>
+    ${isPartij?`
+      <div style="border-top:1px solid var(--bd);margin:16px 0 12px"></div>
+      <div style="font-size:12px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">Los stuk afsplitsen (voorraad)</div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:8px 10px;border-radius:8px;font-size:12.5px;margin-bottom:12px">Maak hier direct een benoemd voorraad-item van deze partij — je hoeft er géén advertentie voor aan te maken. Het inkoopdeel gaat van de resterende inkoop af.</div>
+      <div class="fg" style="margin-bottom:8px"><label>Naam van dit stuk</label><input id="peel-d-naam" placeholder="bijv. Eettafel eiken"></div>
+      <div class="fg" style="margin-bottom:8px"><label>Categorie</label><select id="peel-d-cat">${catOpts}</select></div>
+      <div class="fg" style="margin-bottom:12px"><label>Inkoopdeel (€)</label><input type="number" id="peel-d-deel" min="0" step="0.01" value="${((Number(p.prijs)||0)/Math.max(1,Number(p.partij_rest)||1)).toFixed(2)}"></div>
+      <button class="btn btn-or" onclick="splitDashPeel()" style="width:100%">➕ Stuk aanmaken (voorraad)</button>
+      <div id="peel-d-status" style="margin-top:10px"></div>
+    `:''}`;
   _splitDashPer();
   openModal('m-splits');
 }
@@ -1855,6 +1867,51 @@ async function splitDashDoen(){
     sluitModal('m-splits');renderV();renderDash();
     toast('✂️ Partij ingesteld op '+n+' stuks');
   }catch(e){
+    if(st)st.innerHTML='<span style="color:#dc2626;font-size:13px">⚠️ Mislukt: '+esc(e.message)+'</span>';
+  }
+}
+// Los stuk afsplitsen als voorraad (dashboard) — zelfde peel-logica als de verkoopapp.
+async function splitDashPeel(){
+  const p=_split.item;if(!p||_split.bezig)return;
+  const naam=val('peel-d-naam').trim();
+  const cat=val('peel-d-cat');
+  const deel=fval('peel-d-deel');
+  const st=el('peel-d-status');
+  if(!naam){if(st)st.innerHTML='<span style="color:#dc2626;font-size:13px">Geef het stuk een naam.</span>';return;}
+  const maxDeel=Math.round((Number(p.prijs)||0)*100)/100;
+  if(deel<0||deel>maxDeel){if(st)st.innerHTML='<span style="color:#dc2626;font-size:13px">Inkoopdeel moet tussen € 0 en € '+maxDeel+' liggen (resterende partij).</span>';return;}
+  _split.bezig=true;
+  const restNa=(Number(p.partij_rest)||0)-1;
+  const prijsNa=Math.max(0,Math.round(((Number(p.prijs)||0)-deel)*100)/100);
+  const newId=uid();
+  const kind={
+    id:newId,user_id:_getUserId(),org_id:_getOrgId(),
+    naam:naam,categorie:cat,stof:p.stof||'',locatie:p.locatie||'',
+    prijs:deel,verwacht_vp:0,datum:p.datum||null,
+    notitie:'Uit partij: '+(p.naam||'')+(p.artikelnummer?' ('+p.artikelnummer+')':''),
+    status:'beschikbaar',stortkosten:0,inkoopbon_nr:p.inkoopbon_nr||null,
+    foto_url:null,bewerkt:[],aangemaakt_op:new Date().toISOString(),
+    partij_rest:null,partij_parent_id:p.id
+  };
+  if(st)st.innerHTML='<span style="color:var(--gr);font-size:13px">⏳ Stuk aanmaken…</span>';
+  try{
+    await dbUpsert('items',kind);
+    const patch=restNa<=0?{partij_rest:0,prijs:0,status:'gesplitst'}:{partij_rest:restNa,prijs:prijsNa};
+    try{
+      await dbUpdate('items',p.id,patch);
+    }catch(e){
+      // Compensatie: partij niet verlaagd → het net aangemaakte stuk weer weg.
+      await dbDelete('items','id=eq.'+encodeURIComponent(newId)).catch(()=>{});
+      throw e;
+    }
+    await laadAllesVanDB();
+    _split.bezig=false;
+    toast('✂️ Stuk aangemaakt: '+naam);
+    renderV();renderDash();renderInkoopTarget?.();
+    if(restNa<=0)sluitModal('m-splits'); // partij volledig gesplitst
+    else openSplits(p.id);               // heropen met bijgewerkte partij voor het volgende stuk
+  }catch(e){
+    _split.bezig=false;
     if(st)st.innerHTML='<span style="color:#dc2626;font-size:13px">⚠️ Mislukt: '+esc(e.message)+'</span>';
   }
 }
