@@ -1432,6 +1432,8 @@ async function laadVoorraad(){
 }
 // Naam die de KLANT te zien krijgt: advertentietitel indien aanwezig, anders de interne naam.
 function _klantNaam(item){ return (item&&(item.adv_titel||item.naam))||''; }
+// Naam voor deze verkoopregel: handmatige aanpassing bij het verkopen gaat vóór, anders _klantNaam.
+function _regelNaam(r){ return (r&&r.naam&&r.naam.trim())?r.naam.trim():_klantNaam(r&&r.item); }
 
 function renderItems(){
   const lijst=$('items-lijst');
@@ -1505,8 +1507,8 @@ function renderS2(){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         ${fotoHTML}
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam)}</div>
-          <div style="font-size:11px;color:var(--gr)">${i.artikelnummer?esc(i.artikelnummer):''}${i.categorie?' · '+esc(i.categorie):''}</div>
+          <input type="text" value="${esc(_regelNaam(r))}" oninput="STATE.regels[${idx}].naam=this.value;updateS2()" placeholder="Productnaam (op factuur)" style="width:100%;font-weight:700;color:var(--nav);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:15px;outline:none;box-sizing:border-box">
+          <div style="font-size:11px;color:var(--gr);margin-top:3px">${i.artikelnummer?esc(i.artikelnummer):''}${i.categorie?' · '+esc(i.categorie):''} · naam die de klant ziet — pas gerust aan</div>
         </div>
         ${STATE.regels.length>1?`<button onclick="verwijderRegel(${idx})" title="Uit verkoop halen" style="background:none;border:none;color:var(--rd);font-size:18px;cursor:pointer;padding:4px">✕</button>`:''}
       </div>
@@ -1596,7 +1598,7 @@ function updateS2(){
 
   // Klant kan meekijken: bewust GEEN inkoop of marge tonen — alleen wat de klant betaalt.
   const itemRijen=STATE.regels.map(r=>
-    `<div class="prev-rij"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:66%;display:inline-block">${esc(_klantNaam(r.item))}</span><span>${eur(r.prijs)}</span></div>`
+    `<div class="prev-rij"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:66%;display:inline-block">${esc(_regelNaam(r))}</span><span>${eur(r.prijs)}</span></div>`
   ).join('');
   const servRijen=services.map(s=>
     `<div class="prev-rij" style="color:var(--gn)"><span>+ ${esc(s.naam)}</span><span>+${eur(s.bedrag)}</span></div>`
@@ -2545,9 +2547,9 @@ async function afronden(){
         :{naam:STATE.klant.naam||'Particuliere verkoop',email:STATE.klant.email||'',tel:STATE.klant.tel||'',adres:STATE.klant.adres||'',pc:STATE.klant.pc||'',plts:STATE.klant.plts||''};
       // Samenvattende productnaam voor factuurrecord + e-mail (PDF toont alle regels apart)
       const prodSamenv=STATE.regels.length===1
-        ?`${_klantNaam(item)}${item.artikelnummer?' ('+item.artikelnummer+')':''}`
-        :`${_klantNaam(item)} + ${STATE.regels.length-1} ander${STATE.regels.length-1>1?'e':''} item${STATE.regels.length-1>1?'s':''}`;
-      const factuurItems=STATE.regels.map(r=>({naam:_klantNaam(r.item),artikelnummer:r.item.artikelnummer||'',prijs:Number(r.prijs)||0}));
+        ?`${_regelNaam(STATE.regels[0])}${item.artikelnummer?' ('+item.artikelnummer+')':''}`
+        :`${_regelNaam(STATE.regels[0])} + ${STATE.regels.length-1} ander${STATE.regels.length-1>1?'e':''} item${STATE.regels.length-1>1?'s':''}`;
+      const factuurItems=STATE.regels.map(r=>({naam:_regelNaam(r),artikelnummer:r.item.artikelnummer||'',prijs:Number(r.prijs)||0}));
       const pdfData={
         items:factuurItems,item,factuurnr,verkoopDatum,verkoopprijs:STATE.prijs,
         services:STATE.services,extrasVis:STATE.extrasVis,factuurTotaal,
@@ -2637,7 +2639,7 @@ async function afronden(){
           const ondertekendToken=_genToken();
           // PDF
           const ctData={
-            items:STATE.regels.map(r=>({naam:_klantNaam(r.item),artikelnummer:r.item.artikelnummer||'',stof:r.item.stof||'',prijs:Number(r.prijs)||0})),
+            items:STATE.regels.map(r=>({naam:_regelNaam(r),artikelnummer:r.item.artikelnummer||'',stof:r.item.stof||'',prijs:Number(r.prijs)||0})),
             item,contractnr,verkoopDatum,
             verkoopprijs:factuurTotaal, // contract toont totaal incl services
             termijnen:STATE.termijnen,
@@ -2699,7 +2701,7 @@ async function afronden(){
 
     // SUCCES
     $('klaar-info').innerHTML=`
-      <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(_klantNaam(item))}</strong> verkocht</div>
+      <div style="margin-bottom:8px"><strong>${STATE.regels.length>1?STATE.regels.length+' items':esc(_regelNaam(STATE.regels[0]))}</strong> verkocht</div>
       <div>Factuurnr: <span style="font-family:ui-monospace,monospace">${esc(factuurnr)}</span></div>
       <div style="margin-top:6px">Totaal: <strong>${eur(factuurTotaal)}</strong></div>
       ${(STATE.wilEmailen&&heeftKlant)
