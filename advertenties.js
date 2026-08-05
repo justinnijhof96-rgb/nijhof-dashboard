@@ -291,8 +291,10 @@
   }
   function renderFotos() {
     var wrap = E("adv-fotos"); if (!wrap) return;
+    // Hoofdfoto = eerste ECHTE foto (niet de vaste kaart); die krijgt het "1e"-label.
+    var coverIdx = ADV.fotos.findIndex(function (f) { return !f.standaard; });
     var html = ADV.fotos.map(function (f, i) {
-      return '<div class="adv-foto' + (i === 0 ? " eerste" : "") + '"><img src="' + esc(f.url) + '">' +
+      return '<div class="adv-foto' + (i === coverIdx ? " eerste" : "") + '"><img src="' + esc(f.url) + '">' +
         '<button class="x" onclick="advFotoWis(' + i + ')">✕</button>' +
         (f.standaard ? '<div style="position:absolute;bottom:2px;right:2px;background:#334155;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px">vast</div>' : '') +
         '<div class="mv"><button onclick="advFotoMove(' + i + ',-1)">◀</button><button onclick="advFotoMove(' + i + ',1)">▶</button></div>' +
@@ -364,7 +366,8 @@
       bezorging: { bezorgen: val("adv-bezorgen") !== "nee", kosten: parseFloat(val("adv-bezorgkosten")) || 0 },
       notitie: val("adv-notitie").trim(),
       niet_vermelden: val("adv-niet").trim(),
-      fotos: ADV.fotos,
+      // Vaste kaart altijd als laatste wegschrijven, zodat de eerste echte foto de cover wordt.
+      fotos: ADV.fotos.slice().sort(function (a, b) { return (a.standaard ? 1 : 0) - (b.standaard ? 1 : 0); }),
       ai_titel: val("adv-aititel"),
       volledige_tekst: E("adv-volledig") ? E("adv-volledig").value : "",
       status: bestaand.status && bestaand.status !== "concept" ? bestaand.status : "concept",
