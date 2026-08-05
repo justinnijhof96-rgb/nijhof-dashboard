@@ -236,7 +236,7 @@
       '<div id="adv-slim-status" style="margin-top:8px;font-size:13px;color:var(--gr,#6b7280)"></div>' +
       "</div>" +
       '<div class="full"><label>Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + "</div>" +
-      '<div class="full"><label>Foto\'s (eerste = hoofdfoto, sleep-volgorde via pijltjes)</label><div class="adv-fotos" id="adv-fotos"></div></div>' +
+      '<div class="full"><label>Foto\'s (eerste = hoofdfoto, sleep-volgorde via pijltjes · klik een foto om bij te snijden)</label><div class="adv-fotos" id="adv-fotos"></div></div>' +
       '<div class="full"><label>Afmetingen</label><div class="adv-form" id="adv-maten" style="margin:0">' + matenHtml(profiel, a.maten) + "</div></div>" +
       '<div><label>Merk</label><input id="adv-merk" value="' + esc(a.merk || "") + '"></div>' +
       '<div><label>Materiaal</label><input id="adv-materiaal" value="' + esc(a.materiaal || "") + '"></div>' +
@@ -314,7 +314,7 @@
           '<button onclick="advFotoRetry(\'' + esc(f.tmpId) + '\')" style="background:none;border:none;color:#dc2626;font-size:11px;font-weight:700;cursor:pointer;padding:0">opnieuw</button>' +
           '<button class="x" onclick="advFotoWis(' + i + ')">✕</button></div>';
       }
-      return '<div class="adv-foto' + (i === coverIdx ? " eerste" : "") + '"><img src="' + esc(f.url) + '">' +
+      return '<div class="adv-foto' + (i === coverIdx ? " eerste" : "") + '"><img src="' + esc(f.url) + '"' + (f.standaard ? '' : ' onclick="advFotoCrop(' + i + ')" style="cursor:pointer" title="Klik om bij te snijden"') + '>' +
         '<button class="x" onclick="advFotoWis(' + i + ')">✕</button>' +
         (f.standaard ? '<div style="position:absolute;bottom:2px;right:2px;background:#334155;color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px">vast</div>' : '') +
         '<div class="mv"><button onclick="advFotoMove(' + i + ',-1)">◀</button><button onclick="advFotoMove(' + i + ',1)">▶</button></div>' +
@@ -377,6 +377,78 @@
   function advFotoRetry(tmpId) {
     var ph = (ADV.fotos || []).find(function (f) { return f.tmpId === tmpId; });
     if (ph && ph.file) _advUpload(ph, ADV.huidig.itemId);
+  }
+
+  /* ---- Foto bijsnijden (crop) — Cropper.js, dynamisch geladen ---- */
+  function _laadCropper(cb) {
+    if (window.Cropper) return cb();
+    if (!E("cropper-css")) {
+      var l = document.createElement("link");
+      l.id = "cropper-css"; l.rel = "stylesheet";
+      l.href = "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css";
+      document.head.appendChild(l);
+    }
+    if (E("cropper-js")) { var w = setInterval(function () { if (window.Cropper) { clearInterval(w); cb(); } }, 100); return; }
+    var s = document.createElement("script");
+    s.id = "cropper-js";
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js";
+    s.onload = cb;
+    s.onerror = function () { toastX("Bijsnij-tool laden mislukt (internet?)", "#dc2626"); };
+    document.body.appendChild(s);
+  }
+  function advFotoCrop(i) {
+    var foto = ADV.fotos[i];
+    if (!foto || !foto.url || foto.standaard || foto.loading || foto.error) return;
+    _laadCropper(function () { _openCropModal(i, foto.url); });
+  }
+  function _openCropModal(i, url) {
+    var ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.9);display:flex;flex-direction:column";
+    ov.innerHTML =
+      '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px;overflow:hidden">' +
+      '<img id="adv-crop-img" style="max-width:100%;max-height:100%;display:block"></div>' +
+      '<div style="padding:12px;display:flex;gap:10px;background:#111">' +
+      '<button id="adv-crop-cancel" style="flex:1;padding:14px;border:none;border-radius:10px;background:#374151;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Annuleren</button>' +
+      '<button id="adv-crop-ok" style="flex:2;padding:14px;border:none;border-radius:10px;background:#15803d;color:#fff;font-size:15px;font-weight:700;cursor:pointer">✂️ Bijsnijden &amp; opslaan</button>' +
+      "</div>";
+    document.body.appendChild(ov);
+    var imgEl = E("adv-crop-img");
+    var cropper = null, objUrl = null;
+    function sluit() {
+      try { if (cropper) cropper.destroy(); } catch (e) {}
+      if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch (e) {} }
+      if (ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+    E("adv-crop-cancel").onclick = sluit;
+    fetch(url).then(function (r) { return r.blob(); }).then(function (blob) {
+      objUrl = URL.createObjectURL(blob);
+      imgEl.onload = function () {
+        cropper = new window.Cropper(imgEl, { viewMode: 1, autoCropArea: 1, background: false, movable: true, zoomable: true });
+      };
+      imgEl.src = objUrl;
+    }).catch(function (e) { toastX("Foto laden mislukt: " + (e.message || e), "#dc2626"); sluit(); });
+    E("adv-crop-ok").onclick = function () {
+      if (!cropper) return;
+      var canvas = cropper.getCroppedCanvas({ maxWidth: 2000, maxHeight: 2000 });
+      if (!canvas) { sluit(); return; }
+      var okBtn = E("adv-crop-ok"); okBtn.disabled = true; okBtn.textContent = "Opslaan…";
+      canvas.toBlob(function (blob) {
+        if (!blob) { sluit(); return; }
+        var org = _getOrgId();
+        var pad = org + "/adv/" + ADV.huidig.itemId + "-" + Date.now() + "-crop-" + Math.random().toString(36).slice(2, 7) + ".jpg";
+        _sb.storage.from(FOTO_BUCKET).upload(pad, blob, { contentType: "image/jpeg", upsert: false }).then(function (res) {
+          if (res.error) throw res.error;
+          var pub = _sb.storage.from(FOTO_BUCKET).getPublicUrl(pad);
+          if (ADV.fotos[i]) { ADV.fotos[i].url = pub.data.publicUrl; ADV.fotos[i].pad = pad; }
+          renderFotos();
+          toastX("✂️ Foto bijgesneden");
+          sluit();
+        }).catch(function (e) {
+          toastX("Opslaan mislukt: " + (e.message || e), "#dc2626");
+          okBtn.disabled = false; okBtn.textContent = "✂️ Bijsnijden & opslaan";
+        });
+      }, "image/jpeg", 0.9);
+    };
   }
   function advFotoWis(i) { ADV.fotos.splice(i, 1); renderFotos(); }
   function advFotoMove(i, d) {
@@ -590,6 +662,7 @@
   window.advFotoWis = advFotoWis;
   window.advFotoMove = advFotoMove;
   window.advFotoRetry = advFotoRetry;
+  window.advFotoCrop = advFotoCrop;
   window.advSlimKies = advSlimKies;
   window.advSlimWis = advSlimWis;
 
