@@ -292,6 +292,8 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div class="side-link" data-view="s-debiteuren" onclick="showView('s-debiteuren')"><span class="ic">📋</span>Debiteuren</div>
     <div class="side-link" data-view="s-klanten" onclick="showView('s-klanten')"><span class="ic">👥</span>Klanten</div>
     <div class="side-link" data-view="s-facturen" onclick="showView('s-facturen')"><span class="ic">🧾</span>Facturen &amp; contracten</div>
+    <div class="side-group">Marketing</div>
+    <div class="side-link" data-view="s-mp" onclick="showView('s-mp')"><span class="ic">📣</span>Marktplaats advertenties</div>
     <div class="side-group">Financieel</div>
     <div class="side-link" data-view="s-lasten" onclick="showView('s-lasten')"><span class="ic">💸</span>Vaste lasten</div>
     <div class="side-link" data-view="s-archief" onclick="showView('s-archief')"><span class="ic">🗃️</span>Archief</div>
@@ -526,6 +528,21 @@ main{max-width:1280px;margin:0 auto;padding:16px}
         <div style="font-size:11px;color:var(--gr);margin-top:10px" id="backup-info"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- MARKTPLAATS ADVERTENTIES -->
+<div class="sec" id="s-mp">
+  <div class="sec-hdr" onclick="tog(this)"><h2>📣 Marktplaats advertenties</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px">
+      Download op <strong>Marktplaats Zakelijk → Admarkt → Rapportage</strong> je CSV-rapport en importeer 'm hier. Je ziet dan per advertentie je impressies, kliks, kosten, gemiddelde CPC en leads (e-mails) — én of het bijbehorende meubel al verkocht is, zodat je kosten tegen opbrengst kunt afzetten.
+    </div>
+    <label class="btn btn-or btn-sm" style="cursor:pointer">📥 Importeer Marktplaats-CSV
+      <input type="file" accept=".csv" onchange="mpImporteerCsv(event)" style="display:none">
+    </label>
+    <span id="mp-bestand" style="font-size:12px;color:var(--gr);margin-left:12px"></span>
+    <div id="mp-body" style="margin-top:16px"></div>
   </div>
 </div>
 
@@ -1074,6 +1091,7 @@ const VIEW_TITELS = {
   's-dash':'Dashboard','s-status':'Hoe staan we ervoor?','s-voorraad':'Voorraad',
   's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-klanten':'Klanten','s-facturen':'Facturen & contracten',
   's-lasten':'Vaste lasten','s-archief':'Archief',
+  's-mp':'Marktplaats advertenties',
   's-export':'Export & data','s-instellingen':'Instellingen'
 };
 function showView(id){
@@ -1082,6 +1100,7 @@ function showView(id){
   document.querySelectorAll('.side-link').forEach(a=>a.classList.toggle('active',a.dataset.view===id));
   const t=el('topbar-title');if(t)t.textContent=VIEW_TITELS[id];
   try{localStorage.setItem('nb-view',id);}catch(e){}
+  if(id==='s-mp'){try{renderMp();}catch(e){console.warn('MP render:',e);}}
   closeSidebar();
   window.scrollTo(0,0);
 }
@@ -1110,12 +1129,13 @@ const ICONS={
   pencil:'<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
   fileplus:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/>',
-  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>'
+  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  megafoon:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'
 };
 function ic(naam,maat=14,cls=''){
   return `<svg class="${cls}" width="${maat}" height="${maat}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[naam]||''}</svg>`;
 }
-const SIDE_ICONS={'s-dash':'dashboard','s-status':'activity','s-voorraad':'package','s-inkoop':'inbox','s-debiteuren':'clipboard','s-klanten':'users','s-facturen':'filetext','s-lasten':'banknote','s-archief':'archive','s-export':'upload','s-instellingen':'settings'};
+const SIDE_ICONS={'s-dash':'dashboard','s-status':'activity','s-voorraad':'package','s-inkoop':'inbox','s-debiteuren':'clipboard','s-klanten':'users','s-facturen':'filetext','s-mp':'megafoon','s-lasten':'banknote','s-archief':'archive','s-export':'upload','s-instellingen':'settings'};
 function _initSideIcons(){
   document.querySelectorAll('.side-link').forEach(a=>{
     const n=SIDE_ICONS[a.dataset.view];
@@ -4600,6 +4620,115 @@ function aiExport(periode,formaat){
   }
   toast('📤 Export gedownload');
 }
+// ── MARKTPLAATS ADVERTENTIES (Admarkt CSV-rapport) ────────────────
+let _mpData=(()=>{try{return JSON.parse(localStorage.getItem('nb-mp-data')||'null');}catch(e){return null;}})();
+const _mpEur=m=>(Number(m)||0)/1e6;
+function mpImporteerCsv(evt){
+  const file=evt.target.files[0];evt.target.value='';if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const rijen=_mpParse(e.target.result);
+      if(!rijen.length){toast('Geen advertentieregels gevonden — is dit het Admarkt-rapport?','#dc2626');return;}
+      _mpData={rijen,bestand:file.name,geimporteerd:new Date().toISOString()};
+      try{localStorage.setItem('nb-mp-data',JSON.stringify(_mpData));}catch(_e){}
+      renderMp();toast('📣 '+rijen.length+' regels ingelezen');
+    }catch(err){console.error('MP CSV:',err);toast('CSV inlezen mislukt: '+err.message,'#dc2626');}
+  };
+  reader.readAsText(file,'UTF-8');
+}
+function _mpParse(tekst){
+  const regels=tekst.replace(/^﻿/,'').split(/\r?\n/).filter(r=>r.trim());
+  if(regels.length<2)return [];
+  const H=_parseCsvRegel(regels[0]).map(h=>h.trim().toLowerCase());
+  const col=(...namen)=>{for(const n of namen){const i=H.findIndex(h=>h.includes(n));if(i>=0)return i;}return -1;};
+  const iDat=col('datum'),iNr=col('advertentie nummer','advertentie'),iRub=col('rubriek'),iTit=col('advertentietitel','titel'),
+        iBesteed=col('totaal besteed'),iClicks=col('clicks','klikken'),iImp=col('impressies'),iUrl=col('url clicks'),
+        iMail=col('e-mail'),iCpc=col('gem. cpc','cpc'),iUrlW=col('website url');
+  const g=(c,i)=>i>=0?(c[i]||''):'';
+  const uit=[];
+  for(let r=1;r<regels.length;r++){
+    const c=_parseCsvRegel(regels[r]);
+    if(!g(c,iNr).trim()&&!g(c,iTit).trim())continue;
+    uit.push({
+      datum:g(c,iDat).trim(), advnr:g(c,iNr).trim(), rubriek:g(c,iRub).trim(), titel:g(c,iTit).trim(),
+      besteed:_mpEur(g(c,iBesteed)), clicks:Number(g(c,iClicks))||0, impressies:Number(g(c,iImp))||0,
+      urlclicks:Number(g(c,iUrl))||0, emails:Number(g(c,iMail))||0, cpc:_mpEur(g(c,iCpc)), url:g(c,iUrlW).trim()
+    });
+  }
+  return uit;
+}
+// Koppel een advertentie-URL aan het voorraaditem + eventuele verkoop.
+function _mpKoppel(url){
+  const m=(url||'').match(/nb-\d+/i);if(!m)return null;
+  const art=m[0].toUpperCase();
+  const item=DB.items.find(i=>(i.artikelnummer||'').toUpperCase()===art);
+  if(!item)return {art};
+  const vk=DB.verkopen.find(v=>v.itemId===item.id);
+  return {art,item,verkocht:!!vk,marge:vk?(vk.nettoNaBtw||0):null};
+}
+function renderMp(){
+  const wrap=el('mp-body');if(!wrap)return;
+  const bi=el('mp-bestand');
+  if(!_mpData||!Array.isArray(_mpData.rijen)||!_mpData.rijen.length){
+    if(bi)bi.textContent='';
+    wrap.innerHTML='<div class="empty" style="padding:24px;color:var(--gr)">Nog geen rapport geïmporteerd. Klik op "Importeer Marktplaats-CSV".</div>';
+    return;
+  }
+  const rijen=_mpData.rijen;
+  if(bi)bi.textContent=_mpData.bestand+' · '+rijen.length+' regels';
+  const perAd={};
+  rijen.forEach(r=>{
+    const k=r.advnr||r.titel||r.url;
+    if(!perAd[k])perAd[k]={titel:r.titel,rubriek:r.rubriek,url:r.url,besteed:0,clicks:0,impressies:0,urlclicks:0,emails:0,dagen:0};
+    const a=perAd[k];
+    a.besteed+=r.besteed;a.clicks+=r.clicks;a.impressies+=r.impressies;a.urlclicks+=r.urlclicks;a.emails+=r.emails;a.dagen++;
+    if(!a.titel&&r.titel)a.titel=r.titel;if(!a.url&&r.url)a.url=r.url;if(!a.rubriek&&r.rubriek)a.rubriek=r.rubriek;
+  });
+  const ads=Object.values(perAd).sort((a,b)=>b.besteed-a.besteed);
+  const T=ads.reduce((t,a)=>({besteed:t.besteed+a.besteed,clicks:t.clicks+a.clicks,impressies:t.impressies+a.impressies,urlclicks:t.urlclicks+a.urlclicks,emails:t.emails+a.emails}),{besteed:0,clicks:0,impressies:0,urlclicks:0,emails:0});
+  const ctr=T.impressies>0?T.clicks/T.impressies*100:0;
+  const gcpc=T.clicks>0?T.besteed/T.clicks:0;
+  const kpUrl=T.urlclicks>0?T.besteed/T.urlclicks:0;
+  const kpLead=T.emails>0?T.besteed/T.emails:0;
+  const datums=rijen.map(r=>r.datum).filter(Boolean).sort();
+  const periode=datums.length?`${datums[0]} t/m ${datums[datums.length-1]}`:'';
+  const kpi=(lbl,val,sub)=>`<div class="mc"><div class="ml">${esc(lbl)}</div><div class="mv num">${val}</div>${sub?`<div class="mt" style="color:var(--gr)">${sub}</div>`:''}</div>`;
+  const nf=n=>Number(n||0).toLocaleString('nl-NL');
+  const kpis=`<div class="mgrid">
+    ${kpi('Totaal besteed',eur(T.besteed),periode)}
+    ${kpi('Impressies',nf(T.impressies),'weergaven in zoekresultaten')}
+    ${kpi('Kliks',nf(T.clicks),'CTR '+ctr.toFixed(1)+'%')}
+    ${kpi('Gem. CPC',eur(gcpc),'kosten per klik')}
+    ${kpi('Naar website',nf(T.urlclicks),T.urlclicks>0?eur(kpUrl)+' per doorklik':'')}
+    ${kpi('Leads (e-mails)',nf(T.emails),T.emails>0?eur(kpLead)+' per lead':'nog geen')}
+  </div>`;
+  const th=(t,r)=>`<th style="padding:8px;${r?'text-align:right':'text-align:left'}">${t}</th>`;
+  const td=(v,r)=>`<td style="padding:8px;border-top:1px solid var(--bd)${r?';text-align:right':''}"${r?' class="num"':''}>${v}</td>`;
+  const rijenHtml=ads.map(a=>{
+    const actr=a.impressies>0?a.clicks/a.impressies*100:0;
+    const acpc=a.clicks>0?a.besteed/a.clicks:0;
+    const k=_mpKoppel(a.url);
+    let meubel='<span style="color:var(--gr)">—</span>';
+    if(k&&k.item){
+      if(k.verkocht){
+        const netto=(k.marge||0)-a.besteed;
+        meubel=`<span style="color:var(--gn);font-weight:600">✓ verkocht</span><br><span style="font-size:11px;color:var(--gr)">marge ${eur(k.marge||0)} − ad ${eur(a.besteed)} = <strong style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</strong></span>`;
+      }else meubel=`<span style="color:var(--or)">nog niet verkocht</span><br><span style="font-size:11px;color:var(--gr)">${esc(k.art)}</span>`;
+    }else if(k&&k.art)meubel=`<span style="color:var(--gr)">${esc(k.art)} — niet gevonden</span>`;
+    return `<tr>${td(`<div style="font-weight:600">${esc(a.titel||'?')}</div><div style="font-size:11px;color:var(--gr)">${esc(a.rubriek||'')}</div>`)}${td(nf(a.impressies),1)}${td(nf(a.clicks),1)}${td(actr.toFixed(1)+'%',1)}${td(eur(a.besteed),1)}${td(eur(acpc),1)}${td(a.emails,1)}${td(meubel)}</tr>`;
+  }).join('');
+  wrap.innerHTML=`
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">📊 Totalen ${periode?`<span style="font-weight:400;color:var(--gr);font-size:12px">(${esc(periode)})</span>`:''}</div>
+    ${kpis}
+    <div style="font-weight:700;font-size:14px;margin:22px 0 10px">Per advertentie</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:2px solid var(--bd)">${th('Advertentie')}${th('Impr.',1)}${th('Kliks',1)}${th('CTR',1)}${th('Kosten',1)}${th('CPC',1)}${th('Leads',1)}${th('Meubel / verkoop')}</tr></thead>
+      <tbody>${rijenHtml}</tbody>
+    </table></div>
+    <div style="font-size:11px;color:var(--gr);margin-top:12px">Bedragen omgerekend uit "micros" (÷ 1.000.000). "Leads" = e-mailcontacten via de advertentie. Een nieuwe import vervangt de vorige — download op Marktplaats steeds het meest volledige rapport.</div>`;
+}
+
 async function resetAll(){
   if(!confirm('⚠️ ALLE data verwijderen?\nDit verwijdert:\n• Voorraad + verkopen\n• Facturen + contracten + klanten\n• Alle PDF-bestanden uit Storage\n\nDit kan niet ongedaan worden gemaakt.'))return;
   const bevestiging=prompt('Typ exact "WIS ALLES" (in hoofdletters) om te bevestigen:');
