@@ -1434,6 +1434,23 @@ function _groepeerPerMaand(lijst,datumVan){
   });
 }
 
+// Advertentiekosten per artikelnummer uit de laatst geïmporteerde Marktplaats-CSV.
+// Elke CSV-regel linkt via de nb-… in de website-URL aan een item; we sommeren 'besteed'.
+const _WERK_MARGE_VANAF='2026-08-01'; // vanaf augustus tonen we netto/ad/werkelijke marge
+function _adKostenPerArtikel(){
+  const map={};
+  if(_mpData&&Array.isArray(_mpData.rijen)){
+    _mpData.rijen.forEach(r=>{
+      const m=(r.url||'').match(/nb-\d+/i);
+      if(!m)return;
+      const art=m[0].toUpperCase();
+      map[art]=(map[art]||0)+(Number(r.besteed)||0);
+    });
+  }
+  return map;
+}
+function _nettoMargeVk(v){return v.nettoNaBtw>0?v.nettoNaBtw:((v.brutoMarge||0)-(v.btw||0));}
+
 function _renderVerkocht(){
   const cont=el('arch-container');
   if(!cont)return;
@@ -1455,15 +1472,32 @@ function _renderVerkocht(){
   if(mnd)verkocht=verkocht.filter(x=>(x.verkoop.datum||'').startsWith(mnd));
   // Sorteer op verkoopdatum nieuwste eerst
   verkocht.sort((a,b)=>new Date(b.verkoop.datum)-new Date(a.verkoop.datum));
+  // Advertentiekosten per artikelnummer (uit de laatst geïmporteerde Marktplaats-CSV)
+  const adMap=_adKostenPerArtikel();
+  const heeftCsv=!!(_mpData&&Array.isArray(_mpData.rijen)&&_mpData.rijen.length);
   // Stats
   const statsEl=el('arch-stats');
   if(statsEl){
     const totOmzet=verkocht.reduce((a,x)=>a+(x.verkoop.verkoopprijs||0),0);
     const totMarge=verkocht.reduce((a,x)=>a+(x.verkoop.brutoMarge||0),0);
+    // Werkelijke marge (vanaf augustus): netto marge − advertentiekosten uit de CSV
+    const augRows=verkocht.filter(x=>(x.verkoop.datum||'')>=_WERK_MARGE_VANAF);
+    let werkChip='';
+    if(augRows.length){
+      if(heeftCsv){
+        const adTot=augRows.reduce((a,x)=>a+(adMap[(x.item.artikelnummer||'').toUpperCase()]||0),0);
+        const nettoTot=augRows.reduce((a,x)=>a+_nettoMargeVk(x.verkoop),0);
+        const werkTot=nettoTot-adTot;
+        werkChip=`<span style="background:#f0fdf4;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600" title="Netto marge − advertentiekosten, verkopen vanaf augustus">🎯 Werkelijke marge: ${eur(werkTot)} <span style="font-weight:400;color:var(--gr)">(−${eur(adTot)} ads · vanaf aug)</span></span>`;
+      }else{
+        werkChip=`<span style="background:#fff7ed;color:#9a3412;padding:6px 12px;border-radius:20px;font-weight:600">📣 Upload de Marktplaats-CSV voor advertentiekosten + werkelijke marge</span>`;
+      }
+    }
     statsEl.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">
       <span style="background:var(--orl);color:var(--or);padding:6px 12px;border-radius:20px;font-weight:600">📊 ${verkocht.length} verkocht</span>
       <span style="background:#dcfce7;color:#15803d;padding:6px 12px;border-radius:20px;font-weight:600">💰 Omzet: ${eur(totOmzet)}</span>
       <span style="background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:20px;font-weight:600">📈 Bruto marge: ${eur(totMarge)}</span>
+      ${werkChip}
     </div>`;
   }
   if(!verkocht.length){
@@ -1473,9 +1507,15 @@ function _renderVerkocht(){
   const rijHTML=x=>{
     const i=x.item,v=x.verkoop;
     const marge=(v.brutoMarge||0);
+    const isAug=(v.datum||'')>=_WERK_MARGE_VANAF;
+    const nettoM=_nettoMargeVk(v);
+    const adCost=adMap[(i.artikelnummer||'').toUpperCase()]||0;
+    const toonAd=isAug&&heeftCsv;              // ad-kosten + werkelijke marge pas na CSV-import
+    const werkelijk=nettoM-adCost;
     const heeftFactuur=_facturenCache.some(f=>f.verkoop_id===v.id);
     const factuurBtnLabel=heeftFactuur?ic('eye'):ic('fileplus');
     const factuurBtnTitle=heeftFactuur?'Bekijk factuur PDF':'Factuur genereren';
+    const streep='<span style="color:var(--gr)">—</span>';
     return `<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtD(v.datum)}</td>
       <td><span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--or)">${esc(i.artikelnummer||'—')}</span></td>
@@ -1483,6 +1523,9 @@ function _renderVerkocht(){
       <td style="font-size:12px">${eur(i.prijs)}</td>
       <td style="font-weight:600">${eur(v.verkoopprijs)}</td>
       <td style="color:${marge>=0?'var(--gn)':'var(--rd)'};font-weight:600">${eur(marge)}</td>
+      <td style="font-size:12px">${isAug?eur(nettoM):streep}</td>
+      <td style="font-size:12px;color:var(--rd)">${toonAd?(adCost>0?'−'+eur(adCost):eur(0)):streep}</td>
+      <td style="font-weight:700;color:${toonAd?(werkelijk>=0?'var(--gn)':'var(--rd)'):'var(--gr)'}">${toonAd?eur(werkelijk):streep}</td>
       <td style="font-size:11px;font-family:ui-monospace,monospace">${esc(v.factuur||'—')}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
@@ -1491,13 +1534,21 @@ function _renderVerkocht(){
       </td>
     </tr>`;
   };
-  const tabelKop='<thead><tr><th>Datum</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Verkoop</th><th>Marge</th><th>Factuurnr.</th><th>Acties</th></tr></thead>';
+  const tabelKop='<thead><tr><th>Datum</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Verkoop</th><th>Bruto marge</th><th>Netto marge</th><th>Ad-kosten</th><th>Werkelijke marge</th><th>Factuurnr.</th><th>Acties</th></tr></thead>';
   const openAlles=!!(z||mnd);
   cont.innerHTML=_groepeerPerMaand(verkocht,x=>x.verkoop.datum).map((grp,idx)=>{
     const omzet=grp.rows.reduce((a,x)=>a+(x.verkoop.verkoopprijs||0),0);
     const marge=grp.rows.reduce((a,x)=>a+(x.verkoop.brutoMarge||0),0);
+    // Werkelijke marge per maand: alleen voor augustus-en-later verkopen, als er een CSV is
+    const augR=grp.rows.filter(x=>(x.verkoop.datum||'')>=_WERK_MARGE_VANAF);
+    let extra='';
+    if(augR.length&&heeftCsv){
+      const adTot=augR.reduce((a,x)=>a+(adMap[(x.item.artikelnummer||'').toUpperCase()]||0),0);
+      const werkTot=augR.reduce((a,x)=>a+_nettoMargeVk(x.verkoop),0)-adTot;
+      extra=` · <span style="color:var(--rd)">−${eur(adTot)} ads</span> · <strong style="color:${werkTot>=0?'var(--gn)':'var(--rd)'}">${eur(werkTot)}</strong> werkelijk`;
+    }
     return `<details class="mnd"${(idx===0||openAlles)?' open':''}>
-      <summary><span class="mnd-t">${grp.titel}</span><span class="mnd-info">${grp.rows.length} verkocht · <strong class="num" style="color:var(--nav)">${eur(omzet)}</strong> omzet · ${eur(marge)} marge</span><span class="mnd-chev">▼</span></summary>
+      <summary><span class="mnd-t">${grp.titel}</span><span class="mnd-info">${grp.rows.length} verkocht · <strong class="num" style="color:var(--nav)">${eur(omzet)}</strong> omzet · ${eur(marge)} marge${extra}</span><span class="mnd-chev">▼</span></summary>
       <div class="mnd-body"><div style="overflow-x:auto"><table class="tbl">${tabelKop}<tbody>${grp.rows.map(rijHTML).join('')}</tbody></table></div></div>
     </details>`;
   }).join('');
