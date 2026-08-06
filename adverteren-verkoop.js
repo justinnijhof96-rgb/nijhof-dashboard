@@ -39,6 +39,8 @@
     "Kunst": ["Schilderijen"],
     "Overige": ["Complete inboedels", "Overige Huis en Inrichting"]
   };
+  // Deel de rubriek-lijst met verkoop.html (inkoop-/splits-categorie-dropdowns).
+  try { window.NB_RUBRIEKEN = RUBRIEKEN; } catch (e) {}
   var GROEP_PROFIEL = {
     "Banken en Stoelen": "zitmeubel", "Kasten": "kast", "Tafels": "tafel",
     "Slaapkamer": "bed", "Lampen": "verlichting"
