@@ -4313,19 +4313,12 @@ function _renderDashMain(range){
       const dagVdMaand=nu.getDate();
       const dagenInMaand=new Date(jr2,mn2+1,0).getDate();
       const dagenRestMnd=dagenInMaand-dagVdMaand;
-      const gemDagMarge=dagVdMaand>0?bruto/dagVdMaand:0;
-      let termijnenMarge=0;
-      DB.verkopen.forEach(vk=>{
-        (vk.termijnen||[]).filter(t=>!t.betaald&&t.vervaldatum).forEach(t=>{
-          const vd=new Date(t.vervaldatum);
-          if(!isNaN(vd)&&vd.getFullYear()===jr2&&vd.getMonth()===mn2&&vd>nu){
-            const vpVk=vk.verkoopprijs||0;
-            const bmVk=vk.brutoMarge||0;
-            if(vpVk>0) termijnenMarge+= bmVk*(t.bedrag/vpVk);
-          }
-        });
-      });
-      const projBruto=bruto+(gemDagMarge*dagenRestMnd)+termijnenMarge;
+      // Projectie op basis van VERKOCHT (accrual, incl. openstaande termijnen), niet van
+      // het al ontvangen geld. margeVerkocht = volledige brutomarge van alles wat deze
+      // maand verkocht is; daarbovenop het verwachte tempo voor de resterende dagen.
+      // Zo zie je hoeveel winst we deze maand waarschijnlijk in totaal gaan maken.
+      const gemDagMarge=dagVdMaand>0?margeVerkocht/dagVdMaand:0;
+      const projBruto=margeVerkocht+(gemDagMarge*dagenRestMnd);
       const projBtw=projBruto/1.21*0.21;
       const projNetto=projBruto-projBtw;
       const lastenM2=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
@@ -4344,18 +4337,9 @@ function _renderDashMain(range){
       const dagVdJaar=Math.floor((nu-startJaar)/86400000)+1;
       const dagenInJaar=Math.floor((eindeJaar-startJaar)/86400000)+1;
       const dagenRestJaar=Math.max(0,dagenInJaar-dagVdJaar);
-      const gemDagMarge=dagVdJaar>0?bruto/dagVdJaar:0;
-      let termijnenMarge=0;
-      DB.verkopen.forEach(vk=>{
-        (vk.termijnen||[]).filter(t=>!t.betaald&&t.vervaldatum).forEach(t=>{
-          const vd=new Date(t.vervaldatum);
-          if(!isNaN(vd)&&vd.getFullYear()===jr2&&vd>nu){
-            const vpVk=vk.verkoopprijs||0;const bmVk=vk.brutoMarge||0;
-            if(vpVk>0) termijnenMarge+=bmVk*(t.bedrag/vpVk);
-          }
-        });
-      });
-      const projBruto=bruto+(gemDagMarge*dagenRestJaar)+termijnenMarge;
+      // Projectie op basis van VERKOCHT (accrual, incl. termijnen) — zie het maand-blok.
+      const gemDagMarge=dagVdJaar>0?margeVerkocht/dagVdJaar:0;
+      const projBruto=margeVerkocht+(gemDagMarge*dagenRestJaar);
       const projBtw=projBruto/1.21*0.21;
       const projNetto=projBruto-projBtw;
       const lastenJaar=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0)*12;
