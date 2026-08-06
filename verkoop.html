@@ -441,8 +441,19 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         </div>
       </div>
 
-      <!-- BETAALTYPE -->
+      <!-- VERKOOPKANAAL -->
       <div class="card">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:10px;color:var(--nav)">Verkoopkanaal</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-seg on" id="seg-kan-marktplaats" onclick="kiesKanaal('marktplaats')">Marktplaats</button>
+          <button class="btn-seg" id="seg-kan-woppa" onclick="kiesKanaal('woppa')">Woppa</button>
+          <button class="btn-seg" id="seg-kan-anders" onclick="kiesKanaal('anders')">Anders</button>
+        </div>
+        <div id="s3-woppa-info" style="display:none;margin-top:10px;font-size:13px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px;border-radius:8px">💶 <strong>Woppa:</strong> de volledige prijs wordt ~1 maand na verkoop verwacht. Tot die tijd staat 'ie open bij je debiteuren; de omzet telt pas als 'ie binnen is.</div>
+      </div>
+
+      <!-- BETAALTYPE -->
+      <div class="card" id="s3-betaaltype-card">
         <label style="display:block;font-size:13px;font-weight:600;margin-bottom:10px;color:var(--nav)">Betaaltype</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn-seg" id="seg-vol" onclick="kiesType('volledig')">Volledig</button>
@@ -572,6 +583,7 @@ const STATE = {
   klant: { naam:'', email:'', tel:'', adres:'', pc:'', plts:'' },
   type: 'volledig',
   termijnen: [],
+  kanaal: 'marktplaats',
   wilEmailen: true,
   wilContract: false
 };
@@ -729,6 +741,7 @@ function herstart(){
   STATE.services=[];
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
   STATE.type='volledig';
+  STATE.kanaal='marktplaats';
   STATE.termijnen=[];
   STATE.wilEmailen=false;
   STATE.wilContract=false;
@@ -1651,7 +1664,7 @@ function renderS3(){
   // Aanbetaling defaults
   const vandaag=_dISO(new Date());
   if(!$('s3-aan-dat').value)$('s3-aan-dat').value=vandaag;
-  updateS3();
+  kiesKanaal(STATE.kanaal||'marktplaats'); // synct kanaal-knoppen + Woppa-zichtbaarheid (roept zelf updateS3)
 }
 
 function togKlant(){
@@ -1675,6 +1688,23 @@ function kiesType(t,silent){
     _genTermijnen(3);
   }
   if(!silent)updateS3();
+}
+
+// Verkoopkanaal: Marktplaats / Woppa / Anders. Bij Woppa staat de betaling vast op
+// "1 maand later, onbetaald" (Woppa betaalt pas ~1 maand na levering uit) — daarom
+// verbergen we dan het betaaltype; updateS3 zet de termijn goed.
+function kiesKanaal(k){
+  STATE.kanaal=k;
+  ['marktplaats','woppa','anders'].forEach(x=>{const b=$('seg-kan-'+x);if(b)b.classList.toggle('on',x===k);});
+  const woppa=k==='woppa';
+  const info=$('s3-woppa-info');if(info)info.style.display=woppa?'':'none';
+  const bt=$('s3-betaaltype-card');if(bt)bt.style.display=woppa?'none':'';
+  if(woppa){
+    ['s3-vol-sect','s3-aan-sect','s3-trm-sect','s3-ct-row'].forEach(id=>{const e=$(id);if(e)e.style.display='none';});
+  } else {
+    kiesType(STATE.type||'volledig',true);
+  }
+  updateS3();
 }
 
 function kiesBet(bet,scope){
@@ -1788,7 +1818,14 @@ function updateS3(){
 
   // Termijnen bouwen op basis van type
   const factTot=_factuurTotaal();
-  if(STATE.type==='volledig'){
+  if(STATE.kanaal==='woppa'){
+    // Woppa betaalt ~1 maand na levering uit: volledige prijs als openstaande termijn
+    // met vervaldatum +1 maand. Telt pas als omzet als 'ie binnen is (staat tot dan open).
+    const over1mnd=new Date();over1mnd.setMonth(over1mnd.getMonth()+1);
+    STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:_dISO(over1mnd),betaalmethode:'overschrijving',betaald:false,label:'Betaling via Woppa (±1 maand)'}];
+    STATE.wilContract=false;
+    $('s3-warn').innerHTML='';
+  } else if(STATE.type==='volledig'){
     STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:_dISO(new Date()),betaalmethode:STATE._bet?.vol||'pin',betaald:true,label:'Volledig betaald'}];
     $('s3-warn').innerHTML='';
   } else if(STATE.type==='aanbetaling'){
@@ -1846,7 +1883,8 @@ function renderS4(){
   }).join('');
 
   let typeOmschr='';
-  if(STATE.type==='volledig')typeOmschr=`Volledige betaling (${STATE._bet?.vol||'pin'})`;
+  if(STATE.kanaal==='woppa')typeOmschr='Via Woppa — betaling ±1 maand na verkoop (staat open)';
+  else if(STATE.type==='volledig')typeOmschr=`Volledige betaling (${STATE._bet?.vol||'pin'})`;
   else if(STATE.type==='aanbetaling')typeOmschr='Aanbetaling + rest bij levering';
   else if(STATE.type==='termijn')typeOmschr=`${STATE.termijnen.length} termijnen`;
 
@@ -2452,6 +2490,7 @@ async function afronden(){
         id:vid,user_id:STATE.user.id,org_id:STATE.org_id,
         item_id:r.item.id,verkoopprijs:Number(r.prijs)||0,
         verkooplocatie:'verkoop-app',
+        verkoopkanaal:STATE.kanaal||'marktplaats',
         factuur:factuurnr,datum:verkoopDatum,type:STATE.type,
         impregneer:idx===0?impregneerTot:0,
         services_json:idx===0?(STATE.services||[]):[],
@@ -2735,6 +2774,7 @@ async function nieuweVerkoop(){
   STATE.services=[];
   STATE.klant={naam:'',email:'',tel:'',adres:'',pc:'',plts:''};
   STATE.type='volledig';
+  STATE.kanaal='marktplaats';
   STATE.termijnen=[];
   STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
   STATE.wilEmailen=false;
