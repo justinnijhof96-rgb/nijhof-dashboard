@@ -33,6 +33,9 @@
     "Kunst": ["Schilderijen"],
     "Overige": ["Complete inboedels", "Overige Huis en Inrichting"]
   };
+  // Deel de rubriek-lijst met het dashboard (index.html) zodat de inkoop-/filter-
+  // dropdowns dezelfde volledige Marktplaats-lijst gebruiken.
+  try { window.NB_RUBRIEKEN = RUBRIEKEN; } catch (e) {}
   var GROEP_PROFIEL = {
     "Banken en Stoelen": "zitmeubel", "Kasten": "kast", "Tafels": "tafel",
     "Slaapkamer": "bed", "Lampen": "verlichting"
@@ -220,7 +223,7 @@
       ADV.fotos = _sf ? [_sf] : [];
     }
 
-    var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
+    var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || it.categorie || "") || "accessoire";
     var bez = a.bezorging || {};
     // Contextlabel: bestaande live advertentie WORDT BIJGEWERKT, niet gedupliceerd.
     var _online = a.status === "live" || a.status === "gereserveerd";
@@ -236,7 +239,7 @@
       '<div id="adv-slim"></div>' +
       '<div id="adv-slim-status" style="margin-top:8px;font-size:13px;color:var(--gr,#6b7280)"></div>' +
       "</div>" +
-      '<div class="full"><label>Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + "</div>" +
+      '<div class="full"><label>Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || it.categorie || "") + "</div>" +
       '<div class="full"><label>Foto\'s (eerste = hoofdfoto, sleep-volgorde via pijltjes · klik een foto om bij te snijden)</label><div class="adv-fotos" id="adv-fotos"></div></div>' +
       '<div class="full"><label>Afmetingen</label><div class="adv-form" id="adv-maten" style="margin:0">' + matenHtml(profiel, a.maten) + "</div></div>" +
       '<div><label>Merk</label><input id="adv-merk" value="' + esc(a.merk || "") + '"></div>' +

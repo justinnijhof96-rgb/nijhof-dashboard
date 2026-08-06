@@ -659,7 +659,7 @@
       ADV.fotos = _sf ? [_sf] : [];
     }
 
-    var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || "") || "accessoire";
+    var profiel = a.maat_profiel || profielVoorRubriek(a.rubriek || it.categorie || "") || "accessoire";
     var bez = a.bezorging || {};
     var isLive = a.status && a.status !== "concept" && a.status !== "gegenereerd";
     // Knop-labels contextafhankelijk: een bestaande live advertentie WORDT BIJGEWERKT
@@ -684,7 +684,7 @@
       '</div>' +
 
       '<div class="adv-card">' +
-      '<div class="fld"><label class="al">Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || "") + '</div>' +
+      '<div class="fld"><label class="al">Marktplaats-rubriek</label>' + rubriekSelectHtml(a.rubriek || it.categorie || "") + '</div>' +
       '<div class="fld"><label class="al">Foto\'s <span style="font-weight:400;color:var(--gr)">(eerste = hoofdfoto · tik een foto om bij te snijden)</span></label><div class="adv-fotos" id="adv-fotos"></div></div>' +
       '<div class="fld"><label class="al">Afmetingen</label><div class="grid2" id="adv-maten">' + matenHtml(profiel, a.maten) + '</div></div>' +
       '</div>' +

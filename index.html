@@ -820,6 +820,7 @@ async function _startApp(){
   el('app-container').style.display='block';
   await _laadOrgId();
   await laadAllesVanDB();
+  _vulCatDropdowns();
   renderAll();
   // Herstel de laatst geopende pagina (bv. na verversen op mobiel) i.p.v. altijd Dashboard.
   // showView valideert de id en valt zelf terug op 's-dash' als 'ie onbekend is.
@@ -1370,7 +1371,39 @@ async function voegToe(){
   }
 }
 
+// ── Categorie/rubriek-dropdowns: volledige Marktplaats-lijst (gedeeld met de
+//    advertentiemodule via window.NB_RUBRIEKEN). Terugval op de oude grove lijst.
+function _catOptgroups(selected, eerste){
+  const R=window.NB_RUBRIEKEN, sel=String(selected||''); let gevonden=false, body='';
+  if(R&&typeof R==='object'){
+    Object.keys(R).forEach(g=>{
+      body+=`<optgroup label="${esc(g)}">`;
+      (R[g]||[]).forEach(r=>{ if(r===sel)gevonden=true; body+=`<option value="${esc(r)}"${r===sel?' selected':''}>${esc(r)}</option>`; });
+      body+='</optgroup>';
+    });
+  } else {
+    [['bank','Bank'],['hoekbank','Hoekbank'],['fauteuil','Fauteuil'],['loveseat','Loveseat'],['kast','Kast'],['dressoir','Dressoir'],['overig','Overig']].forEach(c=>{
+      if(c[0]===sel)gevonden=true; body+=`<option value="${esc(c[0])}"${c[0]===sel?' selected':''}>${esc(c[1])}</option>`; });
+  }
+  let pre=eerste?`<option value="">${esc(eerste)}</option>`:'';
+  if(sel&&!gevonden)pre+=`<option value="${esc(sel)}" selected>${esc(sel)} (huidig)</option>`;
+  return pre+body;
+}
+function _vulCatDropdowns(){ const fc=el('f-cat'); if(fc)fc.innerHTML=_catOptgroups('','— kies —'); }
+// Filter: data-gedreven uit de werkelijk aanwezige categorieën (oud + nieuw), met behoud
+// van de huidige selectie — zo blijven ook oude grove-categorie-items filterbaar.
+function _vulFilterCat(){
+  const flt=el('flt-c'); if(!flt)return;
+  const huidig=flt.value||'';
+  const set={}; (DB.items||[]).forEach(i=>{ if(i.categorie)set[i.categorie]=true; });
+  const lijst=Object.keys(set).sort((a,b)=>a.localeCompare(b));
+  let h=`<option value="">Alle categorieën</option>`;
+  lijst.forEach(c=>{ h+=`<option value="${esc(c)}"${c===huidig?' selected':''}>${esc(c)}</option>`; });
+  flt.innerHTML=h;
+}
+
 function renderV(){
+  _vulFilterCat();
   const z=val('flt-z').toLowerCase().trim(),c=val('flt-c'),s=val('flt-s'),o=val('flt-o');
   // Voorraad-sectie toont alleen actieve items (beschikbaar, gereserveerd)
   let items=DB.items.filter(i=>i.status==='beschikbaar' || i.status==='gereserveerd');
@@ -1896,7 +1929,7 @@ function openBewerk(id){
     <div class="fgrid">
       ${i.artikelnummer?`<div class="fg"><label>Artikelnummer</label><input value="${esc(i.artikelnummer)}" disabled style="background:#f3f4f6;color:var(--gr)"></div>`:''}
       <div class="fg"><label class="r">Naam</label><input id="bw-naam" value="${esc(i.naam||'')}"></div>
-      <div class="fg"><label class="r">Categorie</label><select id="bw-cat">${CATS.map(c=>`<option value="${c}"${i.categorie===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select></div>
+      <div class="fg"><label class="r">Categorie / rubriek</label><select id="bw-cat">${_catOptgroups(i.categorie,'')}</select></div>
       <div class="fg"><label>Stof</label><input id="bw-stof" value="${esc(i.stof||'')}"></div>
       <div class="fg"><label>Locatie</label><input id="bw-loc" value="${esc(i.locatie||'')}"></div>
       <div class="fg"><label>Inkoopprijs (€)</label><input type="number" id="bw-ip" value="${i.prijs}" step="0.01" min="0"></div>
@@ -1936,7 +1969,7 @@ function openSplits(id){
   _split.item=p;_split.bezig=false;
   const isPartij=Number(p.partij_rest)>0;
   const aantal=isPartij?Number(p.partij_rest):2;
-  const catOpts=['<option value="">— categorie —</option>'].concat(_SPLIT_CATS.map(c=>`<option value="${c[0]}">${esc(c[1])}</option>`)).join('');
+  const catOpts=_catOptgroups('','— categorie —');
   el('m-splits-body').innerHTML=`
     <div style="background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px">
       <strong>${esc(p.naam||'Partij')}</strong>${p.artikelnummer?' · '+esc(p.artikelnummer):''} · ${isPartij?'resterende':'totale'} inkoop <strong>${eur(Number(p.prijs)||0)}</strong>${p.inkoopbon_nr?' · bon '+esc(p.inkoopbon_nr):''}<br>
@@ -4509,16 +4542,19 @@ function _staafWeek(range){
 }
 
 function _catAnalyse(){
-  const cats={};const CATS=['bank','hoekbank','fauteuil','loveseat','kast','dressoir','overig'];
-  CATS.forEach(c=>cats[c]={dagenArr:[],marge:[],verkopen:[]});
+  // Data-gedreven: neem de categorieën die echt voorkomen (oude grove én nieuwe fijne
+  // Marktplaats-rubrieken), zodat niets uit de marge-analyse valt.
+  const cats={};
+  const _ensureCat=c=>{ if(!cats[c])cats[c]={dagenArr:[],marge:[],verkopen:[]}; return cats[c]; };
   DB.verkopen.forEach(v=>{
-    const item=DB.items.find(x=>x.id===v.itemId);if(!item||!cats[item.categorie])return;
-    const c=cats[item.categorie];
+    const item=DB.items.find(x=>x.id===v.itemId);if(!item||!item.categorie)return;
+    const c=_ensureCat(item.categorie);
     c.marge.push(v.brutoMarge||0);
     c.verkopen.push(v);
     if(item.datum&&v.datum){const dagen=Math.max(0,Math.floor((new Date(v.datum)-new Date(item.datum))/86400000));c.dagenArr.push(dagen);}
   });
-  const voorraadCat={};DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd').forEach(i=>{if(!voorraadCat[i.categorie])voorraadCat[i.categorie]=0;voorraadCat[i.categorie]++;});
+  const voorraadCat={};DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd').forEach(i=>{if(i.categorie){if(!voorraadCat[i.categorie])voorraadCat[i.categorie]=0;voorraadCat[i.categorie]++;}});
+  Object.keys(voorraadCat).forEach(_ensureCat);
   const rijen=Object.entries(cats).map(([cat,d])=>({cat,aantalVk:d.verkopen.length,gemDagen:d.dagenArr.length?Math.round(d.dagenArr.reduce((a,b)=>a+b,0)/d.dagenArr.length):null,gemMarge:d.marge.length?Math.round(d.marge.reduce((a,b)=>a+b,0)/d.marge.length):null,inVoorraad:voorraadCat[cat]||0})).filter(r=>r.aantalVk>0||r.inVoorraad>0).sort((a,b)=>{if(a.gemDagen===null&&b.gemDagen===null)return 0;if(a.gemDagen===null)return 1;if(b.gemDagen===null)return-1;return a.gemDagen-b.gemDagen;});
   if(!rijen.length)return`<div class="db-card"><div class="db-card-title">Categorie-analyse</div><div class="alert alert-info">Nog geen verkoopdata beschikbaar.</div></div>`;
   const maxDagen=Math.max(...rijen.filter(r=>r.gemDagen!==null).map(r=>r.gemDagen),1);
