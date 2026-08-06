@@ -2531,21 +2531,32 @@ async function afronden(){
     }
 
     // 2. Alle verkochte items → status verkocht + hun advertenties offline halen (niet-blokkerend)
+    //    Mislukt het offline halen (netwerk, inlog, of een fout-status van de functie),
+    //    dan onthouden we het item en waarschuwen we onderaan — anders zou de advertentie
+    //    stil op Shopify/Marktplaats kunnen blijven staan terwijl het item verkocht is.
+    const advFouten=[];
     for(const r of STATE.regels){
       const itId=r.item.id;
+      const itNaam=_regelNaam(r)||r.item?.naam||'dit item';
       try{ await _restPatch(`items?id=eq.${encodeURIComponent(itId)}`,{status:'verkocht'}); }
       catch(e){ console.warn('Itemstatus verkocht mislukt:',itId,e); }
       try{
         const advs=await _restGet(`advertenties?select=id,shopify_product_id&item_id=eq.${encodeURIComponent(itId)}&limit=1`);
         const a=advs&&advs[0];
         if(a&&a.shopify_product_id){
-          await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+          const res=await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
             method:'POST',
             headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
             body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
           });
+          if(!res.ok){ const t=await res.text().catch(()=>''); throw new Error('HTTP '+res.status+' '+t.slice(0,200)); }
         }
-      }catch(e){console.warn('Advertentie offline halen mislukt:',itId,e);}
+      }catch(e){ console.warn('Advertentie offline halen mislukt:',itId,e); advFouten.push(itNaam); }
+    }
+    if(advFouten.length){
+      toast('⚠️ Advertentie niet automatisch offline — check Shopify/Marktplaats','#dc2626');
+      const s4=$('s4-status');
+      if(s4) s4.innerHTML+='<div class="alert alert-err">⚠️ Let op: de advertentie van <strong>'+advFouten.map(esc).join(', ')+'</strong> kon niet automatisch offline gehaald worden. Haal hem handmatig offline via het advertentiecentrum of Shopify, anders blijft hij op Marktplaats staan.</div>';
     }
 
     // 3. Factuur wordt ALTIJD gemaakt — klant opslaan en contract alleen bij ingevulde klantgegevens
