@@ -4024,6 +4024,33 @@ function _ontvangenInRange(van,tot){
 }
 function _vkInRange(van,tot){return DB.verkopen.filter(v=>{const d=new Date(v.datum);return!isNaN(d)&&d>=van&&d<=tot;});}
 
+// Kas-basis: per periode het ontvangen geld, plus de inkoop en BTW die
+// EVENREDIG met de betaalde termijnen meelopen. Aandeel = termijnbedrag ÷ som
+// van álle termijnen van die verkoop (niet de verkoopprijs — termijnen tellen
+// niet altijd exact op tot de prijs). Zo staan omzet, inkoop en BTW op dezelfde
+// klok en levert een aanbetaling nooit een schijnverlies op; over de hele deal
+// komt de inkoop/BTW precies op 100% uit.
+function _kasInRange(van,tot){
+  let ontvangen=0,kostprijs=0,btwAandeel=0;
+  DB.verkopen.forEach(vk=>{
+    const termijnen=vk.termijnen||[];
+    const totTerm=termijnen.reduce((a,t)=>a+(t.bedrag||0),0);
+    if(totTerm<=0)return;
+    const it=DB.items.find(x=>x.id===vk.itemId);
+    const ink=it?it.prijs:0;
+    const btwVk=vk.btw||0;
+    termijnen.filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{
+      const d=new Date(t.betaaldOp);
+      if(isNaN(d)||d<van||d>tot)return;
+      const frac=t.bedrag/totTerm;
+      ontvangen+=t.bedrag;
+      kostprijs+=frac*ink;
+      btwAandeel+=frac*btwVk;
+    });
+  });
+  return{ontvangen,kostprijs,btwAandeel};
+}
+
 function _afstortVerliesInRange(van,tot){
   return DB.items.filter(i=>{
     if(i.status!=='afgestort')return false;
@@ -4125,10 +4152,16 @@ function renderStatus(){
 
 function _calcPeriode(van,tot){
   const vkSel=_vkInRange(van,tot);
-  const ontvangen=_ontvangenInRange(van,tot);
-  const inkwSel=vkSel.reduce((a,v)=>{const i=DB.items.find(x=>x.id===v.itemId);return a+(i?i.prijs:0);},0);
+  // Kas-basis: ontvangen geld met inkoop & BTW die evenredig met de betaalde
+  // termijnen meelopen — zo geeft een aanbetaling nooit een schijnverlies.
+  const kas=_kasInRange(van,tot);
+  const ontvangen=kas.ontvangen;
+  const inkwSel=kas.kostprijs;
   const bruto=ontvangen-inkwSel;
-  const btw=vkSel.reduce((a,v)=>a+(v.btw||0),0);
+  const btw=kas.btwAandeel;
+  // Accrual: alles wat in deze periode is verkocht, incl. openstaande termijnen.
+  const omzetVerkocht=vkSel.reduce((a,v)=>a+(v.verkoopprijs||0),0);
+  const margeVerkocht=vkSel.reduce((a,v)=>{const i=DB.items.find(x=>x.id===v.itemId);const bm=(typeof v.brutoMarge==='number')?v.brutoMarge:((v.verkoopprijs||0)-(i?i.prijs:0));return a+bm;},0);
   const afstortVerlies=_afstortVerliesInRange(van,tot);
   const lastenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
   const lastenP=_periodeType==='week'?lastenM/4.33:_periodeType==='jaar'?lastenM*12:lastenM;
@@ -4145,7 +4178,7 @@ function _calcPeriode(van,tot){
   const inkopen=DB.items.filter(i=>{if(i.status==='gesplitst')return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
   // inkopenTel (aantal transacties): gepeelde stukken eruit, partij telt één keer.
   const inkopenTel=DB.items.filter(i=>{if(i.partij_parent_id)return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
-  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel};
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht};
 }
 
 function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
@@ -4180,7 +4213,7 @@ function _renderDashMain(range){
   const cur=_calcPeriode(range.van,range.tot);
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
-  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel}=cur;
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht}=cur;
   // Waarde in loods: verwachte verkoopprijs (fallback op inkoopprijs als vvp niet ingevuld).
   // Voor een lopende partij (partij_rest>0) is verwacht_vp nog de volle waarde terwijl
   // stukken al gepeeld zijn → gebruik de restant-inkoopprijs, anders dubbeltelling.
@@ -4257,7 +4290,9 @@ function _renderDashMain(range){
   const dot=c=>`<span class="kpi-dot" style="background:${c}"></span>`;
   const kpis=`<div class="mgrid">
     <div class="mc green"><div class="ml">${dot('var(--gn)')}Omzet ontvangen</div><div class="mv num">${eur(ontvangen)}</div><div class="mt">${_trEur(ontvangen,prv.ontvangen)}</div></div>
+    <div class="mc"><div class="ml">${dot('var(--bl)')}Omzet verkocht</div><div class="mv num">${eur(omzetVerkocht)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. termijnen${_trEur(omzetVerkocht,prv.omzetVerkocht)?' '+_trEur(omzetVerkocht,prv.omzetVerkocht):''}</div></div>
     <div class="mc"><div class="ml">${dot('var(--or)')}Bruto marge</div><div class="mv num">${eur(bruto)}</div><div class="mt">${ontvangen>0?pct(bruto,ontvangen):''} ${_trEur(bruto,prv.bruto)}</div></div>
+    <div class="mc"><div class="ml">${dot('var(--bl)')}Marge verkocht</div><div class="mv num">${eur(margeVerkocht)}</div><div class="mt" style="color:var(--gr);font-size:10px">incl. termijnen${omzetVerkocht>0?' · '+pct(margeVerkocht,omzetVerkocht):''}</div></div>
     <div class="mc ${netto>=0?'':'red'}"><div class="ml">${dot(netto>=0?'var(--gn)':'var(--rd)')}Netto marge</div><div class="mv num" style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</div><div class="mt">${ontvangen>0?pct(netto,ontvangen):''} ${_trEur(netto,prv.netto)}</div></div>
     <div class="mc ${btwSaldo>=0?'red':'green'}"><div class="ml">${dot('var(--bl)')}BTW saldo</div><div class="mv num">${eur(btwSaldo)}</div><div class="mt" style="color:var(--gr);font-size:10px">${btwSaldo>=0?'af te dragen':'terug te vragen'}</div></div>
     <div class="mc ${nNaLasten>=0?'green':'red'}"><div class="ml">${dot(nNaLasten>=0?'var(--gn)':'var(--rd)')}Netto na lasten</div><div class="mv num" style="color:${nNaLasten>=0?'var(--gn)':'var(--rd)'}">${eur(nNaLasten)}</div><div class="mt">${_trEur(nNaLasten,prv.nNaLasten)}</div></div>
