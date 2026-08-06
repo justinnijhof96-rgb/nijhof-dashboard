@@ -46,28 +46,61 @@ function slugify(s: unknown): string {
   return base || ("nb-" + Math.abs(Date.now()));
 }
 
-// Onze inkoop-categorie -> Shopify product-type dat exact matcht met de slimme
-// collecties in de webshop. Die collecties zijn in de Marktplaats Pro-app gekoppeld
-// aan een Marktplaats-rubriek; zonder deze vertaling valt het product buiten elke
-// gekoppelde collectie en verschijnt de advertentie NIET op Marktplaats.
-const COLLECTIE_TYPE: Record<string, string> = {
-  bank: "Bankstellen",
-  hoekbank: "Bankstellen",
-  loveseat: "Bankstellen",
-  bankstel: "Bankstellen",
-  fauteuil: "Fauteuils",
-  dressoir: "Dressoirs",
-  kast: "Kledingkasten",
-  kledingkast: "Kledingkasten",
-  stoel: "Stoelen",
+// De exacte producttypes van de slimme collecties in de webshop. Elk hiervan is in de
+// Marktplaats Pro-app (Woosify) gekoppeld aan een Marktplaats-rubriek. Het Shopify-
+// producttype MOET precies één van deze waarden zijn, anders valt het product buiten
+// elke gekoppelde collectie en verschijnt de advertentie NIET op Marktplaats.
+const COLLECTIES: string[] = [
+  "Bankstellen", "Barkrukken", "Bedden", "Bijzettafels", "Boekenkasten", "Boxsprings",
+  "Buffetkasten", "Bureaus", "Dressoirs", "Eettafels", "Fauteuils", "Kaptafels",
+  "Kledingkasten", "Ladekasten", "Matrassen en Bedbodems", "Nachtkastjes", "Salontafels",
+  "Schoenenkasten", "Secretaires", "Sidetables", "Slaapbanken", "Sofa's en Chaises Longues",
+  "Stoelen", "Tapijten en Kleden", "Televisiemeubels", "Vitrinekasten",
+  "Voetenbanken en Poefen", "Wandmeubels",
+];
+const _COLL_LC: Record<string, string> = {};
+for (const c of COLLECTIES) _COLL_LC[c.toLowerCase()] = c;
+
+// Marktplaats-rubriek OF dashboard-categorie (lowercase) -> exacte collectienaam, voor
+// gevallen waar de naam afwijkt van de collectie. Rubrieken die 1-op-1 gelijk zijn aan
+// een collectie staan hier NIET (die worden direct via _COLL_LC herkend).
+const NAAR_COLLECTIE: Record<string, string> = {
+  // dashboard-categorieën (grof)
+  "bank": "Bankstellen", "hoekbank": "Bankstellen", "loveseat": "Bankstellen", "bankstel": "Bankstellen",
+  "fauteuil": "Fauteuils", "dressoir": "Dressoirs", "stoel": "Stoelen",
+  "kast": "Kledingkasten", "kledingkast": "Kledingkasten",
+  // Marktplaats-rubrieken die anders heten dan hun collectie
+  "complete zithoeken": "Bankstellen",
+  "bureaustoelen": "Stoelen",
+  "krukjes": "Voetenbanken en Poefen",
+  "zitzakken": "Fauteuils",
+  "computermeubels": "Bureaus",
+  "roldeurkasten en archiefkasten": "Kledingkasten",
+  "schoenenrekken": "Schoenenkasten",
+  "stellingkasten": "Boekenkasten",
+  "kasten - overige": "Kledingkasten",
+  "barren": "Sidetables",
+  "statafels": "Eettafels",
+  "stapelbedden en hoogslapers": "Bedden",
+  "waterbedden": "Bedden",
+  "complete slaapkamers": "Bedden",
 };
+
+// Bepaal het Shopify-producttype (= collectienaam). De RUBRIEK is leidend (specifiek);
+// de dashboard-categorie is alleen terugval. Zo belandt bv. een buffetkast met interne
+// categorie "kast" tóch in de Buffetkasten-collectie i.p.v. Kledingkasten.
 function collectieType(rubriek: unknown, categorie: unknown): string {
-  // Beide sleutels proberen: een lege categorie ('' is niet nullish) mag de
-  // rubriek-mapping niet blokkeren — anders valt het product buiten de gekoppelde
-  // collecties en verschijnt de advertentie stilzwijgend niet op Marktplaats.
-  const cat = String(categorie ?? "").trim().toLowerCase();
-  const rub = String(rubriek ?? "").trim().toLowerCase();
-  return COLLECTIE_TYPE[cat] || COLLECTIE_TYPE[rub] || String(rubriek || categorie || "");
+  const rub = String(rubriek ?? "").trim();
+  const cat = String(categorie ?? "").trim();
+  return _COLL_LC[rub.toLowerCase()]        // rubriek == collectie
+    || NAAR_COLLECTIE[rub.toLowerCase()]    // rubriek via alias
+    || NAAR_COLLECTIE[cat.toLowerCase()]    // categorie via alias
+    || _COLL_LC[cat.toLowerCase()]          // categorie == collectie
+    || rub || cat || "";                    // terugval (valt buiten collecties -> waarschuwing)
+}
+// Is een berekend producttype een bestaande, gekoppelde collectie?
+function isGemapteCollectie(type: unknown): boolean {
+  return !!_COLL_LC[String(type ?? "").trim().toLowerCase()];
 }
 
 Deno.serve(async (req: Request) => {
@@ -181,19 +214,17 @@ Deno.serve(async (req: Request) => {
     if (artikelnr) variant.sku = artikelnr;
     if (adv.shopify_variant_id) variant.id = adv.shopify_variant_id;
 
-    // Collectietype + waarschuwing als het niet gemapt kon worden (dan valt het product
-    // buiten de gekoppelde slimme collecties en verschijnt de advertentie niet op Marktplaats).
-    const _cat = String(item?.categorie ?? "").trim().toLowerCase();
-    const _rub = String(adv.rubriek ?? "").trim().toLowerCase();
-    const collectieGemapt = !!(COLLECTIE_TYPE[_cat] || COLLECTIE_TYPE[_rub]);
-    const collWaarschuwing = (!offline && !collectieGemapt)
-      ? `Categorie/rubriek "${item?.categorie || adv.rubriek || "?"}" is niet gekoppeld aan een Marktplaats-collectie — de advertentie verschijnt mogelijk niet op Marktplaats.`
+    // Collectietype (= Shopify-producttype) + waarschuwing als het buiten de gekoppelde
+    // slimme collecties valt (dan verschijnt de advertentie niet op Marktplaats).
+    const _type = collectieType(adv.rubriek, item?.categorie);
+    const collWaarschuwing = (!offline && !isGemapteCollectie(_type))
+      ? `Rubriek "${adv.rubriek || item?.categorie || "?"}" valt buiten de gekoppelde Marktplaats-collecties (producttype "${_type}") — koppel/maak deze collectie in de Marktplaats Pro-app, anders verschijnt de advertentie niet op Marktplaats.`
       : null;
 
     const input: any = {
       title: titel,
       descriptionHtml: descHtml,
-      productType: collectieType(adv.rubriek, item?.categorie),
+      productType: _type,
       vendor: "Nijhof Brothers Furniture",
       tags,
       status: shopifyStatus,
