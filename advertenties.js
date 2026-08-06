@@ -30,6 +30,7 @@
     "Stoffering": ["Behang", "Gordijnen en Lamellen", "Tapijten en Kleden", "Vloerbedekking"],
     "Woonaccessoires": ["Bloempotten", "Dienbladen", "Etageres", "Kandelaars en Kaarsen", "Kapstokken", "Kisten", "Klokken", "Kussens", "Lijsten", "Manden en Schalen", "Plaids en Woondekens", "Prullenbakken", "Spiegels", "Vazen", "Wanddecoraties", "Wandplanken en Boekenplanken", "Wijnrekken", "Woonaccessoires - Overige"],
     "Keuken": ["Keukenbenodigdheden", "Servies", "Potten en Pannen", "Complete keukens"],
+    "Kunst": ["Schilderijen"],
     "Overige": ["Complete inboedels", "Overige Huis en Inrichting"]
   };
   var GROEP_PROFIEL = {

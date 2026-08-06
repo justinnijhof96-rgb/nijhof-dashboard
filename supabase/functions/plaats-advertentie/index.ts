@@ -54,7 +54,7 @@ const COLLECTIES: string[] = [
   "Bankstellen", "Barkrukken", "Bedden", "Bijzettafels", "Boekenkasten", "Boxsprings",
   "Buffetkasten", "Bureaus", "Dressoirs", "Eettafels", "Fauteuils", "Kaptafels",
   "Kledingkasten", "Ladekasten", "Matrassen en Bedbodems", "Nachtkastjes", "Salontafels",
-  "Schoenenkasten", "Secretaires", "Sidetables", "Slaapbanken", "Sofa's en Chaises Longues",
+  "Schilderijen", "Schoenenkasten", "Secretaires", "Sidetables", "Slaapbanken", "Sofa's en Chaises Longues",
   "Stoelen", "Tapijten en Kleden", "Televisiemeubels", "Vitrinekasten",
   "Voetenbanken en Poefen", "Wandmeubels",
 ];
