@@ -115,6 +115,9 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 .kico.met-foto .dpill{background:rgba(255,255,255,.95);backdrop-filter:blur(4px)}
 .artnr-pill{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(30,47,58,.92);color:#fff;pointer-events:none;z-index:2;letter-spacing:.3px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .kico.met-foto .artnr-pill{background:rgba(30,47,58,.92);backdrop-filter:blur(4px)}
+.adv-live{position:absolute;top:36px;right:13px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid rgba(255,255,255,.9);z-index:3;pointer-events:none;animation:advpulse 1.6s ease-out infinite}
+@keyframes advpulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 9px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+@media (prefers-reduced-motion:reduce){.adv-live{animation:none}}
 .dg{background:#dcfce7;color:#15803d}.do{background:#fff7ed;color:#c2410c}.dr{background:#fee2e2;color:#b91c1c}
 .kbody{padding:11px;flex:1}
 .kname{font-weight:700;font-size:14px;margin-bottom:4px}
@@ -922,9 +925,14 @@ async function laadAllesVanDB(){
     // Advertentietitel per item: de KLANT ziet overal de advertentietitel i.p.v. onze
     // interne inkoopnaam (factuur, contract, mails). Fallback op de interne naam.
     try{
-      const advs=await dbSelect('advertenties','select=item_id,ai_titel');
-      const advMap={};(advs||[]).forEach(a=>{if(a.ai_titel&&a.ai_titel.trim())advMap[a.item_id]=a.ai_titel.trim();});
-      DB.items.forEach(i=>{i.adv_titel=advMap[i.id]||null;});
+      const advs=await dbSelect('advertenties','select=item_id,ai_titel,status');
+      const advMap={},advStatusMap={};
+      (advs||[]).forEach(a=>{
+        if(a.ai_titel&&a.ai_titel.trim())advMap[a.item_id]=a.ai_titel.trim();
+        // 'live' wint: als een item meerdere advertentie-rijen heeft en er staat er één online.
+        if(!advStatusMap[a.item_id]||a.status==='live')advStatusMap[a.item_id]=a.status;
+      });
+      DB.items.forEach(i=>{i.adv_titel=advMap[i.id]||null;i.adv_status=advStatusMap[i.id]||null;});
     }catch(e){console.warn('Advertentietitels laden:',e);}
     _herbouwSyncSnap();
   } catch(e) {
@@ -1769,6 +1777,7 @@ function kaartHTML(item){
   const sb=({beschikbaar:'<span class="badge b-ok">✓ Beschikbaar</span>',gereserveerd:'<span class="badge b-res">🕐 Gereserveerd</span>',verkocht:'<span class="badge b-vk">✕ Verkocht</span>',afgestort:'<span class="badge b-af">🚮 Afgestort</span>'})[item.status]||'';
   const iid=esc(item.id);
   const heeftFoto=!!item.foto_url;
+  const advOnline=item.adv_status==='live';
   const fotoHTML=heeftFoto
     ? `<img src="${esc(item.foto_url)}" class="kico-foto" onclick="event.stopPropagation();openLightbox('${esc(item.foto_url)}')" alt="${esc(item.naam)}" loading="lazy">`
     : `<span class="kico-emoji">🛋️</span>`;
@@ -1808,7 +1817,7 @@ function kaartHTML(item){
     ? `<span class="badge b-cat" style="background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4">✂️ Partij · nog ${item.partij_rest}</span>`
     : '';
   return `<div class="kaart${item.status==='verkocht'?' verkocht':item.status==='afgestort'?' afgestort':''}" id="k-${iid}">
-    <div class="kico${heeftFoto?' met-foto':''}">${fotoHTML}${artnrHTML}<span class="dpill ${pk}">${d>45?'🔴 ':d>20?'⏰ ':''}${d}d</span></div>
+    <div class="kico${heeftFoto?' met-foto':''}">${fotoHTML}${artnrHTML}<span class="dpill ${pk}">${d>45?'🔴 ':d>20?'⏰ ':''}${d}d</span>${advOnline?'<span class="adv-live" title="Advertentie staat live online"></span>':''}</div>
     <div class="kbody">
       <div class="kname">${esc(item.naam)}</div>
       <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}${partijBadge}${bewerktBadge}</div>
