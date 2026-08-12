@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
@@ -654,6 +655,21 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <h3>✂️ Partij splitsen</h3>
   <div id="m-splits-body"></div>
 </div></div>
+
+<!-- TIKKIE: QR-overlay (getoond door toonTikkieQrVk) — boven de modals (z-index 600 > 500) -->
+<div id="tk-ov" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)sluitTikkieVk()">
+  <div style="background:var(--wd);border-radius:16px;padding:22px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:13px;font-weight:800;color:#0f766e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">💸 Tikkie-betaalverzoek</div>
+    <div style="font-size:13px;color:var(--gr);margin-bottom:14px">Laat de klant de QR-code scannen</div>
+    <div id="tk-bedrag" style="font-size:28px;font-weight:800;color:var(--dk);margin-bottom:14px">—</div>
+    <div id="tk-qr" style="display:flex;align-items:center;justify-content:center;min-height:240px;background:#f8fafc;border-radius:12px;padding:12px;margin-bottom:12px"></div>
+    <a id="tk-link" href="#" target="_blank" rel="noopener" style="display:block;font-size:12px;color:var(--bl);word-break:break-all;margin-bottom:14px;text-decoration:none"></a>
+    <div style="display:flex;gap:10px">
+      <button type="button" onclick="_kopieerTikkieLinkVk(this)" style="flex:1;background:#f1f5f9;color:var(--dk);border:1.5px solid var(--bd);min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">🔗 Kopieer link</button>
+      <button type="button" onclick="sluitTikkieVk()" style="flex:1;background:var(--or);color:#fff;border:none;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">Sluiten</button>
+    </div>
+  </div>
+</div>
 
 </div>
 
@@ -2293,7 +2309,7 @@ let _vkId=null;
 function openVerkoop(id){
   const i=DB.items.find(x=>x.id===id);if(!i)return;
   _vkId=id;el('m-vk-titel').textContent='💰 Verkoop — '+i.naam;
-  renderVkForm();openModal('m-vk');
+  _resetTikkieVk();renderVkForm();openModal('m-vk');
 }
 function renderVkForm(){
   el('m-vk-body').innerHTML=`
@@ -2422,6 +2438,7 @@ function renderVkForm(){
     </div>
 
     <div id="vk-prev"></div>
+    <div id="vk-tikkie-wrap" style="margin-top:12px"></div>
 
     <!-- FACTUUR EMAIL CHECKBOX -->
     <div style="margin:14px 0 0;padding:12px 14px;background:#FFF4EC;border:1px solid #fde8d0;border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -2441,6 +2458,7 @@ function renderVkForm(){
       <button class="btn btn-or" onclick="bevestigVk()">✓ Bevestig verkoop</button>
       <button class="btn btn-gy" onclick="sluitModal('m-vk')">Annuleer</button>
     </div>`;
+  _renderTikkieVk();
 }
 function toggleTermijnen(){
   const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
@@ -2575,7 +2593,119 @@ function updateVkPrev(){
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;font-weight:700;color:${nNaBtw>=0?'var(--gn)':'var(--rd)'}"><span>Netto na BTW</span><span>${eur(nNaBtw)}</span></div>
     ${servicesTot>0?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;margin-top:5px;padding-top:5px;border-top:2px solid var(--or);font-weight:700;color:var(--or)"><span>📋 Factuurtotaal (klant betaalt)</span><span>${eur(totaalFactuur)}</span></div>`:''}
   </div>${sw}`;
+  _renderTikkieVk();
 }
+
+// ── TIKKIE: betaalverzoek + QR-code in de verkoop-modal ───────────
+// Spiegel van de verkoopapp, maar leest het bedrag uit de modal-velden.
+let TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null};
+function _resetTikkieVk(){TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null};}
+// Innbare bedragen: bij termijn elke termijn, bij aanbetaling de aanbetaling +
+// rest, plus altijd het volledige factuurtotaal als keuze.
+function _tikkieOptiesVk(){
+  const totCent=Math.round(_vkFactuurTot()*100);
+  const type=(document.querySelector('input[name="vk-type"]:checked')||{}).value||'volledig';
+  const opts=[];
+  if(type==='termijn'){
+    const n=Math.max(1,Math.min(12,parseInt(val('vk-nterm'))||3));
+    for(let i=0;i<n;i++){
+      const cent=Math.round(fval('t-bed-'+i)*100);
+      if(cent>0)opts.push({cent,label:'Termijn '+(i+1),betaald:chk('t-ok-'+i)});
+    }
+  }else if(type==='aanbetaling'){
+    const aCent=Math.round(fval('vk-abed')*100), rCent=Math.round(fval('vk-rbed')*100);
+    if(aCent>0)opts.push({cent:aCent,label:'Aanbetaling',betaald:true}); // nu ontvangen
+    if(rCent>0)opts.push({cent:rCent,label:'Restbetaling',betaald:false});
+  }
+  if(totCent>0&&!opts.some(o=>o.cent===totCent))opts.push({cent:totCent,label:'Totaal',betaald:false});
+  return opts;
+}
+function _tikkieDefaultKeuzeVk(opts){
+  const i=opts.findIndex(o=>!o.betaald&&o.label!=='Totaal');
+  return i>=0?i:0;
+}
+function _tikkieOmschrijvingVk(){
+  const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
+  return (item&&item.naam)?item.naam:'Nijhof Brothers';
+}
+function _renderTikkieVk(){
+  const wrap=el('vk-tikkie-wrap');if(!wrap)return;
+  const kop='<div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💸 Betalen via Tikkie</div>';
+  const opts=_tikkieOptiesVk();
+  if(TIKKIE_VK.keuze==null||TIKKIE_VK.keuze>=opts.length)TIKKIE_VK.keuze=_tikkieDefaultKeuzeVk(opts);
+  const sel=opts[TIKKIE_VK.keuze]||opts[0]||{cent:0,label:''};
+  const chips=opts.length>1?('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+opts.map((o,i)=>{
+    const on=i===TIKKIE_VK.keuze;
+    return '<button type="button" onclick="_kiesTikkieVk('+i+')" style="flex:1;min-width:calc(50% - 4px);padding:9px 8px;border-radius:10px;cursor:pointer;text-align:center;border:1.5px solid '+(on?'#0f766e':'var(--bd)')+';background:'+(on?'#0f766e':'var(--wd)')+';color:'+(on?'#fff':'var(--dk)')+'"><div style="font-size:12px;font-weight:600">'+esc(o.label)+(o.betaald?' &#10003;':'')+'</div><div style="font-size:15px;font-weight:800;margin-top:1px">'+eur(o.cent/100)+'</div></button>';
+  }).join('')+'</div>'):'';
+  const alGemaakt=TIKKIE_VK.laatste&&TIKKIE_VK.laatste.cent===sel.cent&&TIKKIE_VK.laatste.label===sel.label;
+  let knop,onder;
+  if(!sel.cent||sel.cent<=0){
+    knop='<button type="button" class="btn" disabled style="width:100%;background:#e5e7eb;color:var(--gr);border:none;min-height:46px;font-size:14px;font-weight:700;border-radius:10px">Vul eerst een verkoopprijs in</button>';onder='';
+  }else if(alGemaakt){
+    knop='<button type="button" class="btn" id="vk-tikkie-btn" onclick="maakTikkieVk(false)" style="width:100%;background:#0f766e;color:#fff;border:none;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">&#128241; QR opnieuw tonen &middot; '+eur(sel.cent/100)+'</button>';
+    onder='<button type="button" onclick="maakTikkieVk(true)" style="width:100%;background:none;border:none;color:var(--gr);font-size:12px;margin-top:8px;cursor:pointer;text-decoration:underline">Nieuw betaalverzoek aanmaken</button>';
+  }else{
+    knop='<button type="button" class="btn" id="vk-tikkie-btn" onclick="maakTikkieVk(false)" style="width:100%;background:#0f766e;color:#fff;border:none;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">&#128184; Tikkie maken &middot; '+eur(sel.cent/100)+(sel.label&&sel.label!=='Totaal'?' ('+esc(sel.label)+')':'')+'</button>';
+    onder='<div style="font-size:11px;color:var(--gr);margin-top:8px">Maakt een Tikkie-betaalverzoek en toont de QR-code om te scannen.</div>';
+  }
+  wrap.innerHTML='<div style="padding:12px;background:var(--wd);border:1px solid var(--bd);border-radius:8px">'+kop+chips+knop+onder+'</div>';
+}
+function _kiesTikkieVk(i){TIKKIE_VK.keuze=i;_renderTikkieVk();}
+// force=false: eerste keer, of QR opnieuw tonen als 'ie al bestaat.
+// force=true: bewust een extra verzoek naast het bestaande.
+async function maakTikkieVk(force){
+  if(TIKKIE_VK.bezig)return;
+  const opts=_tikkieOptiesVk();
+  const b=opts[TIKKIE_VK.keuze]||opts[0];
+  if(!b||b.cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
+  const alGemaakt=TIKKIE_VK.laatste&&TIKKIE_VK.laatste.cent===b.cent&&TIKKIE_VK.laatste.label===b.label;
+  if(alGemaakt&&!force){toonTikkieQrVk(TIKKIE_VK.laatste.url,b);return;}
+  if(alGemaakt&&force&&!confirm('Er is al een Tikkie voor '+eur(b.cent/100)+' aangemaakt.\nNog een tweede betaalverzoek aanmaken?'))return;
+  const tok=_getToken();
+  if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in en probeer opnieuw','#dc2626');return;}
+  TIKKIE_VK.bezig=true;
+  const btn=el('vk-tikkie-btn');if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijvingVk(),referentie:(val('vk-kn-naam')||'').slice(0,35)||undefined})
+    });
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
+    TIKKIE_VK.laatste={url:j.url,cent:b.cent,label:b.label};
+    TIKKIE_VK.url=j.url;
+    toonTikkieQrVk(j.url,b);
+  }catch(e){
+    toast('⚠️ '+(e.message||e),'#dc2626');
+  }finally{
+    TIKKIE_VK.bezig=false;
+    _renderTikkieVk();
+  }
+}
+function toonTikkieQrVk(url,b){
+  const ov=el('tk-ov');if(!ov)return;
+  el('tk-bedrag').textContent=eur(b.cent/100)+(b.label&&b.label!=='Totaal'?' · '+b.label:'');
+  const qr=el('tk-qr');qr.innerHTML='';
+  try{
+    new QRCode(qr,{text:url,width:240,height:240,correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){
+    qr.innerHTML='<a href="'+esc(url)+'" target="_blank" style="word-break:break-all">'+esc(url)+'</a>';
+  }
+  const lnk=el('tk-link');lnk.textContent=url;lnk.href=url;
+  TIKKIE_VK.url=url;
+  ov.style.display='flex';
+}
+function sluitTikkieVk(){const ov=el('tk-ov');if(ov)ov.style.display='none';}
+function _kopieerTikkieLinkVk(btn){
+  const url=TIKKIE_VK.url||(el('tk-link')&&el('tk-link').href)||'';
+  if(!url)return;
+  const ok=()=>{const o=btn.textContent;btn.textContent='✓ Gekopieerd';setTimeout(()=>{btn.textContent=o;},1500);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(ok).catch(()=>prompt('Kopieer de Tikkie-link:',url));}
+  else{prompt('Kopieer de Tikkie-link:',url);}
+}
+
 function volgendeFactuur(){
   // Format: NBF-YYYYMMDD-N (oplopend per dag)
   const d=new Date();
