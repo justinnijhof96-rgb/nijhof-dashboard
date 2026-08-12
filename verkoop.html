@@ -2978,6 +2978,27 @@ async function afronden(){
       }
     }
 
+    // 1c. Google Agenda: automatisch een rit-event in de gedeelde ritten-agenda (niet-blokkerend)
+    if(leverData.lever_datum){
+      try{
+        const _prod=STATE.regels.map(r=>r&&r.item&&r.item.naam).filter(Boolean).join(', ');
+        const _adres=[leverData.lever_adres,[leverData.lever_postcode,leverData.lever_plaats].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        const _open=(STATE.termijnen||[]).filter(t=>!t.betaald).reduce((a,t)=>a+(Number(t.bedrag)||0),0);
+        const _res=await fetch(SUPABASE_URL+'/functions/v1/agenda-event',{
+          method:'POST',
+          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+          body:JSON.stringify({
+            datum:leverData.lever_datum, tijd:leverData.lever_tijd||'',
+            titel:'🚚 Levering'+(STATE.klant.naam?' — '+STATE.klant.naam:'')+(_prod?' ('+_prod+')':''),
+            beschrijving:[STATE.klant.naam,STATE.klant.tel?'📞 '+STATE.klant.tel:'',_prod,_open>0?'Openstaand: '+eur(_open):'✓ Voldaan',factuurnr].filter(Boolean).join('\n'),
+            locatie:_adres
+          })
+        });
+        const _j=await _res.json().catch(()=>({}));
+        if(_j&&_j.event_id){ try{await _restPatch('verkopen?id=eq.'+encodeURIComponent(verkoopId),{lever_event_id:_j.event_id});}catch(_e){} }
+      }catch(e){console.warn('Agenda-event mislukt:',e);}
+    }
+
     // 2. Alle verkochte items → status verkocht + hun advertenties offline halen (niet-blokkerend)
     //    Mislukt het offline halen (netwerk, inlog, of een fout-status van de functie),
     //    dan onthouden we het item en waarschuwen we onderaan — anders zou de advertentie
