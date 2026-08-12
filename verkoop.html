@@ -2167,8 +2167,12 @@ async function laadDebiteuren(){
       const v=g.verkoop||{};
       const isWoppa=(v.verkoopkanaal||'').toLowerCase()==='woppa'||g.termijnen.some(t=>/woppa/i.test(t.label||''));
       g.cat=isWoppa?'woppa':((v.type||'').toLowerCase()==='termijn'?'termijn':'overig');
+      // Termijnen binnen de groep op vervaldatum; groep krijgt de vroegste vervaldatum (= eerstvolgende betaaldatum)
+      g.termijnen.sort((a,b)=>String(a.vervaldatum||'').localeCompare(String(b.vervaldatum||'')));
+      g.datum=g.termijnen.map(t=>t.vervaldatum).filter(Boolean).sort()[0]||'9999-12-31';
     });
-    DEBITEUREN=Object.values(groepen).sort((a,b)=>b.open-a.open);
+    // Sorteren op betaaldatum: eerstvervallende bovenaan
+    DEBITEUREN=Object.values(groepen).sort((a,b)=>String(a.datum).localeCompare(String(b.datum)));
     DEBITEUREN.forEach((g,i)=>g._i=i);
     _renderDebiteuren();
   }catch(e){
@@ -2180,8 +2184,8 @@ function _renderDebiteuren(){
   if(!DEBITEUREN.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)"><div style="font-size:40px">🎉</div><div style="margin-top:8px;font-weight:600">Geen openstaande betalingen</div></div>';return;}
   const totOpen=DEBITEUREN.reduce((a,g)=>a+g.open,0);
   let html='<div style="padding:10px 4px 2px;font-size:13px;color:var(--gr)">Totaal openstaand <b style="color:var(--nav)">'+eur(totOpen)+'</b></div>';
-  html+=_debSectie('📅 Termijnbetalingen',DEBITEUREN.filter(g=>g.cat==='termijn'));
   html+=_debSectie('💰 Openstaand bedrag',DEBITEUREN.filter(g=>g.cat==='overig'));
+  html+=_debSectie('📅 Termijnbetalingen',DEBITEUREN.filter(g=>g.cat==='termijn'));
   html+=_debSectie('🏦 Via Woppa',DEBITEUREN.filter(g=>g.cat==='woppa'));
   body.innerHTML=html;
 }
