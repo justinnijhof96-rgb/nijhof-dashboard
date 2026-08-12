@@ -663,7 +663,8 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div style="font-size:13px;color:var(--gr);margin-bottom:14px">Laat de klant de QR-code scannen</div>
     <div id="tk-bedrag" style="font-size:28px;font-weight:800;color:var(--dk);margin-bottom:14px">—</div>
     <div id="tk-qr" style="display:flex;align-items:center;justify-content:center;min-height:240px;background:#f8fafc;border-radius:12px;padding:12px;margin-bottom:12px"></div>
-    <a id="tk-link" href="#" target="_blank" rel="noopener" style="display:block;font-size:12px;color:var(--bl);word-break:break-all;margin-bottom:14px;text-decoration:none"></a>
+    <a id="tk-link" href="#" target="_blank" rel="noopener" style="display:block;font-size:12px;color:var(--bl);word-break:break-all;margin-bottom:12px;text-decoration:none"></a>
+    <div id="tk-status" style="font-size:15px;font-weight:700;color:var(--gr);margin-bottom:14px;min-height:22px">⏳ Wachten op betaling…</div>
     <div style="display:flex;gap:10px">
       <button type="button" onclick="_kopieerTikkieLinkVk(this)" style="flex:1;background:#f1f5f9;color:var(--dk);border:1.5px solid var(--bd);min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">🔗 Kopieer link</button>
       <button type="button" onclick="sluitTikkieVk()" style="flex:1;background:var(--or);color:#fff;border:none;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">Sluiten</button>
@@ -2598,8 +2599,8 @@ function updateVkPrev(){
 
 // ── TIKKIE: betaalverzoek + QR-code in de verkoop-modal ───────────
 // Spiegel van de verkoopapp, maar leest het bedrag uit de modal-velden.
-let TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null};
-function _resetTikkieVk(){TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null};}
+let TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null,token:null,pollTimer:null};
+function _resetTikkieVk(){_stopTikkiePollingVk();TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null,token:null,pollTimer:null};}
 // Innbare bedragen: bij termijn elke termijn, bij aanbetaling de aanbetaling +
 // rest, plus altijd het volledige factuurtotaal als keuze.
 function _tikkieOptiesVk(){
@@ -2672,7 +2673,7 @@ async function maakTikkieVk(force){
   const b=opts[TIKKIE_VK.keuze]||opts[0];
   if(!b||b.cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
   const alGemaakt=TIKKIE_VK.laatste&&TIKKIE_VK.laatste.cent===b.cent&&TIKKIE_VK.laatste.label===b.label;
-  if(alGemaakt&&!force){toonTikkieQrVk(TIKKIE_VK.laatste.url,b);return;}
+  if(alGemaakt&&!force){TIKKIE_VK.token=TIKKIE_VK.laatste.token;toonTikkieQrVk(TIKKIE_VK.laatste.url,b);return;}
   if(alGemaakt&&force&&!confirm('Er is al een Tikkie voor '+eur(b.cent/100)+' aangemaakt.\nNog een tweede betaalverzoek aanmaken?'))return;
   const tok=_getToken();
   if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in en probeer opnieuw','#dc2626');return;}
@@ -2687,7 +2688,8 @@ async function maakTikkieVk(force){
     });
     const j=await res.json().catch(()=>({}));
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
-    TIKKIE_VK.laatste={url:j.url,cent:b.cent,label:b.label};
+    TIKKIE_VK.laatste={url:j.url,cent:b.cent,label:b.label,token:j.paymentRequestToken};
+    TIKKIE_VK.token=j.paymentRequestToken;
     TIKKIE_VK.url=j.url;
     toonTikkieQrVk(j.url,b);
   }catch(e){
@@ -2708,9 +2710,34 @@ function toonTikkieQrVk(url,b){
   }
   const lnk=el('tk-link');lnk.textContent=url;lnk.href=url;
   TIKKIE_VK.url=url;
+  const st=el('tk-status');if(st){st.innerHTML='⏳ Wachten op betaling…';st.style.color='var(--gr)';}
   ov.style.display='flex';
+  _startTikkiePollingVk(TIKKIE_VK.token);
 }
-function sluitTikkieVk(){const ov=el('tk-ov');if(ov)ov.style.display='none';}
+function sluitTikkieVk(){_stopTikkiePollingVk();const ov=el('tk-ov');if(ov)ov.style.display='none';}
+// Live-check of de klant al betaald heeft, zolang de QR-overlay openstaat.
+function _stopTikkiePollingVk(){if(TIKKIE_VK.pollTimer){clearInterval(TIKKIE_VK.pollTimer);TIKKIE_VK.pollTimer=null;}}
+function _startTikkiePollingVk(token){
+  _stopTikkiePollingVk();
+  if(!token)return;
+  const st=el('tk-status');let tries=0;
+  TIKKIE_VK.pollTimer=setInterval(async()=>{
+    if(++tries>150){_stopTikkiePollingVk();if(st)st.innerHTML='⏳ Controle gestopt (10 min) — sluit en heropen om verder te kijken';return;}
+    try{
+      const res=await fetch(SUPABASE_URL+'/functions/v1/check-tikkie',{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getToken(),'Content-Type':'application/json'},
+        body:JSON.stringify({paymentRequestToken:token})
+      });
+      const j=await res.json().catch(()=>({}));
+      if(j&&j.betaald){
+        _stopTikkiePollingVk();
+        if(st){st.innerHTML='✅ Betaald!';st.style.color='var(--gn)';}
+        try{toast('✅ Tikkie betaald!','#10b981');}catch(_){}
+      }
+    }catch(e){/* netwerk-hik: blijf pollen */}
+  },4000);
+}
 function _kopieerTikkieLinkVk(btn){
   const url=TIKKIE_VK.url||(el('tk-link')&&el('tk-link').href)||'';
   if(!url)return;
