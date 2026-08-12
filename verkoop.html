@@ -2077,6 +2077,7 @@ async function maakTikkie(force){
     TIKKIE.laatste={url:j.url,cent:b.cent,label:b.label,token:j.paymentRequestToken};
     TIKKIE.token=j.paymentRequestToken;
     TIKKIE.url=j.url;
+    TIKKIE.termijnIds=null;
     toonTikkieQr(j.url,b);
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
@@ -2120,6 +2121,7 @@ function _startTikkiePolling(token){
         _stopTikkiePolling();
         if(st){st.innerHTML='✅ Betaald!';st.style.color='var(--gn)';}
         try{toast('✅ Tikkie betaald!','#10b981');}catch(_){}
+        _markeerTikkieBetaald();
       }
     }catch(e){/* netwerk-hik: blijf pollen */}
   },4000);
@@ -2224,7 +2226,7 @@ function _debCard(g){
   }
   return '<div class="card" style="margin-bottom:10px">'+inner+'</div>';
 }
-async function _maakTikkieVoor(cent,factNr,product,btn){
+async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds){
   if(cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
   const tok=_getStoredAuth()?.access_token;
   if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');return;}
@@ -2238,6 +2240,7 @@ async function _maakTikkieVoor(cent,factNr,product,btn){
     const j=await res.json().catch(()=>({}));
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
     TIKKIE.token=j.paymentRequestToken;TIKKIE.url=j.url;
+    TIKKIE.termijnIds=(termijnIds&&termijnIds.length)?termijnIds:null; // welke termijn(en) deze Tikkie afdekt
     toonTikkieQr(j.url,{cent:cent,label:'Openstaand'});
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
@@ -2245,13 +2248,27 @@ async function _maakTikkieVoor(cent,factNr,product,btn){
     if(btn){btn.disabled=false;btn.innerHTML=oud;}
   }
 }
+// Zodra de polling ziet dat een debiteuren-Tikkie betaald is: de bijbehorende termijn(en)
+// in de DB op betaald zetten en de debiteurenlijst verversen (staat dan niet meer open).
+async function _markeerTikkieBetaald(){
+  const ids=TIKKIE.termijnIds;
+  if(!ids||!ids.length)return;
+  TIKKIE.termijnIds=null;
+  const nu=_dISO(new Date());
+  for(const id of ids){
+    try{ await _restPatch('termijnen?id=eq.'+encodeURIComponent(id),{betaald:true,betaald_op:nu}); }
+    catch(e){ console.warn('Termijn op betaald zetten mislukt:',e); }
+  }
+  const scr=$('screen-debiteuren');
+  if(scr&&scr.classList.contains('show'))laadDebiteuren();
+}
 async function maakTikkieTermijn(gi,ti,btn){
   const g=DEBITEUREN[gi];if(!g)return;const t=g.termijnen[ti];if(!t)return;
-  await _maakTikkieVoor(Math.round((Number(t.bedrag)||0)*100),g.factNr,g.product,btn);
+  await _maakTikkieVoor(Math.round((Number(t.bedrag)||0)*100),g.factNr,g.product,btn,[t.id].filter(Boolean));
 }
 async function maakTikkieDebiteur(gi,btn){
   const g=DEBITEUREN[gi];if(!g)return;
-  await _maakTikkieVoor(Math.round((g.open||0)*100),g.factNr,g.product,btn);
+  await _maakTikkieVoor(Math.round((g.open||0)*100),g.factNr,g.product,btn,g.termijnen.map(t=>t.id).filter(Boolean));
 }
 
 // ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
