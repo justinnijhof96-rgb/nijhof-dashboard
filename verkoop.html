@@ -172,6 +172,11 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <span>Partij splitsen</span>
         <span style="font-size:12px;font-weight:400;opacity:.9">1 inkoop → meerdere losse stukken</span>
       </button>
+      <button onclick="openDebiteuren()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(124,58,237,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">💰</span>
+        <span>Debiteuren</span>
+        <span style="font-size:12px;font-weight:400;opacity:.9">Openstaande bedragen → Tikkie in 1 klik</span>
+      </button>
     </div>
   </main>
 </div>
@@ -223,6 +228,18 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   </div>
   <main>
     <div id="split-body"></div>
+  </main>
+</div>
+
+<!-- DEBITEUREN: openstaande betalingen → Tikkie in 1 klik -->
+<div id="screen-debiteuren" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="toonScherm('screen-keuze')" title="Terug">←</button>
+    <div class="logo">DEBITEUREN <small>Openstaande betalingen</small></div>
+    <button class="btn-icon" onclick="laadDebiteuren()" title="Vernieuwen">↻</button>
+  </div>
+  <main>
+    <div id="deb-body"></div>
   </main>
 </div>
 
@@ -2113,6 +2130,93 @@ function _kopieerTikkieLink(btn){
   const ok=()=>{const o=btn.textContent;btn.textContent='✓ Gekopieerd';setTimeout(()=>{btn.textContent=o;},1500);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(ok).catch(()=>prompt('Kopieer de Tikkie-link:',url));}
   else{prompt('Kopieer de Tikkie-link:',url);}
+}
+
+// ── DEBITEUREN: openstaande betalingen → Tikkie in 1 klik ─────────
+let DEBITEUREN=[],DEB_FACTMAP={};
+function openDebiteuren(){toonScherm('screen-debiteuren');laadDebiteuren();}
+async function laadDebiteuren(){
+  const body=$('deb-body');if(!body)return;
+  body.innerHTML='<div style="padding:40px;text-align:center;color:var(--gr)">⏳ Openstaande betalingen laden…</div>';
+  try{
+    // Alle onbetaalde termijnen (RLS beperkt tot de eigen organisatie)
+    // Alle termijnen ophalen en client-side op onbetaald filteren (robuust tegen boolean-filter-syntax)
+    const term=(await _restGet('termijnen?select=*&order=vervaldatum.asc')||[]).filter(t=>!t.betaald);
+    if(!term.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)"><div style="font-size:40px">🎉</div><div style="margin-top:8px;font-weight:600">Geen openstaande betalingen</div></div>';DEBITEUREN=[];return;}
+    const vkIds=[...new Set(term.map(t=>t.verkoop_id).filter(Boolean))];
+    const idList='('+vkIds.map(id=>encodeURIComponent(id)).join(',')+')';
+    const verk=vkIds.length?(await _restGet('verkopen?select=*&id=in.'+idList).catch(()=>[])):[];
+    const verkMap={};verk.forEach(v=>verkMap[v.id]=v);
+    // Klant + factuurnummer komen van de facturen-tabel (verkopen hebben zelf geen klant_id)
+    const fact=vkIds.length?(await _restGet('facturen?select=verkoop_id,factuurnummer,klant_naam,klant_email&verkoop_id=in.'+idList).catch(()=>[])):[];
+    DEB_FACTMAP={};fact.forEach(f=>{if(!DEB_FACTMAP[f.verkoop_id])DEB_FACTMAP[f.verkoop_id]=f;});
+    const itIds=[...new Set(verk.map(v=>v.item_id).filter(Boolean))];
+    const items=itIds.length?(await _restGet('items?select=id,naam&id=in.('+itIds.map(id=>encodeURIComponent(id)).join(',')+')').catch(()=>[])):[];
+    const itMap={};items.forEach(it=>itMap[it.id]=it.naam);
+    const groepen={};
+    term.forEach(t=>{
+      const g=groepen[t.verkoop_id]||(groepen[t.verkoop_id]={verkoop:verkMap[t.verkoop_id]||{},factuur:DEB_FACTMAP[t.verkoop_id]||{},product:'',termijnen:[],open:0});
+      g.termijnen.push(t);g.open+=Number(t.bedrag)||0;
+      if(!g.product&&g.verkoop.item_id)g.product=itMap[g.verkoop.item_id]||'';
+    });
+    DEBITEUREN=Object.values(groepen).sort((a,b)=>b.open-a.open);
+    _renderDebiteuren();
+  }catch(e){
+    body.innerHTML='<div class="alert alert-err" style="margin:16px">⚠️ Laden mislukt: '+esc(e.message||e)+'</div>';
+  }
+}
+function _renderDebiteuren(){
+  const body=$('deb-body');if(!body)return;
+  const totOpen=DEBITEUREN.reduce((a,g)=>a+g.open,0);
+  let html='<div style="padding:10px 4px 14px;font-size:13px;color:var(--gr)">'+DEBITEUREN.length+' openstaand · totaal <b style="color:var(--nav)">'+eur(totOpen)+'</b></div>';
+  DEBITEUREN.forEach((g,idx)=>{
+    const v=g.verkoop||{},f=g.factuur||{};
+    const naam=f.klant_naam||'Onbekende klant';
+    const factNr=v.factuur||f.factuurnummer||'';
+    const totaal=Number(v.factuur_totaal||v.verkoopprijs||v.totaal)||0, betaald=totaal>0?Math.max(0,totaal-g.open):0;
+    const sub=[g.product,factNr].filter(Boolean).map(esc).join(' · ');
+    const termLijst=g.termijnen.map(t=>{
+      const dat=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
+      return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);padding:2px 0"><span>'+esc(t.label||('Termijn '+t.nr))+(dat?' · '+dat:'')+'</span><span>'+eur(t.bedrag)+'</span></div>';
+    }).join('');
+    html+='<div class="card" style="margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        +'<div style="min-width:0"><div style="font-weight:700;color:var(--nav);font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(naam)+'</div>'
+        +(sub?'<div style="font-size:12px;color:var(--gr);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sub+'</div>':'')+'</div>'
+        +'<div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:var(--gr)">Openstaand</div><div style="font-weight:800;font-size:20px;color:#dc2626">'+eur(g.open)+'</div></div>'
+      +'</div>'
+      +(totaal>0?'<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);margin-top:6px;padding-top:6px;border-top:1px solid var(--bd)"><span>Totaal '+eur(totaal)+'</span><span style="color:var(--gn)">✓ betaald '+eur(betaald)+'</span></div>':'')
+      +'<div style="margin-top:8px">'+termLijst+'</div>'
+      +'<button class="btn deb-tik" onclick="maakTikkieDebiteur('+idx+')" style="width:100%;margin-top:10px;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(g.open)+'</button>'
+      +'</div>';
+  });
+  body.innerHTML=html;
+}
+async function maakTikkieDebiteur(idx){
+  const g=DEBITEUREN[idx];if(!g)return;
+  const v=g.verkoop||{};
+  const cent=Math.round((g.open||0)*100);
+  if(cent<=0){toast('Geen openstaand bedrag','#dc2626');return;}
+  const tok=_getStoredAuth()?.access_token;
+  if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');return;}
+  const btn=document.querySelectorAll('#deb-body .deb-tik')[idx];
+  const oud=btn?btn.innerHTML:'';if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
+  try{
+    const factNr=v.factuur||(g.factuur&&g.factuur.factuurnummer)||undefined;
+    const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({bedrag_cent:cent,omschrijving:g.product||'Restbetaling Nijhof Brothers',referentie:factNr})
+    });
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
+    TIKKIE.token=j.paymentRequestToken;TIKKIE.url=j.url;
+    toonTikkieQr(j.url,{cent:cent,label:'Openstaand'});
+  }catch(e){
+    toast('⚠️ '+(e.message||e),'#dc2626');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=oud;}
+  }
 }
 
 // ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
