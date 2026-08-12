@@ -2211,6 +2211,8 @@ function _debCard(g){
         +'</div>';
     });
     inner+='</div>';
+    // Alles-in-één-keer: als de klant tóch het hele openstaande bedrag ineens wil betalen
+    if(g.termijnen.length>1)inner+='<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="width:100%;margin-top:8px;background:#fff;color:#0f766e;border:1.5px solid #0f766e;min-height:44px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">💸 Alles ineens · '+eur(g.open)+'</button>';
   }else if(g.cat==='woppa'){
     inner+='<div style="margin-top:10px;font-size:12px;color:var(--gr);background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:10px">🏦 Wordt via Woppa uitgekeerd (±1 maand na verkoop) — geen Tikkie nodig.</div>';
   }else{
