@@ -1962,7 +1962,13 @@ function renderS4(){
 
 // ── TIKKIE: betaalverzoek + QR-code in de controle-stap ───────────
 let TIKKIE={bezig:false,keuze:null,url:null,laatste:null};
-function _resetTikkie(){TIKKIE={bezig:false,keuze:null,url:null,laatste:null};}
+function _resetTikkie(){TIKKIE={bezig:false,keuze:null,url:null,laatste:null};STATE.factuurnr=null;}
+// Genereer het factuurnummer één keer en hergebruik het, zodat de Tikkie exact
+// hetzelfde NBF-nummer draagt als de uiteindelijke factuur (anders raakt het overzicht kwijt).
+async function _zorgFactuurnr(){
+  if(!STATE.factuurnr)STATE.factuurnr=await _volgendeFactuurnr();
+  return STATE.factuurnr;
+}
 
 // Alle bedragen die je via Tikkie kunt innen: bij termijn/aanbetaling elke
 // termijn afzonderlijk (de klant kiest wat 'ie nu int) + het volledige totaal;
@@ -1987,8 +1993,9 @@ function _tikkieDefaultKeuze(opts){
 }
 function _tikkieOmschrijving(){
   const namen=(STATE.regels||[]).map(r=>r&&r.item&&r.item.naam).filter(Boolean);
-  if(!namen.length)return 'Nijhof Brothers';
-  return namen.length===1?namen[0]:namen.length+' artikelen';
+  const prod=!namen.length?'':(namen.length===1?namen[0]:namen.length+' artikelen');
+  const fn=STATE.factuurnr||'';
+  return fn?(prod?fn+' '+prod:fn):(prod||'Nijhof Brothers'); // factuurnr vooraan blijft leesbaar na Tikkie's 35-tekens afkap
 }
 
 // Rendert de hele Tikkie-kaart (bedrag-chips + knop). Aangeroepen vanuit renderS4,
@@ -2037,10 +2044,11 @@ async function maakTikkie(force){
   TIKKIE.bezig=true;
   const btn=$('s4-tikkie-btn');if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
   try{
+    await _zorgFactuurnr(); // zet STATE.factuurnr zodat omschrijving + referentie het NBF-nummer dragen
     const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
       method:'POST',
       headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
-      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijving(),referentie:(STATE.klant.naam||'').slice(0,35)||undefined})
+      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijving(),referentie:STATE.factuurnr||(STATE.klant.naam||'').slice(0,35)||undefined})
     });
     const j=await res.json().catch(()=>({}));
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
@@ -2600,7 +2608,7 @@ async function afronden(){
     // Eerste item = "primair": daaraan hangen services, termijnen, factuur en contract.
     const item=STATE.regels[0].item; // backward-compat referentie (primair item)
     const verkoopId=_genId();        // primaire verkoop-id (voor termijnen/factuur/contract)
-    const factuurnr=await _volgendeFactuurnr();
+    const factuurnr=await _zorgFactuurnr(); // hergebruik het nr dat evt. al op de Tikkie staat
     const verkoopDatum=_dISO(new Date());
     // Vangnet: een termijn zonder vervaldatum (bv. aanbetaling zonder leverdatum) krijgt de
     // verkoopdatum — een lege datum laat de database-insert falen en zet "Invalid Date" op de factuur

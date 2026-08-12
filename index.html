@@ -2626,7 +2626,19 @@ function _tikkieDefaultKeuzeVk(opts){
 }
 function _tikkieOmschrijvingVk(){
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
-  return (item&&item.naam)?item.naam:'Nijhof Brothers';
+  const prod=(item&&item.naam)?item.naam:'';
+  const fn=val('vk-fac')||'';
+  return fn?(prod?fn+' '+prod:fn):(prod||'Nijhof Brothers'); // factuurnr vooraan blijft leesbaar na Tikkie's 35-tekens afkap
+}
+// Zet het definitieve factuurnummer vast in het vk-fac veld, zodat de Tikkie én de
+// uiteindelijke factuur (bevestigVk leest val('vk-fac')) hetzelfde NBF-nummer gebruiken.
+async function _zorgFactuurnrVk(){
+  let f=val('vk-fac');
+  if(!f||f===volgendeFactuur()){
+    try{ f=await _volgendeFactuurLive(); }catch(e){ f=volgendeFactuur(); }
+    if(el('vk-fac'))el('vk-fac').value=f;
+  }
+  return f;
 }
 function _renderTikkieVk(){
   const wrap=el('vk-tikkie-wrap');if(!wrap)return;
@@ -2667,10 +2679,11 @@ async function maakTikkieVk(force){
   TIKKIE_VK.bezig=true;
   const btn=el('vk-tikkie-btn');if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
   try{
+    await _zorgFactuurnrVk(); // zet vk-fac vast zodat omschrijving + referentie het NBF-nummer dragen
     const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
       method:'POST',
       headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
-      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijvingVk(),referentie:(val('vk-kn-naam')||'').slice(0,35)||undefined})
+      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijvingVk(),referentie:val('vk-fac')||(val('vk-kn-naam')||'').slice(0,35)||undefined})
     });
     const j=await res.json().catch(()=>({}));
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
