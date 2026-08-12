@@ -2364,6 +2364,7 @@ function _ritRegeling(r){
 function _renderRitten(){
   const body=$('rit-body');if(!body)return;
   if(!RITTEN.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)">Geen geplande leveringen</div>';return;}
+  const _ua=navigator.userAgent||'',_isAndroid=/Android/i.test(_ua),_isIOS=/iPhone|iPad|iPod/i.test(_ua);
   let html='', huidigeDatum='';
   RITTEN.forEach(r=>{
     if(r.datum!==huidigeDatum){
@@ -2373,14 +2374,17 @@ function _renderRitten(){
       html+='<div style="margin:16px 4px 8px;font-size:13px;font-weight:800;color:var(--nav);text-transform:capitalize">'+esc(dLbl)+'</div>';
     }
     const volAdres=[r.adres,[r.pc,r.plaats].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-    const mapsUrl='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(volAdres);
+    const _dest=encodeURIComponent(volAdres);
+    // Android → Google Maps-app met directe navigatie; iPhone → Apple Kaarten; desktop → Maps in browser
+    const navHref=_isAndroid?('google.navigation:q='+_dest):_isIOS?('maps://?daddr='+_dest+'&dirflg=d'):('https://www.google.com/maps/dir/?api=1&destination='+_dest);
+    const navAttr=(_isAndroid||_isIOS)?'':' target="_blank" rel="noopener"';
     html+='<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">'
       +'<div style="flex:1;min-width:0">'
         +'<div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:800;color:var(--or);font-size:15px;flex-shrink:0">'+(r.tijd?esc(r.tijd):'—')+'</span><span style="font-weight:700;color:var(--nav);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.naam||'Levering')+'</span></div>'
         +'<div style="font-size:13px;color:var(--dk);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(volAdres||'geen leveradres')+'</div>'
         +'<div style="font-size:11px;color:var(--gr);margin-top:3px">'+(r.product?esc(r.product)+' · ':'')+(r.tel?'📞 '+esc(r.tel)+' · ':'')+_ritRegeling(r)+'</div>'
       +'</div>'
-      +(volAdres?'<a href="'+esc(mapsUrl)+'" target="_blank" rel="noopener" title="Navigeer met Google Maps" style="flex-shrink:0;width:54px;height:54px;border-radius:12px;background:#2563eb;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:26px">🧭</a>':'')
+      +(volAdres?'<a href="'+esc(navHref)+'"'+navAttr+' title="Navigeer" style="flex-shrink:0;width:54px;height:54px;border-radius:12px;background:#2563eb;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:26px">🧭</a>':'')
       +'</div>';
   });
   body.innerHTML=html;
