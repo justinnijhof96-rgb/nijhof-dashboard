@@ -2364,6 +2364,7 @@ function renderVkForm(){
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="pin" checked> 💳 Pin</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="contant"> 💵 Contant</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="overschrijving"> 🏦 Overschrijving</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-bet" value="tikkie"> 💸 Tikkie</label>
       </div>
     </div>
     <div id="vk-term-sect" style="display:none;margin-top:10px">
@@ -2386,6 +2387,7 @@ function renderVkForm(){
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="pin" checked> 💳 Pin</label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="contant"> 💵 Contant</label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="overschrijving"> 🏦 Overschrijving</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-abet" value="tikkie"> 💸 Tikkie</label>
         </div>
       </div>
       <div style="background:#f0fdf4;border-radius:8px;padding:12px;border:1px solid #bbf7d0">
@@ -2399,6 +2401,7 @@ function renderVkForm(){
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="pin" checked> 💳 Pin</label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="contant"> 💵 Contant</label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="overschrijving"> 🏦 Overschrijving</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="vk-rbet" value="tikkie"> 💸 Tikkie</label>
         </div>
       </div>
     </div>
@@ -2488,7 +2491,7 @@ function genTermijnen(){
     html+=`<div class="term-row"><span style="font-size:12px;font-weight:700">T${i+1}</span>
       <input class="term-inp" type="number" id="t-bed-${i}" value="${per.toFixed(2)}" min="0" step="0.01" oninput="_herverdeelTermijnen(${i})">
       <input class="term-inp" type="date" id="t-dat-${i}" value="${d.toISOString().split('T')[0]}">
-      <select class="term-inp" id="t-bet-${i}"><option value="pin">💳 Pin</option><option value="contant">💵 Contant</option><option value="overschrijving">🏦 Oversch.</option></select>
+      <select class="term-inp" id="t-bet-${i}"><option value="pin">💳 Pin</option><option value="contant">💵 Contant</option><option value="overschrijving">🏦 Oversch.</option><option value="tikkie">💸 Tikkie</option></select>
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="t-ok-${i}"> Betaald</label>
     </div>`;
   }
@@ -2840,7 +2843,7 @@ async function bevestigVk(){
     const rbet=(document.querySelector('input[name="vk-rbet"]:checked')||{}).value||'pin';
     const rbed=Math.max(0,factuurTotaal-abed);
     termijnen=[
-      {id:uid(),nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:abet,betaald:true,betaaldOp:adat,label:'Aanbetaling'},
+      {id:uid(),nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:abet,betaald:abet!=='tikkie',betaaldOp:abet!=='tikkie'?adat:null,label:'Aanbetaling'},
       ...(rbed>0?[{id:uid(),nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:rbet,betaald:false,betaaldOp:null,label:'Restbetaling bij levering'}]:[])
     ];
   } else if(type==='termijn'){
@@ -2850,7 +2853,7 @@ async function bevestigVk(){
     if(Math.abs(som-factuurTotaal)>0.02)toast(`⚠️ Som termijnen (${eur(som)}) wijkt af van factuurtotaal (${eur(factuurTotaal)})`,'#c2410c');
   } else {
     const bet=(document.querySelector('input[name="vk-bet"]:checked')||{}).value||'pin';
-    termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:true,betaaldOp:verkoopDatumVal,label:'Volledig betaald'}];
+    termijnen=[{id:uid(),nr:1,bedrag:factuurTotaal,vervaldatum:val('vk-dat')||vandaag(),betaalmethode:bet,betaald:bet!=='tikkie',betaaldOp:bet!=='tikkie'?verkoopDatumVal:null,label:bet==='tikkie'?'Via Tikkie — openstaand':'Volledig betaald'}];
   }
   const verkoopId=uid();
   // Niet-aangepast voorstel → live hertellen zodat een verkoopapp-nummer niet gedupliceerd wordt

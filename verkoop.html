@@ -471,6 +471,7 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
           <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','vol')">💶 Cash</button>
           <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','vol')">🏦 Bank</button>
           <button class="btn-seg" data-bet="marktplaats" onclick="kiesBet('marktplaats','vol')">🟧 MP</button>
+          <button class="btn-seg" data-bet="tikkie" onclick="kiesBet('tikkie','vol')">💸 Tikkie</button>
         </div>
       </div>
 
@@ -494,6 +495,7 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
             <button class="btn-seg" data-bet="pin" onclick="kiesBet('pin','aan')">💳 Pin</button>
             <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','aan')">💶 Cash</button>
             <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','aan')">🏦 Bank</button>
+            <button class="btn-seg" data-bet="tikkie" onclick="kiesBet('tikkie','aan')">💸 Tikkie</button>
           </div>
         </div>
         <div class="fg" style="margin-bottom:0">
@@ -502,6 +504,7 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
             <button class="btn-seg" data-bet="pin" onclick="kiesBet('pin','rest')">💳 Pin</button>
             <button class="btn-seg" data-bet="contant" onclick="kiesBet('contant','rest')">💶 Cash</button>
             <button class="btn-seg" data-bet="bank" onclick="kiesBet('bank','rest')">🏦 Bank</button>
+            <button class="btn-seg" data-bet="tikkie" onclick="kiesBet('tikkie','rest')">💸 Tikkie</button>
           </div>
         </div>
         <div id="s3-aan-info" style="margin-top:12px;padding:10px;background:var(--orl);border-radius:8px;font-size:13px;color:var(--nav)"></div>
@@ -1797,6 +1800,7 @@ function _genTermijnen(n){
         <button class="btn-seg trm-bet on" data-i="${i}" data-bet="pin" onclick="kiesTrmBet(${i},'pin')" style="min-height:38px;font-size:12px;padding:7px 4px">💳 Pin</button>
         <button class="btn-seg trm-bet" data-i="${i}" data-bet="contant" onclick="kiesTrmBet(${i},'contant')" style="min-height:38px;font-size:12px;padding:7px 4px">💶 Cash</button>
         <button class="btn-seg trm-bet" data-i="${i}" data-bet="bank" onclick="kiesTrmBet(${i},'bank')" style="min-height:38px;font-size:12px;padding:7px 4px">🏦 Bank</button>
+        <button class="btn-seg trm-bet" data-i="${i}" data-bet="tikkie" onclick="kiesTrmBet(${i},'tikkie')" style="min-height:38px;font-size:12px;padding:7px 4px">💸 Tikkie</button>
       </div>
     `;
     rows.appendChild(div);
@@ -1844,7 +1848,7 @@ function updateS3(){
     STATE.wilContract=false;
     $('s3-warn').innerHTML='';
   } else if(STATE.type==='volledig'){
-    STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:_dISO(new Date()),betaalmethode:STATE._bet?.vol||'pin',betaald:true,label:'Volledig betaald'}];
+    STATE.termijnen=[{nr:1,bedrag:factTot,vervaldatum:_dISO(new Date()),betaalmethode:STATE._bet?.vol||'pin',betaald:(STATE._bet?.vol||'pin')!=='tikkie',label:STATE._bet?.vol==='tikkie'?'Via Tikkie — openstaand':'Volledig betaald'}];
     $('s3-warn').innerHTML='';
   } else if(STATE.type==='aanbetaling'){
     const abed=parseFloat($('s3-aan-bed').value)||0;
@@ -1852,7 +1856,7 @@ function updateS3(){
     const rdat=$('s3-aan-rdat').value||'';
     const rbed=Math.max(0,factTot-abed);
     STATE.termijnen=[
-      {nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:STATE._bet?.aan||'pin',betaald:true,label:'Aanbetaling'}
+      {nr:1,bedrag:abed,vervaldatum:adat,betaalmethode:STATE._bet?.aan||'pin',betaald:(STATE._bet?.aan||'pin')!=='tikkie',label:'Aanbetaling'}
     ];
     if(rbed>0){
       STATE.termijnen.push({nr:2,bedrag:rbed,vervaldatum:rdat,betaalmethode:STATE._bet?.rest||'pin',betaald:false,label:'Restbetaling bij levering'});
