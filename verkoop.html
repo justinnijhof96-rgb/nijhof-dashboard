@@ -2155,11 +2155,21 @@ async function laadDebiteuren(){
     const itMap={};items.forEach(it=>itMap[it.id]=it.naam);
     const groepen={};
     term.forEach(t=>{
-      const g=groepen[t.verkoop_id]||(groepen[t.verkoop_id]={verkoop:verkMap[t.verkoop_id]||{},factuur:DEB_FACTMAP[t.verkoop_id]||{},product:'',termijnen:[],open:0});
+      let g=groepen[t.verkoop_id];
+      if(!g){
+        const v=verkMap[t.verkoop_id]||{}, f=DEB_FACTMAP[t.verkoop_id]||{};
+        g=groepen[t.verkoop_id]={verkoop:v,factuur:f,naam:f.klant_naam||'Onbekende klant',factNr:v.factuur||f.factuurnummer||'',product:v.item_id?(itMap[v.item_id]||''):'',totaal:Number(v.factuur_totaal||v.verkoopprijs||v.totaal)||0,termijnen:[],open:0,cat:'overig'};
+      }
       g.termijnen.push(t);g.open+=Number(t.bedrag)||0;
-      if(!g.product&&g.verkoop.item_id)g.product=itMap[g.verkoop.item_id]||'';
+    });
+    // Categoriseren: Woppa (kanaal/label), Termijn (type=termijn), of los openstaand bedrag
+    Object.values(groepen).forEach(g=>{
+      const v=g.verkoop||{};
+      const isWoppa=(v.verkoopkanaal||'').toLowerCase()==='woppa'||g.termijnen.some(t=>/woppa/i.test(t.label||''));
+      g.cat=isWoppa?'woppa':((v.type||'').toLowerCase()==='termijn'?'termijn':'overig');
     });
     DEBITEUREN=Object.values(groepen).sort((a,b)=>b.open-a.open);
+    DEBITEUREN.forEach((g,i)=>g._i=i);
     _renderDebiteuren();
   }catch(e){
     body.innerHTML='<div class="alert alert-err" style="margin:16px">⚠️ Laden mislukt: '+esc(e.message||e)+'</div>';
@@ -2167,46 +2177,57 @@ async function laadDebiteuren(){
 }
 function _renderDebiteuren(){
   const body=$('deb-body');if(!body)return;
+  if(!DEBITEUREN.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)"><div style="font-size:40px">🎉</div><div style="margin-top:8px;font-weight:600">Geen openstaande betalingen</div></div>';return;}
   const totOpen=DEBITEUREN.reduce((a,g)=>a+g.open,0);
-  let html='<div style="padding:10px 4px 14px;font-size:13px;color:var(--gr)">'+DEBITEUREN.length+' openstaand · totaal <b style="color:var(--nav)">'+eur(totOpen)+'</b></div>';
-  DEBITEUREN.forEach((g,idx)=>{
-    const v=g.verkoop||{},f=g.factuur||{};
-    const naam=f.klant_naam||'Onbekende klant';
-    const factNr=v.factuur||f.factuurnummer||'';
-    const totaal=Number(v.factuur_totaal||v.verkoopprijs||v.totaal)||0, betaald=totaal>0?Math.max(0,totaal-g.open):0;
-    const sub=[g.product,factNr].filter(Boolean).map(esc).join(' · ');
-    const termLijst=g.termijnen.map(t=>{
-      const dat=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
-      return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);padding:2px 0"><span>'+esc(t.label||('Termijn '+t.nr))+(dat?' · '+dat:'')+'</span><span>'+eur(t.bedrag)+'</span></div>';
-    }).join('');
-    html+='<div class="card" style="margin-bottom:10px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-        +'<div style="min-width:0"><div style="font-weight:700;color:var(--nav);font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(naam)+'</div>'
-        +(sub?'<div style="font-size:12px;color:var(--gr);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sub+'</div>':'')+'</div>'
-        +'<div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:var(--gr)">Openstaand</div><div style="font-weight:800;font-size:20px;color:#dc2626">'+eur(g.open)+'</div></div>'
-      +'</div>'
-      +(totaal>0?'<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);margin-top:6px;padding-top:6px;border-top:1px solid var(--bd)"><span>Totaal '+eur(totaal)+'</span><span style="color:var(--gn)">✓ betaald '+eur(betaald)+'</span></div>':'')
-      +'<div style="margin-top:8px">'+termLijst+'</div>'
-      +'<button class="btn deb-tik" onclick="maakTikkieDebiteur('+idx+')" style="width:100%;margin-top:10px;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(g.open)+'</button>'
-      +'</div>';
-  });
+  let html='<div style="padding:10px 4px 2px;font-size:13px;color:var(--gr)">Totaal openstaand <b style="color:var(--nav)">'+eur(totOpen)+'</b></div>';
+  html+=_debSectie('📅 Termijnbetalingen',DEBITEUREN.filter(g=>g.cat==='termijn'));
+  html+=_debSectie('💰 Openstaand bedrag',DEBITEUREN.filter(g=>g.cat==='overig'));
+  html+=_debSectie('🏦 Via Woppa',DEBITEUREN.filter(g=>g.cat==='woppa'));
   body.innerHTML=html;
 }
-async function maakTikkieDebiteur(idx){
-  const g=DEBITEUREN[idx];if(!g)return;
-  const v=g.verkoop||{};
-  const cent=Math.round((g.open||0)*100);
-  if(cent<=0){toast('Geen openstaand bedrag','#dc2626');return;}
+function _debSectie(titel,groepen){
+  if(!groepen.length)return '';
+  const sub=groepen.reduce((a,g)=>a+g.open,0);
+  let h='<div style="margin:18px 4px 8px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px;font-weight:800;color:var(--nav);text-transform:uppercase;letter-spacing:.3px">'+titel+'</span><span style="font-size:12px;color:var(--gr)">'+groepen.length+' · '+eur(sub)+'</span></div>';
+  groepen.forEach(g=>h+=_debCard(g));
+  return h;
+}
+function _debCard(g){
+  const betaald=g.totaal>0?Math.max(0,g.totaal-g.open):0;
+  const sub=[g.product,g.factNr].filter(Boolean).map(esc).join(' · ');
+  let inner='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+    +'<div style="min-width:0"><div style="font-weight:700;color:var(--nav);font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(g.naam)+'</div>'
+    +(sub?'<div style="font-size:12px;color:var(--gr);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sub+'</div>':'')+'</div>'
+    +'<div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:var(--gr)">Openstaand</div><div style="font-weight:800;font-size:20px;color:#dc2626">'+eur(g.open)+'</div></div>'
+    +'</div>';
+  if(g.totaal>0)inner+='<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);margin-top:6px;padding-top:6px;border-top:1px solid var(--bd)"><span>Totaal '+eur(g.totaal)+'</span><span style="color:var(--gn)">✓ betaald '+eur(betaald)+'</span></div>';
+  if(g.cat==='termijn'){
+    inner+='<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">';
+    g.termijnen.forEach((t,ti)=>{
+      const dat=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
+      inner+='<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:8px 10px">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--nav)">'+esc(t.label||('Termijn '+t.nr))+'</div>'+(dat?'<div style="font-size:11px;color:var(--gr)">vervalt '+dat+'</div>':'')+'</div>'
+        +'<button class="btn deb-tik" onclick="maakTikkieTermijn('+g._i+','+ti+',this)" style="background:#0f766e;color:#fff;border:none;min-height:40px;padding:0 14px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;white-space:nowrap">💸 '+eur(t.bedrag)+'</button>'
+        +'</div>';
+    });
+    inner+='</div>';
+  }else if(g.cat==='woppa'){
+    inner+='<div style="margin-top:10px;font-size:12px;color:var(--gr);background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:10px">🏦 Wordt via Woppa uitgekeerd (±1 maand na verkoop) — geen Tikkie nodig.</div>';
+  }else{
+    inner+='<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="width:100%;margin-top:10px;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(g.open)+'</button>';
+  }
+  return '<div class="card" style="margin-bottom:10px">'+inner+'</div>';
+}
+async function _maakTikkieVoor(cent,factNr,product,btn){
+  if(cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
   const tok=_getStoredAuth()?.access_token;
   if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');return;}
-  const btn=document.querySelectorAll('#deb-body .deb-tik')[idx];
-  const oud=btn?btn.innerHTML:'';if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
+  const oud=btn?btn.innerHTML:'';if(btn){btn.disabled=true;btn.textContent='⏳…';}
   try{
-    const factNr=v.factuur||(g.factuur&&g.factuur.factuurnummer)||undefined;
     const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
       method:'POST',
       headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
-      body:JSON.stringify({bedrag_cent:cent,omschrijving:g.product||'Restbetaling Nijhof Brothers',referentie:factNr})
+      body:JSON.stringify({bedrag_cent:cent,omschrijving:product||'Restbetaling Nijhof Brothers',referentie:factNr||undefined})
     });
     const j=await res.json().catch(()=>({}));
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
@@ -2217,6 +2238,14 @@ async function maakTikkieDebiteur(idx){
   }finally{
     if(btn){btn.disabled=false;btn.innerHTML=oud;}
   }
+}
+async function maakTikkieTermijn(gi,ti,btn){
+  const g=DEBITEUREN[gi];if(!g)return;const t=g.termijnen[ti];if(!t)return;
+  await _maakTikkieVoor(Math.round((Number(t.bedrag)||0)*100),g.factNr,g.product,btn);
+}
+async function maakTikkieDebiteur(gi,btn){
+  const g=DEBITEUREN[gi];if(!g)return;
+  await _maakTikkieVoor(Math.round((g.open||0)*100),g.factNr,g.product,btn);
 }
 
 // ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
