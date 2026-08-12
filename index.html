@@ -2626,10 +2626,9 @@ function _tikkieDefaultKeuzeVk(opts){
   return i>=0?i:0;
 }
 function _tikkieOmschrijvingVk(){
+  // Klant ziet de productnaam; het factuurnummer gaat als referentie (Kenmerk) mee.
   const item=_vkId?DB.items.find(x=>x.id===_vkId):null;
-  const prod=(item&&item.naam)?item.naam:'';
-  const fn=val('vk-fac')||'';
-  return fn?(prod?fn+' '+prod:fn):(prod||'Nijhof Brothers'); // factuurnr vooraan blijft leesbaar na Tikkie's 35-tekens afkap
+  return (item&&item.naam)?item.naam:'Nijhof Brothers';
 }
 // Zet het definitieve factuurnummer vast in het vk-fac veld, zodat de Tikkie én de
 // uiteindelijke factuur (bevestigVk leest val('vk-fac')) hetzelfde NBF-nummer gebruiken.

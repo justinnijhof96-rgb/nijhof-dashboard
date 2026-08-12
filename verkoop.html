@@ -1993,10 +1993,10 @@ function _tikkieDefaultKeuze(opts){
   return i>=0?i:0;
 }
 function _tikkieOmschrijving(){
+  // Klant ziet de productnaam; het factuurnummer gaat als referentie (Kenmerk) mee.
   const namen=(STATE.regels||[]).map(r=>r&&r.item&&r.item.naam).filter(Boolean);
-  const prod=!namen.length?'':(namen.length===1?namen[0]:namen.length+' artikelen');
-  const fn=STATE.factuurnr||'';
-  return fn?(prod?fn+' '+prod:fn):(prod||'Nijhof Brothers'); // factuurnr vooraan blijft leesbaar na Tikkie's 35-tekens afkap
+  if(!namen.length)return 'Nijhof Brothers';
+  return namen.length===1?namen[0]:namen.length+' artikelen';
 }
 
 // Rendert de hele Tikkie-kaart (bedrag-chips + knop). Aangeroepen vanuit renderS4,
