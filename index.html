@@ -2603,7 +2603,44 @@ function updateVkPrev(){
 // ── TIKKIE: betaalverzoek + QR-code in de verkoop-modal ───────────
 // Spiegel van de verkoopapp, maar leest het bedrag uit de modal-velden.
 let TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null,token:null,pollTimer:null};
-function _resetTikkieVk(){_stopTikkiePollingVk();TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null,token:null,pollTimer:null};}
+function _resetTikkieVk(){_stopTikkiePollingVk();TIKKIE_VK={bezig:false,keuze:null,url:null,laatste:null,token:null,pollTimer:null,termRef:null};}
+// Tikkie sturen vanuit het Debiteuren-overzicht voor één openstaande termijn.
+async function maakTikkieDebiteurDash(vkId,termijnId,btn){
+  const vk=DB.verkopen.find(v=>v.id===vkId);if(!vk)return;
+  const t=(vk.termijnen||[]).find(x=>x.id===termijnId);if(!t)return;
+  const item=DB.items.find(x=>x.id===vk.itemId);
+  const fac=_facturenCache.find(f=>f.verkoop_id===vkId);
+  const cent=Math.round((Number(t.bedrag)||0)*100);
+  if(cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
+  const tok=_getToken();
+  if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');return;}
+  const oud=btn?btn.innerHTML:'';if(btn){btn.disabled=true;btn.textContent='⏳…';}
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({bedrag_cent:cent,omschrijving:(item&&item.naam)||'Restbetaling Nijhof Brothers',referentie:(vk.factuur||(fac&&fac.factuurnummer))||undefined})
+    });
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
+    TIKKIE_VK.token=j.paymentRequestToken;TIKKIE_VK.url=j.url;
+    TIKKIE_VK.termRef={vkId:vkId,termijnId:termijnId};
+    toonTikkieQrVk(j.url,{cent:cent,label:t.label||'Termijn'});
+  }catch(e){toast('⚠️ '+(e.message||e),'#dc2626');}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=oud;}}
+}
+// Zodra de polling ziet dat de debiteuren-Tikkie is betaald: de termijn op betaald zetten + verversen.
+function _markeerTikkieBetaaldVk(){
+  const ref=TIKKIE_VK.termRef;if(!ref)return;
+  TIKKIE_VK.termRef=null;
+  const vk=DB.verkopen.find(v=>v.id===ref.vkId);
+  const t=vk&&(vk.termijnen||[]).find(x=>x.id===ref.termijnId);
+  if(t&&!t.betaald){
+    t.betaald=true;t.betaaldOp=new Date().toISOString().slice(0,10);
+    try{slaOp();}catch(e){}
+    try{renderDebiteuren();renderDash();}catch(e){}
+  }
+}
 // Innbare bedragen: bij termijn elke termijn, bij aanbetaling de aanbetaling +
 // rest, plus altijd het volledige factuurtotaal als keuze.
 function _tikkieOptiesVk(){
@@ -2693,6 +2730,7 @@ async function maakTikkieVk(force){
     TIKKIE_VK.laatste={url:j.url,cent:b.cent,label:b.label,token:j.paymentRequestToken};
     TIKKIE_VK.token=j.paymentRequestToken;
     TIKKIE_VK.url=j.url;
+    TIKKIE_VK.termRef=null;
     toonTikkieQrVk(j.url,b);
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
@@ -2736,6 +2774,7 @@ function _startTikkiePollingVk(token){
         _stopTikkiePollingVk();
         if(st){st.innerHTML='✅ Betaald!';st.style.color='var(--gn)';}
         try{toast('✅ Tikkie betaald!','#10b981');}catch(_){}
+        _markeerTikkieBetaaldVk();
       }
     }catch(e){/* netwerk-hik: blijf pollen */}
   },4000);
@@ -3910,7 +3949,7 @@ function renderDebiteuren(){
   if(!rows.length){el('deb-lijst').innerHTML='<div class="alert alert-ok">✓ Geen openstaande betalingen</div>';return;}
   rows.sort((a,b)=>b.dtl-a.dtl);
   el('deb-lijst').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
-    <thead><tr><th>Item</th><th>Omschrijving</th><th>Bedrag</th><th>Vervaldatum</th><th>Status</th><th>Herinnering</th><th>✓</th></tr></thead>
+    <thead><tr><th>Item</th><th>Omschrijving</th><th>Bedrag</th><th>Vervaldatum</th><th>Status</th><th>Innen</th><th>✓</th></tr></thead>
     <tbody>${rows.map(r=>{
       const kl=r.dtl>30?'chip-rd':r.dtl>0?'chip-or':'chip-bl';
       const st=r.dtl>0?`${r.dtl}d te laat`:'openstaand';
@@ -3925,7 +3964,7 @@ function renderDebiteuren(){
         <td>${r.t.label==='Restbetaling bij levering'?'🚚 ':''}${esc(lbl)}${r.t.notitie?`<br><span style="font-size:11px;color:var(--gr);font-style:italic">📝 ${esc(r.t.notitie)}</span>`:''}</td>
         <td>${eur(r.t.bedrag)}</td><td>${fmtD(r.t.vervaldatum)}</td>
         <td><span class="chip ${kl}">${st}</span></td>
-        <td style="white-space:nowrap">${herinnering}</td>
+        <td style="white-space:nowrap"><button class="btn btn-xs" onclick="maakTikkieDebiteurDash('${esc(r.vk.id)}','${esc(r.t.id)}',this)" title="Maak een Tikkie voor deze termijn" style="background:#0f766e;color:#fff;border:none;margin-bottom:4px">💸 Tikkie</button><br>${herinnering}</td>
         <td style="text-align:center"><input type="checkbox" onchange="toggleTermijn('${esc(r.vk.id)}','${esc(r.t.id)}')" title="Markeer als betaald"></td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
