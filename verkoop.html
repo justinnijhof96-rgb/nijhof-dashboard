@@ -177,6 +177,11 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <span>Debiteuren</span>
         <span style="font-size:12px;font-weight:400;opacity:.9">Openstaande bedragen → Tikkie in 1 klik</span>
       </button>
+      <button onclick="openRitten()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(37,99,235,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:54px;line-height:1">🚚</span>
+        <span>Ritten</span>
+        <span style="font-size:12px;font-weight:400;opacity:.9">Leveringen op datum → navigatie via Maps</span>
+      </button>
     </div>
   </main>
 </div>
@@ -240,6 +245,18 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   </div>
   <main>
     <div id="deb-body"></div>
+  </main>
+</div>
+
+<!-- RITTEN: leveringen op datum/tijd met Google Maps-navigatie -->
+<div id="screen-ritten" class="view">
+  <div class="top">
+    <button class="btn-icon" onclick="toonScherm('screen-keuze')" title="Terug">←</button>
+    <div class="logo">RITTEN <small>Leveringen & navigatie</small></div>
+    <button class="btn-icon" onclick="laadRitten()" title="Vernieuwen">↻</button>
+  </div>
+  <main>
+    <div id="rit-body"></div>
   </main>
 </div>
 
@@ -456,6 +473,26 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
               <input type="text" id="s3-kn-plts" autocomplete="address-level2" oninput="updateS3()">
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- LEVERING / RIT -->
+      <div class="card">
+        <div style="font-weight:700;color:var(--nav);font-size:15px;margin-bottom:12px">🚚 Levering / rit</div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;user-select:none">
+          <input type="checkbox" id="s3-lev-zelfde" checked onchange="togLeverAdres()" style="width:18px;height:18px;flex-shrink:0">
+          <span style="font-size:14px;font-weight:600;color:var(--nav)">Leveradres = factuuradres</span>
+        </label>
+        <div id="s3-lev-adres-body" style="display:none">
+          <div class="fg"><label>Leveradres</label><input type="text" id="s3-lev-adr" autocomplete="off" placeholder="Straat + huisnummer"></div>
+          <div style="display:flex;gap:8px">
+            <div class="fg" style="flex:0 0 100px"><label>Postcode</label><input type="text" id="s3-lev-pc"></div>
+            <div class="fg" style="flex:1"><label>Plaats</label><input type="text" id="s3-lev-plts"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div class="fg" style="flex:1;margin-bottom:0"><label>Leverdatum</label><input type="date" id="s3-lev-datum"></div>
+          <div class="fg" style="flex:0 0 120px;margin-bottom:0"><label>Tijd</label><input type="time" id="s3-lev-tijd"></div>
         </div>
       </div>
 
@@ -762,7 +799,9 @@ function vorigeStap(){
 // stilzwijgend mee naar de volgende verkoop (updateS2/updateS3 lezen ze weer uit).
 function _resetVerkoopDOM(){
   ['s2-imp','s2-bez'].forEach(id=>{const e=$(id);if(e)e.checked=false;});
-  ['s2-imp-p','s2-bez-p','s3-aan-bed','s3-aan-dat','s3-aan-rdat'].forEach(id=>{const e=$(id);if(e)e.value='';});
+  ['s2-imp-p','s2-bez-p','s3-aan-bed','s3-aan-dat','s3-aan-rdat','s3-lev-adr','s3-lev-pc','s3-lev-plts','s3-lev-datum','s3-lev-tijd'].forEach(id=>{const e=$(id);if(e)e.value='';});
+  const lz=$('s3-lev-zelfde');if(lz)lz.checked=true;
+  const lb=$('s3-lev-adres-body');if(lb)lb.style.display='none';
   const ser=$('s2-extra-rows');if(ser)ser.innerHTML='';
   const trm=$('s3-trm-rows');if(trm)trm.innerHTML='';
   const n=$('s3-trm-n');if(n)n.textContent='3';
@@ -1705,6 +1744,25 @@ function renderS3(){
   kiesKanaal(STATE.kanaal||'marktplaats'); // synct kanaal-knoppen + Woppa-zichtbaarheid (roept zelf updateS3)
 }
 
+function togLeverAdres(){
+  const zelfde=$('s3-lev-zelfde')&&$('s3-lev-zelfde').checked;
+  const body=$('s3-lev-adres-body');if(body)body.style.display=zelfde?'none':'block';
+}
+// Levergegevens uit stap 3 voor opslag op de primaire verkoop-rij (voor de ritten-tool).
+function _leverData(){
+  const zelfde=$('s3-lev-zelfde')&&$('s3-lev-zelfde').checked;
+  const g=id=>($(id)&&$(id).value||'').trim();
+  const adr = zelfde ? (STATE.klant.adres||'') : g('s3-lev-adr');
+  const pc  = zelfde ? (STATE.klant.pc||'')    : g('s3-lev-pc');
+  const plts= zelfde ? (STATE.klant.plts||'')  : g('s3-lev-plts');
+  return {
+    lever_adres: adr||null,
+    lever_postcode: pc||null,
+    lever_plaats: plts||null,
+    lever_datum: g('s3-lev-datum')||null,
+    lever_tijd: g('s3-lev-tijd')||null
+  };
+}
 function togKlant(){
   const b=$('kl-body'),a=$('kl-arr');
   const open=b.style.display!=='none';
@@ -2271,6 +2329,63 @@ async function maakTikkieDebiteur(gi,btn){
   await _maakTikkieVoor(Math.round((g.open||0)*100),g.factNr,g.product,btn,g.termijnen.map(t=>t.id).filter(Boolean));
 }
 
+// ── RITTEN: geplande leveringen op datum/tijd + Google Maps-navigatie ──
+let RITTEN=[];
+function openRitten(){toonScherm('screen-ritten');laadRitten();}
+async function laadRitten(){
+  const body=$('rit-body');if(!body)return;
+  body.innerHTML='<div style="padding:40px;text-align:center;color:var(--gr)">⏳ Leveringen laden…</div>';
+  try{
+    const verk=(await _restGet('verkopen?select=*&order=lever_datum.asc')||[]).filter(v=>v.lever_datum);
+    if(!verk.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)"><div style="font-size:40px">🚚</div><div style="margin-top:8px;font-weight:600">Geen geplande leveringen</div><div style="font-size:12px;margin-top:4px">Vul bij een verkoop een leverdatum in.</div></div>';RITTEN=[];return;}
+    const vkIds=[...new Set(verk.map(v=>v.id).filter(Boolean))];
+    const idList='('+vkIds.map(id=>encodeURIComponent(id)).join(',')+')';
+    const fact=(await _restGet('facturen?select=verkoop_id,klant_naam,klant_telefoon&verkoop_id=in.'+idList).catch(()=>[]))||[];
+    const factMap={};fact.forEach(f=>{if(!factMap[f.verkoop_id])factMap[f.verkoop_id]=f;});
+    const term=(await _restGet('termijnen?select=verkoop_id,bedrag,betaald&verkoop_id=in.'+idList).catch(()=>[]))||[];
+    const openMap={};term.forEach(t=>{if(!t.betaald)openMap[t.verkoop_id]=(openMap[t.verkoop_id]||0)+(Number(t.bedrag)||0);});
+    const itIds=[...new Set(verk.map(v=>v.item_id).filter(Boolean))];
+    const items=itIds.length?((await _restGet('items?select=id,naam&id=in.('+itIds.map(id=>encodeURIComponent(id)).join(',')+')').catch(()=>[]))||[]):[];
+    const itMap={};items.forEach(it=>itMap[it.id]=it.naam);
+    RITTEN=verk.map(v=>{
+      const f=factMap[v.id]||{};
+      return {adres:v.lever_adres||'',pc:v.lever_postcode||'',plaats:v.lever_plaats||'',datum:v.lever_datum,tijd:v.lever_tijd||'',
+        naam:f.klant_naam||'',tel:f.klant_telefoon||'',product:v.item_id?(itMap[v.item_id]||''):'',open:openMap[v.id]||0,type:v.type||''};
+    }).sort((a,b)=>((a.datum||'')+'T'+(a.tijd||'99:99')).localeCompare((b.datum||'')+'T'+(b.tijd||'99:99')));
+    _renderRitten();
+  }catch(e){
+    body.innerHTML='<div class="alert alert-err" style="margin:16px">⚠️ Laden mislukt: '+esc(e.message||e)+'</div>';
+  }
+}
+function _ritRegeling(r){
+  if(r.open>0)return eur(r.open)+' openstaand'+(r.type==='termijn'?' (termijn)':r.type==='aanbetaling'?' (rest bij levering)':'');
+  return '✓ voldaan';
+}
+function _renderRitten(){
+  const body=$('rit-body');if(!body)return;
+  if(!RITTEN.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)">Geen geplande leveringen</div>';return;}
+  let html='', huidigeDatum='';
+  RITTEN.forEach(r=>{
+    if(r.datum!==huidigeDatum){
+      huidigeDatum=r.datum;
+      const dObj=new Date(r.datum);
+      const dLbl=isNaN(dObj)?r.datum:dObj.toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'});
+      html+='<div style="margin:16px 4px 8px;font-size:13px;font-weight:800;color:var(--nav);text-transform:capitalize">'+esc(dLbl)+'</div>';
+    }
+    const volAdres=[r.adres,[r.pc,r.plaats].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const mapsUrl='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(volAdres);
+    html+='<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:800;color:var(--or);font-size:15px;flex-shrink:0">'+(r.tijd?esc(r.tijd):'—')+'</span><span style="font-weight:700;color:var(--nav);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.naam||'Levering')+'</span></div>'
+        +'<div style="font-size:13px;color:var(--dk);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(volAdres||'geen leveradres')+'</div>'
+        +'<div style="font-size:11px;color:var(--gr);margin-top:3px">'+(r.product?esc(r.product)+' · ':'')+(r.tel?'📞 '+esc(r.tel)+' · ':'')+_ritRegeling(r)+'</div>'
+      +'</div>'
+      +(volAdres?'<a href="'+esc(mapsUrl)+'" target="_blank" rel="noopener" title="Navigeer met Google Maps" style="flex-shrink:0;width:54px;height:54px;border-radius:12px;background:#2563eb;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:26px">🧭</a>':'')
+      +'</div>';
+  });
+  body.innerHTML=html;
+}
+
 // ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
 function _maakFactuurPDFmobiel(data){
   const{item,factuurnr,verkoopDatum,verkoopprijs,services,extrasVis,factuurTotaal,btwMethode,btw,termijnen,klant,type}=data;
@@ -2809,6 +2924,7 @@ async function afronden(){
     // 1. Eén verkoop-rij PER item; allemaal met hetzelfde factuurnummer. Services + termijnen
     //    op de primaire (eerste) rij. Zo behoudt het dashboard de marge per item.
     const verkoopIds=[];
+    const leverData=_leverData();
     const verkoopRijen=STATE.regels.map((r,idx)=>{
       const vid=idx===0?verkoopId:_genId();
       verkoopIds.push(vid);
@@ -2829,7 +2945,8 @@ async function afronden(){
         extras_zichtbaar:STATE.extrasVis==='uitgesplitst',
         btw_methode:STATE.btwMethode||'marge',
         bruto_marge:brutoRij,netto_marge:brutoRij,btw:btwRij,netto_na_btw:brutoRij-btwRij,
-        datum_registratie:new Date().toISOString()
+        datum_registratie:new Date().toISOString(),
+        ...(idx===0?leverData:{})
       };
     });
     // Factuur-brede BTW = som van de per-rij-BTW, zodat facturen.btw_bedrag exact
