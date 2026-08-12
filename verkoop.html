@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="apple-touch-icon" href="logo.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
@@ -561,6 +562,21 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 
 <div id="toast"></div>
 
+<!-- TIKKIE: QR-overlay (wordt getoond door toonTikkieQr) -->
+<div id="tikkie-ov" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.78);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)sluitTikkie()">
+  <div style="background:#fff;border-radius:20px;padding:24px 22px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:fadein .2s">
+    <div style="font-size:13px;font-weight:800;color:#0f766e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">💸 Tikkie-betaalverzoek</div>
+    <div style="font-size:13px;color:var(--gr);margin-bottom:14px">Laat de klant de QR-code scannen</div>
+    <div id="tikkie-bedrag" style="font-size:30px;font-weight:800;color:var(--nav);margin-bottom:14px">—</div>
+    <div id="tikkie-qr" style="display:flex;align-items:center;justify-content:center;min-height:240px;background:#f8fafc;border-radius:14px;padding:12px;margin-bottom:12px"></div>
+    <a id="tikkie-link" href="#" target="_blank" rel="noopener" style="display:block;font-size:12px;color:var(--bl);word-break:break-all;margin-bottom:14px;text-decoration:none"></a>
+    <div style="display:flex;gap:10px">
+      <button onclick="_kopieerTikkieLink(this)" style="flex:1;background:#f1f5f9;color:var(--nav);border:1.5px solid var(--bd);min-height:48px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">🔗 Kopieer link</button>
+      <button onclick="sluitTikkie()" style="flex:1;background:var(--nav);color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
@@ -745,6 +761,7 @@ function herstart(){
   STATE.termijnen=[];
   STATE.wilEmailen=false;
   STATE.wilContract=false;
+  _resetTikkie();
   _resetVerkoopDOM();
   const s4=$('s4-status');if(s4)s4.innerHTML='';
   // UI: zorg dat steps + bottom bar weer zichtbaar zijn (succes-screen verbergt ze)
@@ -1937,7 +1954,126 @@ function renderS4(){
       ${STATE.wilEmailen?`<div class="prev-rij" style="color:var(--gn)"><span>📧 Factuur emailen</span><span>✓</span></div>`:`<div class="prev-rij" style="color:var(--gr)"><span>📧 Factuur emailen</span><span>uit</span></div>`}
       ${STATE.wilContract?`<div class="prev-rij" style="color:var(--gn)"><span>📝 Contract opstellen</span><span>✓</span></div>`:''}
     </div>
+
+    <div class="card" id="s4-tikkie-wrap"></div>
   `;
+  _renderTikkie();
+}
+
+// ── TIKKIE: betaalverzoek + QR-code in de controle-stap ───────────
+let TIKKIE={bezig:false,keuze:null,url:null,laatste:null};
+function _resetTikkie(){TIKKIE={bezig:false,keuze:null,url:null,laatste:null};}
+
+// Alle bedragen die je via Tikkie kunt innen: bij termijn/aanbetaling elke
+// termijn afzonderlijk (de klant kiest wat 'ie nu int) + het volledige totaal;
+// anders alleen het factuurtotaal (incl. bijverkopen).
+function _tikkieOpties(){
+  const servTot=(STATE.services||[]).reduce((a,s)=>a+(Number(s.bedrag)||0),0);
+  const factTot=(Number(STATE.prijs)||0)+servTot;
+  const totCent=Math.round(factTot*100);
+  const opts=[];
+  if((STATE.type==='termijn'||STATE.type==='aanbetaling')&&(STATE.termijnen||[]).length>1){
+    STATE.termijnen.forEach(t=>{
+      const cent=Math.round((Number(t.bedrag)||0)*100);
+      if(cent>0)opts.push({cent,label:t.label||('Termijn '+t.nr),betaald:!!t.betaald});
+    });
+  }
+  if(totCent>0&&!opts.some(o=>o.cent===totCent))opts.push({cent:totCent,label:'Totaal',betaald:false});
+  return opts;
+}
+function _tikkieDefaultKeuze(opts){
+  const i=opts.findIndex(o=>!o.betaald&&o.label!=='Totaal'); // eerste nog openstaande termijn
+  return i>=0?i:0;
+}
+function _tikkieOmschrijving(){
+  const namen=(STATE.regels||[]).map(r=>r&&r.item&&r.item.naam).filter(Boolean);
+  if(!namen.length)return 'Nijhof Brothers';
+  return namen.length===1?namen[0]:namen.length+' artikelen';
+}
+
+// Rendert de hele Tikkie-kaart (bedrag-chips + knop). Aangeroepen vanuit renderS4,
+// na een bedragkeuze en na het aanmaken van een verzoek.
+function _renderTikkie(){
+  const wrap=$('s4-tikkie-wrap');if(!wrap)return;
+  const kop='<div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">💸 Betalen via Tikkie</div>';
+  if(STATE.kanaal==='woppa'){
+    wrap.innerHTML=kop+'<div style="font-size:13px;color:var(--gr)">Niet nodig: bij Woppa wordt de betaling automatisch ±1 maand na de verkoop uitgekeerd.</div>';
+    return;
+  }
+  const opts=_tikkieOpties();
+  if(TIKKIE.keuze==null||TIKKIE.keuze>=opts.length)TIKKIE.keuze=_tikkieDefaultKeuze(opts);
+  const sel=opts[TIKKIE.keuze]||opts[0]||{cent:0,label:''};
+  const chips=opts.length>1?('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+opts.map((o,i)=>{
+    const on=i===TIKKIE.keuze;
+    return '<button onclick="_kiesTikkie('+i+')" style="flex:1;min-width:calc(50% - 4px);padding:9px 8px;border-radius:10px;cursor:pointer;text-align:center;border:1.5px solid '+(on?'#0f766e':'var(--bd)')+';background:'+(on?'#0f766e':'#fff')+';color:'+(on?'#fff':'var(--nav)')+'"><div style="font-size:12px;font-weight:600">'+esc(o.label)+(o.betaald?' ✓':'')+'</div><div style="font-size:15px;font-weight:800;margin-top:1px">'+eur(o.cent/100)+'</div></button>';
+  }).join('')+'</div>'):'';
+  const alGemaakt=TIKKIE.laatste&&TIKKIE.laatste.cent===sel.cent&&TIKKIE.laatste.label===sel.label;
+  let knop,onder;
+  if(!sel.cent||sel.cent<=0){
+    knop='<button class="btn" disabled style="width:100%;background:#e2e8f0;color:var(--gr);border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px">Geen bedrag om te innen</button>';onder='';
+  }else if(alGemaakt){
+    knop='<button class="btn" id="s4-tikkie-btn" onclick="maakTikkie(false)" style="width:100%;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">📱 QR opnieuw tonen · '+eur(sel.cent/100)+'</button>';
+    onder='<button onclick="maakTikkie(true)" style="width:100%;background:none;border:none;color:var(--gr);font-size:12px;margin-top:8px;cursor:pointer;text-decoration:underline">Nieuw betaalverzoek aanmaken</button>';
+  }else{
+    knop='<button class="btn" id="s4-tikkie-btn" onclick="maakTikkie(false)" style="width:100%;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(sel.cent/100)+(sel.label&&sel.label!=='Totaal'?' ('+esc(sel.label)+')':'')+'</button>';
+    onder='<div style="font-size:11px;color:var(--gr);margin-top:8px">Maakt een Tikkie-betaalverzoek en toont de QR-code, laat de klant scannen om af te rekenen.</div>';
+  }
+  wrap.innerHTML=kop+chips+knop+onder;
+}
+function _kiesTikkie(i){TIKKIE.keuze=i;_renderTikkie();}
+
+// force=false: eerste keer aanmaken, of QR opnieuw tonen als het al bestaat.
+// force=true: bewust een extra betaalverzoek naast het bestaande.
+async function maakTikkie(force){
+  if(TIKKIE.bezig)return;
+  const opts=_tikkieOpties();
+  const b=opts[TIKKIE.keuze]||opts[0];
+  if(!b||b.cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
+  const alGemaakt=TIKKIE.laatste&&TIKKIE.laatste.cent===b.cent&&TIKKIE.laatste.label===b.label;
+  if(alGemaakt&&!force){toonTikkieQr(TIKKIE.laatste.url,b);return;} // geen dubbel verzoek
+  if(alGemaakt&&force&&!confirm('Er is al een Tikkie voor '+eur(b.cent/100)+' aangemaakt.\nNog een tweede betaalverzoek aanmaken?'))return;
+  const tok=_getStoredAuth()?.access_token;
+  if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in en probeer opnieuw','#dc2626');return;}
+  TIKKIE.bezig=true;
+  const btn=$('s4-tikkie-btn');if(btn){btn.disabled=true;btn.textContent='⏳ Tikkie aanmaken…';}
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/maak-tikkie',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({bedrag_cent:b.cent,omschrijving:_tikkieOmschrijving(),referentie:(STATE.klant.naam||'').slice(0,35)||undefined})
+    });
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
+    TIKKIE.laatste={url:j.url,cent:b.cent,label:b.label};
+    TIKKIE.url=j.url;
+    toonTikkieQr(j.url,b);
+  }catch(e){
+    toast('⚠️ '+(e.message||e),'#dc2626');
+  }finally{
+    TIKKIE.bezig=false;
+    _renderTikkie();
+  }
+}
+function toonTikkieQr(url,b){
+  const ov=$('tikkie-ov');if(!ov)return;
+  $('tikkie-bedrag').textContent=eur(b.cent/100)+(b.label&&b.label!=='Totaal'?' · '+b.label:'');
+  const qr=$('tikkie-qr');qr.innerHTML='';
+  try{
+    new QRCode(qr,{text:url,width:240,height:240,correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){
+    qr.innerHTML='<a href="'+esc(url)+'" target="_blank" style="word-break:break-all">'+esc(url)+'</a>';
+  }
+  const lnk=$('tikkie-link');lnk.textContent=url;lnk.href=url;
+  TIKKIE.url=url;
+  ov.style.display='flex';
+}
+function sluitTikkie(){const ov=$('tikkie-ov');if(ov)ov.style.display='none';}
+function _kopieerTikkieLink(btn){
+  const url=TIKKIE.url||($('tikkie-link')&&$('tikkie-link').href)||'';
+  if(!url)return;
+  const ok=()=>{const o=btn.textContent;btn.textContent='✓ Gekopieerd';setTimeout(()=>{btn.textContent=o;},1500);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(ok).catch(()=>prompt('Kopieer de Tikkie-link:',url));}
+  else{prompt('Kopieer de Tikkie-link:',url);}
 }
 
 // ── FACTUUR PDF (kopie van dashboard, ingekort) ───────────────────
@@ -2790,6 +2926,7 @@ async function nieuweVerkoop(){
   STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
   STATE.wilEmailen=false;
   STATE.wilContract=false;
+  _resetTikkie();
   _resetVerkoopDOM();
   // UI reset: statusmeldingen en knop van de vorige ronde wissen
   $('s4-status').innerHTML='';
