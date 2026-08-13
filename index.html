@@ -301,6 +301,7 @@ main{max-width:1280px;margin:0 auto;padding:16px}
     <div class="side-link" data-view="s-wa" onclick="showView('s-wa')"><span class="ic">🌐</span>Webshop analytics</div>
     <div class="side-group">Financieel</div>
     <div class="side-link" data-view="s-lasten" onclick="showView('s-lasten')"><span class="ic">💸</span>Vaste lasten</div>
+    <div class="side-link" data-view="s-bank" onclick="showView('s-bank')"><span class="ic">🏦</span>Bankinzicht</div>
     <div class="side-link" data-view="s-archief" onclick="showView('s-archief')"><span class="ic">🗃️</span>Archief</div>
     <div class="side-group">Systeem</div>
     <div class="side-link" data-view="s-export" onclick="showView('s-export')"><span class="ic">📤</span>Export &amp; data</div>
@@ -533,6 +534,23 @@ main{max-width:1280px;margin:0 auto;padding:16px}
         <div style="font-size:11px;color:var(--gr);margin-top:10px" id="backup-info"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- BANKINZICHT -->
+<div class="sec" id="s-bank">
+  <div class="sec-hdr" onclick="tog(this)"><h2>🏦 Bankinzicht</h2><span class="arr">▼</span></div>
+  <div class="sec-body">
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:12px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5">
+      Download je transacties in <strong>Internet Bankieren op de computer</strong>: <strong>Zelf regelen → Bij- en afschrijvingen downloaden</strong> → kies je zakelijke rekening → periode → formaat <strong>CAMT.053</strong>. Importeer het <code>.xml</code>-bestand hieronder. Je cijfers worden alleen <strong>lokaal in dit dashboard</strong> bewaard.
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <a class="btn btn-or btn-sm" href="https://www.abnamro.nl/nl/zakelijk/internet-bankieren/bestanden-downloaden.html" target="_blank" rel="noopener">📥 Download bij ABN</a>
+      <label class="btn btn-gn btn-sm" style="cursor:pointer">⬆️ Importeer CAMT.053
+        <input type="file" accept=".xml,.053,text/xml,application/xml" onchange="bankImport(event)" style="display:none">
+      </label>
+    </div>
+    <div id="bank-uitslag"></div>
   </div>
 </div>
 
@@ -1138,7 +1156,7 @@ function tog(hdr){/* secties zijn nu losse views — inklappen uitgeschakeld */}
 const VIEW_TITELS = {
   's-dash':'Dashboard','s-status':'Hoe staan we ervoor?','s-voorraad':'Voorraad',
   's-inkoop':'Nieuwe inkoop','s-debiteuren':'Debiteuren','s-klanten':'Klanten','s-facturen':'Facturen & contracten',
-  's-lasten':'Vaste lasten','s-archief':'Archief',
+  's-lasten':'Vaste lasten','s-bank':'Bankinzicht','s-archief':'Archief',
   's-mp':'Marktplaats advertenties','s-wa':'Webshop analytics',
   's-export':'Export & data','s-instellingen':'Instellingen'
 };
@@ -1150,6 +1168,7 @@ function showView(id){
   try{localStorage.setItem('nb-view',id);}catch(e){}
   if(id==='s-mp'){try{renderMp();}catch(e){console.warn('MP render:',e);}}
   if(id==='s-wa'){try{waEnsure();}catch(e){console.warn('WA render:',e);}}
+  if(id==='s-bank'){try{bankRender();}catch(e){console.warn('Bank render:',e);}}
   closeSidebar();
   window.scrollTo(0,0);
 }
@@ -4940,6 +4959,143 @@ function diagnoseExport(){
   dlBlob(new Blob([JSON.stringify(diag,null,2)],{type:'application/json'}),`nijhof-diagnose-${vandaag()}.json`);
   toast(`🔍 Diagnose gedownload — ${problemen.length} potentiële issue${problemen.length===1?'':'s'} gevonden`,problemen.length>0?'#c2410c':'#15803d');
 }
+/* ── BANKINZICHT: CAMT.053-import + cijferinzichten (lokaal opgeslagen) ── */
+const _BANK_KEY='nb-bank';
+function _bankLoad(){try{const o=JSON.parse(localStorage.getItem(_BANK_KEY)||'null');if(o&&Array.isArray(o.txns))return o;}catch(e){}return{txns:[],saldo:null,saldoDatum:null,iban:null,laatste:null};}
+let BANK=_bankLoad();
+function _bankSave(){try{localStorage.setItem(_BANK_KEY,JSON.stringify(BANK));}catch(e){toast('Opslaan mislukt (opslag vol?)','#b91c1c');}}
+// namespace-veilige XML-helpers (CAMT gebruikt een default-namespace)
+function _bankEls(node,tag){const o=[],a=node.getElementsByTagName('*');for(let i=0;i<a.length;i++)if(a[i].localName===tag)o.push(a[i]);return o;}
+function _bankEl(node,tag){const a=node.getElementsByTagName('*');for(let i=0;i<a.length;i++)if(a[i].localName===tag)return a[i];return null;}
+function _bankTxt(node,tag){const e=node?_bankEl(node,tag):null;return e?e.textContent.trim():'';}
+
+function _parseCAMT(xml){
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('XML parse error');
+  const stmts=_bankEls(doc,'Stmt');
+  if(!stmts.length)throw new Error('geen Stmt-blok');
+  const txns=[];let saldo=null,saldoDatum=null,iban=null;
+  stmts.forEach(stmt=>{
+    const acct=_bankEl(stmt,'Acct');
+    if(acct){const ib=_bankTxt(acct,'IBAN');if(ib)iban=ib;}
+    _bankEls(stmt,'Bal').forEach(bal=>{
+      const cd=_bankTxt(bal,'Cd');
+      if(cd!=='CLBD'&&cd!=='CLAV')return;
+      const amtEl=_bankEl(bal,'Amt');const amt=amtEl?parseFloat(amtEl.textContent):NaN;
+      if(isNaN(amt))return;
+      const ind=_bankTxt(bal,'CdtDbtInd');const waarde=ind==='DBIT'?-amt:amt;
+      const dt=_bankTxt(bal,'Dt');
+      if(cd==='CLBD'){if(!saldoDatum||(dt&&dt>=saldoDatum)){saldo=waarde;saldoDatum=dt;}}
+      else if(saldo===null){saldo=waarde;saldoDatum=dt;}
+    });
+    _bankEls(stmt,'Ntry').forEach(ntry=>{
+      const amtEl=_bankEl(ntry,'Amt');const amt=amtEl?parseFloat(amtEl.textContent):NaN;
+      if(isNaN(amt))return;
+      const ind=_bankTxt(ntry,'CdtDbtInd');
+      const bedrag=ind==='DBIT'?-Math.abs(amt):Math.abs(amt);
+      let datum='';const bd=_bankEl(ntry,'BookgDt'),vd=_bankEl(ntry,'ValDt');
+      if(bd)datum=_bankTxt(bd,'Dt')||_bankTxt(bd,'DtTm');
+      if(!datum&&vd)datum=_bankTxt(vd,'Dt')||_bankTxt(vd,'DtTm');
+      if(datum.length>10)datum=datum.slice(0,10);
+      const txd=_bankEl(ntry,'TxDtls');
+      let naam='';
+      const rlt=txd?_bankEl(txd,'RltdPties'):null;
+      if(rlt){const cdtr=_bankEl(rlt,'Cdtr'),dbtr=_bankEl(rlt,'Dbtr');const tp=ind==='DBIT'?(cdtr||dbtr):(dbtr||cdtr);if(tp)naam=_bankTxt(tp,'Nm');}
+      const ustrd=(txd?_bankEls(txd,'Ustrd'):_bankEls(ntry,'Ustrd')).map(u=>u.textContent.trim()).filter(Boolean).join(' ');
+      const oms=ustrd||_bankTxt(ntry,'AddtlNtryInf');
+      let ref=_bankTxt(ntry,'NtryRef');
+      if(!ref&&txd)ref=_bankTxt(txd,'AcctSvcrRef')||_bankTxt(txd,'EndToEndId')||_bankTxt(txd,'TxId')||_bankTxt(txd,'InstrId');
+      if(ref==='NOTPROVIDED'||ref==='NONREF')ref='';
+      const id=ref||(datum+'|'+bedrag.toFixed(2)+'|'+naam+'|'+oms).slice(0,190);
+      txns.push({id,datum,bedrag,naam,oms});
+    });
+  });
+  return {txns,saldo,saldoDatum,iban};
+}
+
+function _bankMerge(res){
+  const zien=new Set(BANK.txns.map(t=>t.id));let n=0;
+  res.txns.forEach(t=>{if(!zien.has(t.id)){BANK.txns.push(t);zien.add(t.id);n++;}});
+  BANK.txns.sort((a,b)=>a.datum<b.datum?1:a.datum>b.datum?-1:0);
+  if(res.saldo!=null&&(!BANK.saldoDatum||(res.saldoDatum&&res.saldoDatum>=BANK.saldoDatum))){BANK.saldo=res.saldo;BANK.saldoDatum=res.saldoDatum;}
+  if(res.iban)BANK.iban=res.iban;
+  BANK.laatste=new Date().toISOString();
+  return n;
+}
+
+function bankImport(evt){
+  const f=evt.target.files&&evt.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const res=_parseCAMT(String(r.result||''));
+      if(!res.txns.length){toast('Geen transacties gevonden — is dit een CAMT.053-bestand?','#b91c1c');return;}
+      const n=_bankMerge(res);_bankSave();bankRender();
+      toast(n?(n+' nieuwe transacties ingelezen ✓'):'Al bijgewerkt — geen nieuwe transacties');
+    }catch(e){console.error('bankImport',e);toast('Kon dit bestand niet lezen. Kies het CAMT.053 (.xml). Zit het in een .zip? Pak het eerst uit.','#b91c1c');}
+    finally{evt.target.value='';}
+  };
+  r.onerror=()=>{toast('Bestand lezen mislukt','#b91c1c');evt.target.value='';};
+  r.readAsText(f);
+}
+
+function bankWis(){if(!confirm('Alle in het dashboard geïmporteerde bankdata wissen? Je bankrekening zelf blijft uiteraard ongemoeid.'))return;BANK={txns:[],saldo:null,saldoDatum:null,iban:null,laatste:null};_bankSave();bankRender();toast('Bankdata gewist');}
+
+const _BANK_MND=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+function _bankMndLbl(ym){const p=ym.split('-');if(p.length<2)return ym;return (_BANK_MND[(+p[1])-1]||p[1])+' '+p[0];}
+
+function bankRender(){
+  const box=el('bank-uitslag');if(!box)return;
+  if(!BANK.txns.length){box.innerHTML='<div style="padding:34px 18px;text-align:center;color:var(--gr)">Nog geen bankdata. Download je CAMT.053 bij ABN (knop hierboven) en importeer het bestand.</div>';return;}
+  const txns=BANK.txns;
+  let totIn=0,totUit=0;const perMaand={},tegen={};
+  txns.forEach(t=>{
+    if(t.bedrag>=0)totIn+=t.bedrag;else totUit+=-t.bedrag;
+    const m=(t.datum||'').slice(0,7)||'—';perMaand[m]=perMaand[m]||{in:0,uit:0};
+    if(t.bedrag>=0)perMaand[m].in+=t.bedrag;else perMaand[m].uit+=-t.bedrag;
+    if(t.bedrag<0){const k=t.naam||t.oms||'Onbekend';tegen[k]=(tegen[k]||0)+(-t.bedrag);}
+  });
+  const netto=totIn-totUit;
+  const maanden=Object.keys(perMaand).filter(m=>m!=='—').sort().reverse().slice(0,18);
+  const maxMnd=Math.max(1,...maanden.map(m=>Math.max(perMaand[m].in,perMaand[m].uit)));
+  const topTegen=Object.entries(tegen).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxTegen=Math.max(1,...topTegen.map(t=>t[1]));
+  const periode=txns.length?fmtD(txns[txns.length-1].datum)+' – '+fmtD(txns[0].datum):'';
+  const kpi=(lbl,waarde,kleur)=>'<div style="background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:11px 13px"><div style="font-size:10.5px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.5px">'+lbl+'</div><div style="font-size:19px;font-weight:800;color:'+(kleur||'var(--nav)')+';margin-top:3px;font-family:var(--f-head)">'+waarde+'</div></div>';
+  let h='';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0">';
+  h+=kpi('Huidig saldo',BANK.saldo==null?'—':eur(BANK.saldo),BANK.saldo<0?'var(--rd)':'var(--nav)');
+  h+=kpi('Totaal in','+'+eur(totIn),'var(--gn)');
+  h+=kpi('Totaal uit','−'+eur(totUit),'var(--rd)');
+  h+=kpi('Netto',(netto>=0?'+':'−')+eur(Math.abs(netto)),netto>=0?'var(--gn)':'var(--rd)');
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px">';
+  h+='<div><div class="db-card-title">Per maand (in / uit)</div>';
+  maanden.forEach(m=>{const d=perMaand[m];const nt=d.in-d.uit;
+    h+='<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><strong style="color:var(--nav)">'+_bankMndLbl(m)+'</strong>'
+      +'<span style="color:var(--gr)"><span style="color:var(--gn)">+'+eur(d.in)+'</span> · <span style="color:var(--rd)">−'+eur(d.uit)+'</span> · netto <strong style="color:'+(nt>=0?'var(--gn)':'var(--rd)')+'">'+(nt>=0?'+':'−')+eur(Math.abs(nt))+'</strong></span></div>'
+      +'<div style="display:flex;gap:3px"><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+Math.round(d.in/maxMnd*100)+'%;background:var(--gn)"></div></div>'
+      +'<div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+Math.round(d.uit/maxMnd*100)+'%;background:var(--rd)"></div></div></div></div>';
+  });
+  h+='</div>';
+  h+='<div><div class="db-card-title">Grootste uitgaven (tegenpartij)</div>';
+  if(!topTegen.length)h+='<div style="color:var(--gr);font-size:12px">Geen uitgaven in deze periode.</div>';
+  topTegen.forEach(function(e){const naam=e[0],bedr=e[1];
+    h+='<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:2px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(naam)+'</span><strong style="white-space:nowrap">'+eur(bedr)+'</strong></div>'
+      +'<div style="height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+Math.round(bedr/maxTegen*100)+'%;background:var(--or)"></div></div></div>';
+  });
+  h+='</div></div>';
+  h+='<div style="margin-top:16px"><div class="db-card-title">Recente transacties</div>';
+  txns.slice(0,20).forEach(t=>{const groen=t.bedrag>=0;
+    h+='<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px"><div style="min-width:0"><div style="font-weight:600;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.naam||t.oms||'—')+'</div>'
+      +'<div style="color:var(--gr);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+fmtD(t.datum)+(t.naam&&t.oms?' · '+esc(t.oms):'')+'</div></div>'
+      +'<div style="font-weight:700;white-space:nowrap;color:'+(groen?'var(--gn)':'var(--rd)')+'">'+(groen?'+':'−')+eur(Math.abs(t.bedrag))+'</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;font-size:11px;color:var(--gr);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>'+txns.length+' transacties · '+periode+(BANK.iban?' · '+esc(BANK.iban):'')+(BANK.laatste?' · geïmporteerd '+fmtD(BANK.laatste):'')+'</span><button class="btn btn-gy btn-sm" onclick="bankWis()">🗑️ Wis bankdata</button></div>';
+  box.innerHTML=h;
+}
+
 function importJSON(evt){
   const f=evt.target.files[0];if(!f)return;
   const r=new FileReader();
