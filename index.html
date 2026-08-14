@@ -5328,13 +5328,25 @@ async function socialMaak(i,type){
 }
 function _socialCaption(){ const p=_social.laatste; if(!p)return ''; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
-function socialDeel(){
-  _socialBlob(blob=>{
-    if(!blob){ toast('Kon het bestand niet maken','#b91c1c'); return; }
-    const file=new File([blob],'nieuw-binnen.'+(_social.ext||'png'),{type:_social.mime||'image/png'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){ navigator.share({files:[file],text:_socialCaption()}).catch(()=>{}); }
-    else { socialDownload(); toast('Direct delen kan niet op dit apparaat — bestand gedownload, plaats \'m handmatig.','#b45309'); }
-  });
+async function socialDeel(){
+  if(!_social.blob){ toast('Nog even geduld — de foto/video wordt nog gemaakt','#b45309'); return; }
+  const cap=_socialCaption();
+  const naam='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png');
+  const file=new File([_social.blob],naam,{type:_social.mime||'image/png'});
+  // 1) Deel het bestand (foto/video) direct via het deelmenu
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],text:cap}); return; }
+    catch(e){ if(e&&e.name==='AbortError') return;
+      try{ await navigator.share({files:[file]}); return; }catch(e2){ if(e2&&e2.name==='AbortError') return; } }
+  }
+  // 2) Bestand-delen niet ondersteund → deel tenminste tekst+link via het deelmenu (géén download)
+  if(navigator.share){
+    try{ await navigator.share({title:'Nieuw binnen bij Nijhof Brothers',text:cap}); return; }
+    catch(e){ if(e&&e.name==='AbortError') return; }
+  }
+  // 3) Geen deel-API in deze browser → tekst kopiëren (nog steeds geen automatische download)
+  socialKopieer();
+  toast('Direct delen lukt niet in deze browser — tekst gekopieerd. Open het dashboard in Chrome op je telefoon, of gebruik de 📥 Download-knop.','#b45309');
 }
 function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png'); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
 function socialKopieer(){ const t=_socialCaption(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>toast('Tekst gekopieerd ✓')).catch(()=>prompt('Kopieer de tekst:',t)); } else prompt('Kopieer de tekst:',t); }
