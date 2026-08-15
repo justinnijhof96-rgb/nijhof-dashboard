@@ -2339,7 +2339,7 @@ function _debAanpasBlok(g){
     +'<div id="deb-aanpas-'+g._i+'" style="display:none;margin-top:8px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px">'
       +'<label for="deb-bedrag-'+g._i+'" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin-bottom:6px">Bedrag om te innen (€)</label>'
       +'<div style="display:flex;gap:8px">'
-        +'<input type="number" id="deb-bedrag-'+g._i+'" inputmode="decimal" min="0" step="0.01" value="'+g.open.toFixed(2)+'" style="flex:1;min-width:0;padding:10px 12px;border:1.5px solid #0f766e;border-radius:8px;font-size:17px;font-weight:700;color:var(--nav)">'
+        +'<input type="text" id="deb-bedrag-'+g._i+'" inputmode="decimal" autocomplete="off" value="'+(Number.isInteger(g.open)?g.open:g.open.toFixed(2))+'" style="flex:1;min-width:0;padding:10px 12px;border:1.5px solid #0f766e;border-radius:8px;font-size:17px;font-weight:700;color:var(--nav)">'
         +'<button class="btn" onclick="_debTikkieAangepast('+g._i+',this)" style="background:#0f766e;color:#fff;border:none;min-height:46px;padding:0 16px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;white-space:nowrap">💸 Tikkie</button>'
       +'</div>'
       +'<div style="font-size:11px;color:var(--gr);margin-top:8px;line-height:1.5">Handig als er al contant of per pin is aanbetaald. <b>Let op:</b> zodra dit bedrag betaald is, wordt deze klant als volledig voldaan gemarkeerd.</div>'
@@ -2351,10 +2351,20 @@ function _debToggleAanpas(gi){
   el.style.display=toon?'block':'none';
   if(toon){const inp=document.getElementById('deb-bedrag-'+gi);if(inp){inp.focus();inp.select();}}
 }
+// Robuuste bedrag-parser: accepteert "895", "895,00", "895.00", "1.234,50",
+// "€ 895" enz. — voorkomt dat een komma of euroteken het bedrag ongeldig maakt.
+function _parseBedrag(s){
+  s=String(s==null?'':s).replace(/[^0-9.,-]/g,'');
+  if(s.indexOf(',')>-1&&s.indexOf('.')>-1){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.'); // 1.234,50
+    else s=s.replace(/,/g,''); // 1,234.50
+  }else if(s.indexOf(',')>-1){s=s.replace(',','.');}
+  const n=parseFloat(s);return isNaN(n)?NaN:n;
+}
 async function _debTikkieAangepast(gi,btn){
   const g=DEBITEUREN[gi];if(!g)return;
   const inp=document.getElementById('deb-bedrag-'+gi);
-  const val=inp?parseFloat(String(inp.value).replace(',','.')):NaN;
+  const val=_parseBedrag(inp?inp.value:'');
   if(!(val>0)){toast('Vul een geldig bedrag in','#dc2626');if(inp){inp.focus();inp.select();}return;}
   await _maakTikkieVoor(Math.round(val*100),g.factNr,g.product,btn,g.termijnen.map(t=>t.id).filter(Boolean));
 }
