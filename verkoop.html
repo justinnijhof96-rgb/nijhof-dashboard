@@ -147,40 +147,45 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 <div id="screen-keuze" class="view">
   <div class="top">
     <button class="btn-icon" onclick="bevestigUitloggen()" title="Uitloggen">←</button>
-    <div class="logo">NIJHOF BROTHERS <small>Wat ga je doen?</small></div>
+    <div class="logo" style="font-size:12px;letter-spacing:1.5px;opacity:.85">VERKOOP-APP</div>
     <span style="width:36px"></span>
   </div>
-  <main style="padding-top:30px">
-    <div style="display:flex;flex-direction:column;gap:16px;max-width:480px;margin:0 auto">
-      <button onclick="kiesActie('verkoop')" style="background:linear-gradient(135deg,#e87722,#d36b1f);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(232,119,34,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">🛋️</span>
-        <span>Verkoop</span>
-        <span style="font-size:12px;font-weight:400;opacity:.9">Item uit voorraad verkopen</span>
+  <style>
+    #screen-keuze.view.show{display:flex;flex-direction:column;height:100vh;height:100dvh}
+    #screen-keuze main{flex:1;min-height:0;padding:16px 16px 18px;display:flex;flex-direction:column;overflow-y:auto}
+    #screen-keuze .kz-hero{flex-shrink:0;text-align:center;margin:2px 0 16px}
+    #screen-keuze .kz-hero img{height:68px;width:auto;display:block;margin:0 auto 8px}
+    #screen-keuze .kz-vraag{font-family:var(--f-head);font-size:19px;font-weight:800;color:var(--nav);letter-spacing:-.01em}
+    #screen-keuze .kz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:minmax(92px,118px);align-content:start;gap:12px;max-width:460px;width:100%;margin:0 auto}
+    #screen-keuze .kz-tegel{background:#fff;border:1.5px solid var(--bd);border-top:3px solid var(--kz,#e87722);border-radius:14px;padding:12px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-shadow:0 2px 6px rgba(30,47,58,.06);transition:transform .1s}
+    #screen-keuze .kz-tegel:active{transform:scale(.97)}
+    #screen-keuze .kz-tegel .kz-ic{font-size:30px;line-height:1}
+    #screen-keuze .kz-tegel .kz-t{font-size:15px;font-weight:800;color:var(--nav);line-height:1.1}
+    #screen-keuze .kz-tegel .kz-s{font-size:10px;font-weight:500;color:var(--gr);line-height:1.25;text-align:center;max-width:96%}
+  </style>
+  <main>
+    <div class="kz-hero">
+      <img src="logo.png" alt="Nijhof Brothers" onerror="this.style.display='none'">
+      <div class="kz-vraag">Wat ga je doen?</div>
+    </div>
+    <div class="kz-grid">
+      <button onclick="kiesActie('verkoop')" class="kz-tegel" style="--kz:#e87722">
+        <span class="kz-ic">🛋️</span><span class="kz-t">Verkoop</span><span class="kz-s">Uit voorraad verkopen</span>
       </button>
-      <button onclick="kiesActie('inkoop')" style="background:linear-gradient(135deg,#1e2f3a,#16242c);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(30,47,58,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">📥</span>
-        <span>Inkoop</span>
-        <span style="font-size:12px;font-weight:400;opacity:.8">Nieuw item toevoegen</span>
+      <button onclick="kiesActie('inkoop')" class="kz-tegel" style="--kz:#1e2f3a">
+        <span class="kz-ic">📥</span><span class="kz-t">Inkoop</span><span class="kz-s">Nieuw item toevoegen</span>
       </button>
-      <button onclick="kiesActie('bonnetje')" style="background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(180,83,9,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">🧾</span>
-        <span>Bonnetje</span>
-        <span style="font-size:12px;font-weight:400;opacity:.9">Foto van een bon → PDF naar invoice@</span>
+      <button onclick="kiesActie('bonnetje')" class="kz-tegel" style="--kz:#b45309">
+        <span class="kz-ic">🧾</span><span class="kz-t">Bonnetje</span><span class="kz-s">Foto → PDF naar invoice@</span>
       </button>
-      <button onclick="kiesActie('splitsen')" style="background:linear-gradient(135deg,#0f766e,#115e59);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(15,118,110,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">✂️</span>
-        <span>Partij splitsen</span>
-        <span style="font-size:12px;font-weight:400;opacity:.9">1 inkoop → meerdere losse stukken</span>
+      <button onclick="kiesActie('splitsen')" class="kz-tegel" style="--kz:#0f766e">
+        <span class="kz-ic">✂️</span><span class="kz-t">Partij splitsen</span><span class="kz-s">1 inkoop → losse stukken</span>
       </button>
-      <button onclick="openDebiteuren()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(124,58,237,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">💰</span>
-        <span>Debiteuren</span>
-        <span style="font-size:12px;font-weight:400;opacity:.9">Openstaande bedragen → Tikkie in 1 klik</span>
+      <button onclick="openDebiteuren()" class="kz-tegel" style="--kz:#7c3aed">
+        <span class="kz-ic">💰</span><span class="kz-t">Debiteuren</span><span class="kz-s">Openstaand → Tikkie</span>
       </button>
-      <button onclick="openRitten()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(37,99,235,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:54px;line-height:1">🚚</span>
-        <span>Ritten</span>
-        <span style="font-size:12px;font-weight:400;opacity:.9">Leveringen op datum → navigatie via Maps</span>
+      <button onclick="openRitten()" class="kz-tegel" style="--kz:#2563eb">
+        <span class="kz-ic">🚚</span><span class="kz-t">Ritten</span><span class="kz-s">Leveringen en navigatie</span>
       </button>
     </div>
   </main>
