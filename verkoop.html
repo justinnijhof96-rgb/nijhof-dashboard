@@ -2309,6 +2309,12 @@ async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds){
     if(!res.ok||!j.url)throw new Error(j.error||('Tikkie aanmaken mislukt ('+res.status+')'));
     TIKKIE.token=j.paymentRequestToken;TIKKIE.url=j.url;
     TIKKIE.termijnIds=(termijnIds&&termijnIds.length)?termijnIds:null; // welke termijn(en) deze Tikkie afdekt
+    // Token vastleggen bij de termijn(en): betaalt de klant pas nadat dit scherm
+    // dicht is, dan pikt het dashboard dat later alsnog op.
+    for(const id of (TIKKIE.termijnIds||[])){
+      try{ await _restPatch('termijnen?id=eq.'+encodeURIComponent(id),{tikkie_token:j.paymentRequestToken,betaalmethode:'tikkie'}); }
+      catch(e){ console.warn('Tikkie-token opslaan mislukt:',e); }
+    }
     toonTikkieQr(j.url,{cent:cent,label:'Openstaand'});
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
@@ -3008,19 +3014,30 @@ async function afronden(){
 
     // 1b. Termijnen aparte INSERTs — hangen aan de primaire verkoop (betaalregeling = hele order)
     if(STATE.termijnen && STATE.termijnen.length>0){
-      const termijnRijen=STATE.termijnen.map(t=>({
-        id:_genId(),
-        verkoop_id:verkoopId,
-        org_id:STATE.org_id,
-        nr:t.nr,
-        bedrag:t.bedrag,
-        vervaldatum:t.vervaldatum,
-        betaalmethode:t.betaalmethode||'pin',
-        betaald:!!t.betaald,
-        betaald_op:t.betaald?(t.betaaldOp||verkoopDatum):null,
-        label:t.label||`Termijn ${t.nr}`,
-        notitie:null
-      }));
+      // Is er tijdens deze verkoop een Tikkie aangemaakt, koppel de token dan aan
+      // de termijn met hetzelfde bedrag. Zonder die koppeling blijft een Tikkie die
+      // ná het sluiten van de QR betaald wordt eeuwig als achterstallig staan.
+      const tkToken=TIKKIE.laatste&&TIKKIE.laatste.token?TIKKIE.laatste.token:null;
+      const tkBedrag=TIKKIE.laatste?Number((TIKKIE.laatste.cent/100).toFixed(2)):null;
+      let tkGekoppeld=false;
+      const termijnRijen=STATE.termijnen.map(t=>{
+        const koppel=!tkGekoppeld&&tkToken&&!t.betaald&&Math.abs(Number(t.bedrag)-tkBedrag)<0.005;
+        if(koppel)tkGekoppeld=true;
+        return {
+          id:_genId(),
+          verkoop_id:verkoopId,
+          org_id:STATE.org_id,
+          nr:t.nr,
+          bedrag:t.bedrag,
+          vervaldatum:t.vervaldatum,
+          betaalmethode:t.betaalmethode||'pin',
+          betaald:!!t.betaald,
+          betaald_op:t.betaald?(t.betaaldOp||verkoopDatum):null,
+          label:t.label||`Termijn ${t.nr}`,
+          notitie:null,
+          tikkie_token:koppel?tkToken:null
+        };
+      });
       try{
         await _restPost('termijnen',termijnRijen);
       }catch(e){
@@ -3360,6 +3377,7 @@ async function init(){
 init();
 </script>
 <script src="adverteren-verkoop.js"></script>
+<script src="nieuwbinnen-verkoop.js"></script>
 <script>
 // Inkoop-/splits-categorie: volledige Marktplaats-rubriek-lijst (gedeeld via
 // window.NB_RUBRIEKEN uit adverteren-verkoop.js). Terugval op de oude grove lijst.
