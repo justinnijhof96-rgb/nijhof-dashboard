@@ -128,13 +128,14 @@
     if (E("keuze-adverteren")) return;
     var scherm = E("screen-keuze");
     if (!scherm) return;
-    var box = scherm.querySelector("main > div");
+    var box = scherm.querySelector(".kz-grid") || scherm.querySelector("main > div");
     if (!box) return;
     var btn = document.createElement("button");
     btn.id = "keuze-adverteren";
     btn.onclick = advMenu;
-    btn.setAttribute("style", "background:linear-gradient(135deg,#0ea5a3,#0b7d7b);color:#fff;border:none;border-radius:16px;padding:36px 24px;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(14,165,163,.25);min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px");
-    btn.innerHTML = '<span style="font-size:54px;line-height:1">📣</span><span>Adverteren</span><span style="font-size:12px;font-weight:400;opacity:.9">Adverteren of advertentiecentrum</span>';
+    btn.className = "kz-tegel";
+    btn.setAttribute("style", "--kz:#0ea5a3");
+    btn.innerHTML = '<span class="kz-ic">📣</span><span class="kz-t">Adverteren</span><span class="kz-s">Marktplaats &amp; advertenties</span>';
     box.appendChild(btn);
   }
 

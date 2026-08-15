@@ -147,11 +147,15 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
 <div id="screen-keuze" class="view">
   <div class="top">
     <button class="btn-icon" onclick="bevestigUitloggen()" title="Uitloggen">←</button>
-    <div class="logo" style="font-size:12px;letter-spacing:1.5px;opacity:.85">VERKOOP-APP</div>
+    <div class="nb-merk">Nijhof Brothers</div>
     <span style="width:36px"></span>
   </div>
   <style>
     #screen-keuze.view.show{display:flex;flex-direction:column;height:100vh;height:100dvh}
+    #screen-keuze .top{background:#fff;box-shadow:0 3px 20px rgba(232,119,34,.45)}
+    #screen-keuze .top .btn-icon{background:#fff4ec;color:var(--or)}
+    #screen-keuze .top .btn-icon:active{background:#ffe0c7}
+    #screen-keuze .nb-merk{flex:1;text-align:center;font-family:var(--f-head);font-style:italic;font-weight:800;font-size:21px;color:var(--or);letter-spacing:-.01em;text-shadow:0 0 14px rgba(232,119,34,.4)}
     #screen-keuze main{flex:1;min-height:0;padding:16px 16px 18px;display:flex;flex-direction:column;overflow-y:auto}
     #screen-keuze .kz-hero{flex-shrink:0;text-align:center;margin:2px 0 16px}
     #screen-keuze .kz-hero img{height:68px;width:auto;display:block;margin:0 auto 8px}
@@ -165,7 +169,6 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   </style>
   <main>
     <div class="kz-hero">
-      <img src="logo.png" alt="Nijhof Brothers" onerror="this.style.display='none'">
       <div class="kz-vraag">Wat ga je doen?</div>
     </div>
     <div class="kz-grid">
