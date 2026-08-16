@@ -6,7 +6,7 @@
 //   TIKKIE_API_KEY, TIKKIE_APP_TOKEN, TIKKIE_SANDBOX (optioneel)
 //
 // Body:  { paymentRequestToken: string }
-// Antwoord: { ok, betaald, status, bedrag_cent, betaald_cent, aantal_betalingen }
+// Antwoord: { ok, betaald, status, bedrag_cent, betaald_cent, aantal_betalingen, betaald_op }
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
@@ -66,6 +66,28 @@ Deno.serve(async (req: Request) => {
     // vallen we terug op "minstens 1 geslaagde betaling".
     const betaald = bedragCent > 0 ? betaaldCent >= bedragCent : aantal > 0;
 
+    // Werkelijke betaaldatum ophalen zodra er betaald is: een inhaalcheck draait
+    // vaak dagen later, en dan hoort de ontvangst in de maand waarin de klant
+    // betaalde — niet in de maand waarin wij toevallig keken.
+    let betaaldOp: string | null = null;
+    if (betaald) {
+      try {
+        const rp = await fetch(`${base}/paymentrequests/${encodeURIComponent(token)}/payments`, {
+          method: "GET",
+          headers: { "API-Key": apiKey, "X-App-Token": appToken },
+        });
+        if (rp.ok) {
+          const jp: any = await rp.json().catch(() => ({}));
+          const lijst: any[] = Array.isArray(jp?.payments) ? jp.payments : [];
+          const datums = lijst
+            .map((p) => String(p?.dateTimePaid || p?.created || ""))
+            .filter(Boolean)
+            .sort();
+          if (datums.length) betaaldOp = datums[datums.length - 1].slice(0, 10);
+        }
+      } catch { /* datum is bonus — de status telt */ }
+    }
+
     return json({
       ok: true,
       betaald,
@@ -73,6 +95,7 @@ Deno.serve(async (req: Request) => {
       bedrag_cent: bedragCent,
       betaald_cent: betaaldCent,
       aantal_betalingen: aantal,
+      betaald_op: betaaldOp,
     });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
