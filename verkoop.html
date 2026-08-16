@@ -2294,7 +2294,7 @@ function _debCard(g){
   }
   return '<div class="card" style="margin-bottom:10px">'+inner+'</div>';
 }
-async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds){
+async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds,extra){
   if(cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
   const tok=_getStoredAuth()?.access_token;
   if(!tok){toast('⚠️ Sessie verlopen — log opnieuw in','#dc2626');return;}
@@ -2316,6 +2316,7 @@ async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds){
       catch(e){ console.warn('Tikkie-token opslaan mislukt:',e); }
     }
     toonTikkieQr(j.url,{cent:cent,label:'Openstaand'});
+    if(extra)await _boekExtraInkomsten(extra);
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
   }finally{
@@ -2348,22 +2349,27 @@ async function maakTikkieDebiteur(gi,btn){
 // Bijv. als er al contant/pin is aanbetaald en de Tikkie voor een lager
 // (of gecorrigeerd) bedrag de deur uit moet vóór levering. Voorgevuld met
 // het openstaande bedrag; bij betaling wordt de klant als voldaan gemarkeerd.
+// Afreken-blok: "klant betaalt in totaal" → verschil met openstaand = fooi
+// (of markeer een deel als etagevergoeding). Ook geschikt voor een correctie
+// naar beneden (minder dan openstaand). Fooi/etage worden los geboekt.
 function _debAanpasBlok(g){
-  return '<button type="button" onclick="_debToggleAanpas('+g._i+')" style="width:100%;margin-top:8px;background:none;border:none;color:var(--gr);font-size:12px;cursor:pointer;text-decoration:underline;padding:4px">✏️ Ander bedrag (handmatig aanpassen)</button>'
+  var owed=Number(g.open)||0, pre=(Number.isInteger(owed)?owed:owed.toFixed(2));
+  return '<button type="button" onclick="_debToggleAanpas('+g._i+')" style="width:100%;margin-top:8px;background:none;border:none;color:var(--gr);font-size:12px;cursor:pointer;text-decoration:underline;padding:4px">✏️ Ander bedrag · fooi · etagevergoeding</button>'
     +'<div id="deb-aanpas-'+g._i+'" style="display:none;margin-top:8px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px">'
-      +'<label for="deb-bedrag-'+g._i+'" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin-bottom:6px">Bedrag om te innen (€)</label>'
-      +'<div style="display:flex;gap:8px">'
-        +'<input type="text" id="deb-bedrag-'+g._i+'" inputmode="decimal" autocomplete="off" value="'+(Number.isInteger(g.open)?g.open:g.open.toFixed(2))+'" style="flex:1;min-width:0;padding:10px 12px;border:1.5px solid #0f766e;border-radius:8px;font-size:17px;font-weight:700;color:var(--nav)">'
-        +'<button class="btn" onclick="_debTikkieAangepast('+g._i+',this)" style="background:#0f766e;color:#fff;border:none;min-height:46px;padding:0 16px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;white-space:nowrap">💸 Tikkie</button>'
-      +'</div>'
-      +'<div style="font-size:11px;color:var(--gr);margin-top:8px;line-height:1.5">Handig als er al contant of per pin is aanbetaald. <b>Let op:</b> zodra dit bedrag betaald is, wordt deze klant als volledig voldaan gemarkeerd.</div>'
+      +'<label for="deb-tot-'+g._i+'" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin-bottom:4px">Klant betaalt in totaal (€)</label>'
+      +'<input type="text" id="deb-tot-'+g._i+'" inputmode="decimal" autocomplete="off" value="'+pre+'" oninput="_debAfrekenLive('+g._i+')" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #0f766e;border-radius:8px;font-size:17px;font-weight:700;color:var(--nav)">'
+      +'<label for="deb-etage-'+g._i+'" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin:10px 0 4px">Waarvan etagevergoeding (€) <span style="font-weight:400;color:var(--gr)">— optioneel</span></label>'
+      +'<input type="text" id="deb-etage-'+g._i+'" inputmode="decimal" autocomplete="off" placeholder="0" oninput="_debAfrekenLive('+g._i+')" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--bd);border-radius:8px;font-size:15px;font-weight:600;color:var(--nav)">'
+      +'<div id="deb-bd-'+g._i+'" style="font-size:12px;color:var(--gr);margin-top:8px;line-height:1.6"></div>'
+      +'<button class="btn" onclick="_debTikkieAfrekenen('+g._i+',this)" style="width:100%;margin-top:8px;background:#0f766e;color:#fff;border:none;min-height:46px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken</button>'
+      +'<div style="font-size:11px;color:var(--gr);margin-top:8px;line-height:1.5">Klant zegt "maak er € … van"? Typ het totaal — het verschil met openstaand wordt automatisch als <b>fooi</b> geboekt (of markeer een deel als <b>etagevergoeding</b>). Minder dan openstaand mag ook (bijv. al contant aanbetaald). Bij betaling wordt deze klant als voldaan gemarkeerd.</div>'
     +'</div>';
 }
 function _debToggleAanpas(gi){
   const el=document.getElementById('deb-aanpas-'+gi);if(!el)return;
   const toon=el.style.display==='none';
   el.style.display=toon?'block':'none';
-  if(toon){const inp=document.getElementById('deb-bedrag-'+gi);if(inp){inp.focus();inp.select();}}
+  if(toon){ _debAfrekenLive(gi); const inp=document.getElementById('deb-tot-'+gi);if(inp){inp.focus();inp.select();} }
 }
 // Robuuste bedrag-parser: accepteert "895", "895,00", "895.00", "1.234,50",
 // "€ 895" enz. — voorkomt dat een komma of euroteken het bedrag ongeldig maakt.
@@ -2375,12 +2381,45 @@ function _parseBedrag(s){
   }else if(s.indexOf(',')>-1){s=s.replace(',','.');}
   const n=parseFloat(s);return isNaN(n)?NaN:n;
 }
-async function _debTikkieAangepast(gi,btn){
+// Splitst het ingetypte totaal in openstaand / etage / fooi (surplus boven openstaand).
+function _debAfrekenSplit(gi){
+  const g=DEBITEUREN[gi]||{}; const owed=Number(g.open)||0;
+  let T=_parseBedrag((document.getElementById('deb-tot-'+gi)||{}).value); if(!(T>0))T=0;
+  let E=_parseBedrag((document.getElementById('deb-etage-'+gi)||{}).value); if(!(E>0))E=0;
+  const surplus=Math.max(0,Math.round((T-owed)*100)/100);
+  E=Math.max(0,Math.min(E,surplus));
+  const fooi=Math.round((surplus-E)*100)/100;
+  return {owed:owed,totaal:T,etage:E,fooi:fooi};
+}
+function _debAfrekenLive(gi){
+  const bd=document.getElementById('deb-bd-'+gi); if(!bd)return;
+  const s=_debAfrekenSplit(gi);
+  const parts=['Openstaand <b>'+eur(s.owed)+'</b>'];
+  if(s.etage>0)parts.push('etage <b style="color:#0f766e">'+eur(s.etage)+'</b>');
+  if(s.fooi>0)parts.push('fooi <b style="color:#db2777">'+eur(s.fooi)+'</b>');
+  parts.push('Tikkie <b style="color:var(--nav)">'+eur(s.totaal||s.owed)+'</b>');
+  bd.innerHTML=parts.join(' · ');
+}
+async function _debTikkieAfrekenen(gi,btn){
   const g=DEBITEUREN[gi];if(!g)return;
-  const inp=document.getElementById('deb-bedrag-'+gi);
-  const val=_parseBedrag(inp?inp.value:'');
-  if(!(val>0)){toast('Vul een geldig bedrag in','#dc2626');if(inp){inp.focus();inp.select();}return;}
-  await _maakTikkieVoor(Math.round(val*100),g.factNr,g.product,btn,g.termijnen.map(t=>t.id).filter(Boolean));
+  const s=_debAfrekenSplit(gi);
+  if(!(s.totaal>0)){toast('Vul een geldig totaalbedrag in','#dc2626');const inp=document.getElementById('deb-tot-'+gi);if(inp){inp.focus();inp.select();}return;}
+  const extra=(s.etage>0||s.fooi>0)?{etage:s.etage,fooi:s.fooi,verkoopId:(g.verkoop&&g.verkoop.id)||null,klant:g.naam||'',factNr:g.factNr||''}:null;
+  await _maakTikkieVoor(Math.round(s.totaal*100),g.factNr,g.product,btn,g.termijnen.map(t=>t.id).filter(Boolean),extra);
+}
+// Boekt fooi/etage als losse extra-inkomsten (los van de factuur). Faalt stil zodat
+// een boek-fout de Tikkie zelf niet blokkeert.
+async function _boekExtraInkomsten(extra){
+  if(!extra)return;
+  const datum=_dISO(new Date()), uid=STATE.user&&STATE.user.id, rows=[];
+  if(extra.etage>0)rows.push({id:_genId(),org_id:STATE.org_id,user_id:uid,soort:'etage',bedrag:extra.etage,datum:datum,notitie:extra.klant||'',verkoop_id:extra.verkoopId||null,factuurnr:extra.factNr||null});
+  if(extra.fooi>0)rows.push({id:_genId(),org_id:STATE.org_id,user_id:uid,soort:'fooi',bedrag:extra.fooi,datum:datum,notitie:extra.klant||'',verkoop_id:extra.verkoopId||null,factuurnr:extra.factNr||null});
+  if(!rows.length)return;
+  try{
+    await _restPost('extra_inkomsten',rows);
+    const m=[]; if(extra.fooi>0)m.push('fooi '+eur(extra.fooi)); if(extra.etage>0)m.push('etage '+eur(extra.etage));
+    toast('✓ Geboekt: '+m.join(' + '),'#0f766e');
+  }catch(e){ toast('⚠️ Tikkie staat klaar, maar fooi/etage boeken lukte niet','#b45309'); console.warn('extra_inkomsten:',e); }
 }
 
 // ── RITTEN: geplande leveringen op datum/tijd + Google Maps-navigatie ──
