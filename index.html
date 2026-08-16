@@ -970,10 +970,11 @@ async function laadAllesVanDB(){
       dbSelect('verkopen','order=datum_registratie.desc'),
       dbSelect('termijnen'),
       dbSelect('lasten','order=aangemaakt_op.desc'),
-      dbSelect('instellingen')
+      dbSelect('instellingen'),
+      dbSelect('extra_inkomsten','order=datum.desc')
     ]);
     // Log eventuele errors zonder hele laad af te breken
-    const labels=['items','verkopen','termijnen','lasten','instellingen'];
+    const labels=['items','verkopen','termijnen','lasten','instellingen','extra_inkomsten'];
     results.forEach((r,i)=>{
       if(r.status==='rejected')console.warn(`Laden van ${labels[i]} mislukt:`,r.reason);
     });
@@ -1028,6 +1029,10 @@ async function laadAllesVanDB(){
       terugkerend:!!r.terugkerend, fluctuerend:!!r.fluctuerend,
       betaald:r.betaald!==false, actief:r.actief!==false,
       aangemaaktOp:r.aangemaakt_op
+    }));
+    DB.extraInkomsten = ((results[5]&&results[5].status==='fulfilled'?results[5].value:[])||[]).map(r=>({
+      id:r.id, soort:r.soort, bedrag:Number(r.bedrag)||0, datum:r.datum||'',
+      notitie:r.notitie||'', verkoopId:r.verkoop_id||null, factuurnr:r.factuurnr||null
     }));
     if(instRes.data&&instRes.data.length>0){
       const inst=instRes.data[0];
@@ -5319,7 +5324,9 @@ function _calcPeriode(van,tot){
   const lastenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>a+l.bedrag,0);
   const lastenP=_periodeType==='week'?lastenM/4.33:_periodeType==='jaar'?lastenM*12:lastenM;
   const netto=bruto-btw-afstortVerlies;
-  const nNaLasten=netto-lastenP;
+  // Fooien + etagevergoeding: losse extra inkomsten in deze periode (100% winst, geen inkoop eronder).
+  const extraInk=(DB.extraInkomsten||[]).reduce((a,e)=>{const d=new Date(e.datum);return(!isNaN(d)&&d>=van&&d<=tot)?a+(Number(e.bedrag)||0):a;},0);
+  const nNaLasten=netto-lastenP+extraInk;
   const beschikbaar=DB.items.filter(i=>i.status==='beschikbaar'||i.status==='gereserveerd');
   const openBed=DB.verkopen.reduce((a,v)=>(v.termijnen||[]).filter(t=>!t.betaald).reduce((b,t)=>b+t.bedrag,a),0);
   const btwKostenM=DB.lasten.filter(l=>l.actief!==false).reduce((a,l)=>{const p=(l.btwPct||0)/100;if(!p)return a;return a+(l.btwType==='incl'?l.bedrag-l.bedrag/(1+p):l.bedrag*p);},0);
@@ -5331,7 +5338,7 @@ function _calcPeriode(van,tot){
   const inkopen=DB.items.filter(i=>{if(i.status==='gesplitst')return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
   // inkopenTel (aantal transacties): gepeelde stukken eruit, partij telt één keer.
   const inkopenTel=DB.items.filter(i=>{if(i.partij_parent_id)return false;const d=new Date(i.datum);return!isNaN(d)&&d>=van&&d<=tot;});
-  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht};
+  return{vkSel,ontvangen,inkwSel,bruto,btw,btwKosten,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,extraInk,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht};
 }
 
 function ontvangenOmzet(jr,mn){let s=0;DB.verkopen.forEach(vk=>{(vk.termijnen||[]).filter(t=>t.betaald&&t.betaaldOp).forEach(t=>{const d=new Date(t.betaaldOp);if(!isNaN(d)&&d.getFullYear()===jr&&d.getMonth()===mn)s+=t.bedrag;});});return s;}
@@ -5366,7 +5373,7 @@ function _renderDashMain(range){
   const cur=_calcPeriode(range.van,range.tot);
   const vRng=_vorigePeriodeRange();
   const prv=_calcPeriode(vRng.van,vRng.tot);
-  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht}=cur;
+  const{ontvangen,bruto,btw,btwSaldo,afstortVerlies,lastenP,netto,nNaLasten,extraInk,beschikbaar,openBed,inkopen,inkopenTel,omzetVerkocht,margeVerkocht}=cur;
   // Waarde in loods: verwachte verkoopprijs (fallback op inkoopprijs als vvp niet ingevuld).
   // Voor een lopende partij (partij_rest>0) is verwacht_vp nog de volle waarde terwijl
   // stukken al gepeeld zijn → gebruik de restant-inkoopprijs, anders dubbeltelling.
@@ -5520,6 +5527,7 @@ function _renderDashMain(range){
     ...(afstortVerlies>0?[{lbl:'− Afstortverlies',val:-afstortVerlies,kleur:'var(--rd)',vet:false}]:[]),
     {lbl:'= Netto marge',     val:netto,               kleur:netto>=0?'var(--gn)':'var(--rd)',       vet:true },
     {lbl:'− Vaste lasten',    val:-lastenP,            kleur:'var(--rd)',                           vet:false},
+    ...(extraInk>0?[{lbl:'+ Fooien & etage',val:extraInk,kleur:'var(--gn)',vet:false}]:[]),
     {lbl:'= Netto na lasten', val:nNaLasten,           kleur:nNaLasten>=0?'var(--gn)':'var(--rd)', vet:true }
   ];
   const maxAbs=Math.max(...stappen.map(s=>Math.abs(s.val)),1);
