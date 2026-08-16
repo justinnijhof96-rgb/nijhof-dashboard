@@ -1392,7 +1392,7 @@ function _maakInkoopbonPDFmobiel(data){
   doc.text('FURNITURE',15,23);
   doc.setFontSize(8);
   doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
-  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('KvK 98613782',195,18,{align:'right'});
   doc.text('BTW NL868569215B01',195,23,{align:'right'});
   doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
 
@@ -1452,7 +1452,7 @@ function _maakInkoopbonPDFmobiel(data){
   const voetY=270;
   doc.text('Dit is een interne inkoopbon voor administratie. Bewaar voor je boekhouding.',105,voetY,{align:'center'});
   doc.setFont('helvetica','normal');doc.setFontSize(7);
-  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,voetY+6,{align:'center'});
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613782',105,voetY+6,{align:'center'});
   doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,voetY+10,{align:'center'});
 
   return doc;
@@ -2115,9 +2115,58 @@ function _renderTikkie(){
     knop='<button class="btn" id="s4-tikkie-btn" onclick="maakTikkie(false)" style="width:100%;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(sel.cent/100)+(sel.label&&sel.label!=='Totaal'?' ('+esc(sel.label)+')':'')+'</button>';
     onder='<div style="font-size:11px;color:var(--gr);margin-top:8px">Maakt een Tikkie-betaalverzoek en toont de QR-code, laat de klant scannen om af te rekenen.</div>';
   }
-  wrap.innerHTML=kop+chips+knop+onder;
+  wrap.innerHTML=kop+chips+knop+onder+(sel.cent>0?_s4ExtraBlok(sel):'');
 }
 function _kiesTikkie(i){TIKKIE.keuze=i;_renderTikkie();}
+
+// Fooi/etage bij de verkoop-Tikkie: klant betaalt in totaal meer dan het te innen
+// bedrag → verschil = fooi (of markeer een deel als etagevergoeding). Hergebruikt
+// _maakTikkieVoor(...,extra) + _boekExtraInkomsten (los van de factuur, in de cijfers).
+function _s4ExtraBlok(sel){
+  var base=(sel&&sel.cent?sel.cent:0)/100, pre=(Number.isInteger(base)?base:base.toFixed(2));
+  return '<button type="button" onclick="_s4ToggleExtra()" style="width:100%;margin-top:10px;background:none;border:none;color:var(--gr);font-size:12px;cursor:pointer;text-decoration:underline;padding:4px">➕ Fooi / etagevergoeding</button>'
+    +'<div id="s4-extra-panel" style="display:none;margin-top:8px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px">'
+      +'<label for="s4-tot" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin-bottom:4px">Klant betaalt in totaal (€)</label>'
+      +'<input type="text" id="s4-tot" inputmode="decimal" autocomplete="off" value="'+pre+'" oninput="_s4ExtraLive()" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #0f766e;border-radius:8px;font-size:17px;font-weight:700;color:var(--nav)">'
+      +'<label for="s4-etage" style="font-size:12px;font-weight:600;color:var(--nav);display:block;margin:10px 0 4px">Waarvan etagevergoeding (€) <span style="font-weight:400;color:var(--gr)">— optioneel</span></label>'
+      +'<input type="text" id="s4-etage" inputmode="decimal" autocomplete="off" placeholder="0" oninput="_s4ExtraLive()" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--bd);border-radius:8px;font-size:15px;font-weight:600;color:var(--nav)">'
+      +'<div id="s4-bd" style="font-size:12px;color:var(--gr);margin-top:8px;line-height:1.6"></div>'
+      +'<button class="btn" onclick="_s4TikkieExtra(this)" style="width:100%;margin-top:8px;background:#0f766e;color:#fff;border:none;min-height:46px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken (incl. extra)</button>'
+      +'<div style="font-size:11px;color:var(--gr);margin-top:8px;line-height:1.5">Klant zegt "maak er € … van"? Typ het totaal — het verschil met het te innen bedrag wordt als <b>fooi</b> geboekt (of markeer een deel als <b>etagevergoeding</b>). Los van de factuur, telt mee in je cijfers.</div>'
+    +'</div>';
+}
+function _s4ToggleExtra(){
+  var el=document.getElementById('s4-extra-panel'); if(!el)return;
+  var toon=el.style.display==='none';
+  el.style.display=toon?'block':'none';
+  if(toon){ _s4ExtraLive(); var inp=document.getElementById('s4-tot'); if(inp){inp.focus();inp.select();} }
+}
+function _s4ExtraSplit(){
+  var opts=_tikkieOpties(); var sel=opts[TIKKIE.keuze]||opts[0]||{cent:0};
+  var base=(sel.cent||0)/100;
+  var T=_parseBedrag((document.getElementById('s4-tot')||{}).value); if(!(T>0))T=0;
+  var E=_parseBedrag((document.getElementById('s4-etage')||{}).value); if(!(E>0))E=0;
+  var surplus=Math.max(0,Math.round((T-base)*100)/100);
+  E=Math.max(0,Math.min(E,surplus));
+  var fooi=Math.round((surplus-E)*100)/100;
+  return {base:base,totaal:T,etage:E,fooi:fooi};
+}
+function _s4ExtraLive(){
+  var bd=document.getElementById('s4-bd'); if(!bd)return;
+  var s=_s4ExtraSplit();
+  var parts=['Te innen <b>'+eur(s.base)+'</b>'];
+  if(s.etage>0)parts.push('etage <b style="color:#0f766e">'+eur(s.etage)+'</b>');
+  if(s.fooi>0)parts.push('fooi <b style="color:#db2777">'+eur(s.fooi)+'</b>');
+  parts.push('Tikkie <b style="color:var(--nav)">'+eur(s.totaal||s.base)+'</b>');
+  bd.innerHTML=parts.join(' · ');
+}
+async function _s4TikkieExtra(btn){
+  var s=_s4ExtraSplit();
+  if(!(s.totaal>0)){toast('Vul een geldig totaalbedrag in','#dc2626');var inp=document.getElementById('s4-tot');if(inp){inp.focus();inp.select();}return;}
+  await _zorgFactuurnr();
+  var extra=(s.etage>0||s.fooi>0)?{etage:s.etage,fooi:s.fooi,verkoopId:null,klant:(STATE.klant&&STATE.klant.naam)||'',factNr:STATE.factuurnr||''}:null;
+  await _maakTikkieVoor(Math.round(s.totaal*100),STATE.factuurnr,_tikkieOmschrijving(),btn,null,extra);
+}
 
 // force=false: eerste keer aanmaken, of QR opnieuw tonen als het al bestaat.
 // force=true: bewust een extra betaalverzoek naast het bestaande.
@@ -2503,7 +2552,7 @@ function _maakFactuurPDFmobiel(data){
   doc.text('FURNITURE',15,23);
   doc.setFontSize(8);
   doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
-  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('KvK 98613782',195,18,{align:'right'});
   doc.text('BTW NL868569215B01',195,23,{align:'right'});
   doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
 
@@ -2626,7 +2675,7 @@ function _maakContractPDFmobiel(data){
   doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','normal');
   doc.text('FURNITURE',15,23);
   doc.setFontSize(8);doc.text('Dovenetel 9, 7322 DM Apeldoorn',195,13,{align:'right'});
-  doc.text('KvK 98613783',195,18,{align:'right'});
+  doc.text('KvK 98613782',195,18,{align:'right'});
   doc.text('BTW NL868569215B01',195,23,{align:'right'});
   doc.text('IBAN NL71 ABNA 0149 3625 01',195,28,{align:'right'});
 
@@ -2644,7 +2693,7 @@ function _maakContractPDFmobiel(data){
   doc.text('Tussen:',15,y);y+=6;
   doc.setFont('helvetica','normal');doc.setFontSize(10);
   doc.text('Nijhof Brothers Furniture, gevestigd te Apeldoorn (Dovenetel 9, 7322 DM)',15,y);y+=5;
-  doc.text('KvK 98613783, hierna: "verkoper",',15,y);y+=8;
+  doc.text('KvK 98613782, hierna: "verkoper",',15,y);y+=8;
   doc.setFont('helvetica','bold');doc.text('en:',15,y);y+=6;
   doc.setFont('helvetica','normal');
   doc.text(`${klant.naam}${klant.adres?', '+klant.adres:''}${klant.pc||klant.plts?', '+(klant.pc||'')+' '+(klant.plts||''):''}`,15,y);y+=5;
@@ -2728,7 +2777,7 @@ function _maakContractPDFmobiel(data){
 
   // Footer
   doc.setTextColor(156,163,175);doc.setFontSize(7);doc.setFont('helvetica','normal');
-  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613783',105,285,{align:'center'});
+  doc.text('Nijhof Brothers Furniture · Dovenetel 9, 7322 DM Apeldoorn · KvK 98613782',105,285,{align:'center'});
   doc.text('www.nijhofbrothers.nl · invoice@nijhofbrothers.nl',105,289,{align:'center'});
 
   return doc;
