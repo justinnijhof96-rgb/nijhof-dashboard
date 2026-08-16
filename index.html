@@ -709,6 +709,10 @@ main{max-width:1280px;margin:0 auto;padding:16px}
   <button class="modal-close" onclick="sluitBewerk()">✕</button>
   <h3>✏️ Item bewerken</h3><div id="m-bewerk-body"></div>
 </div></div>
+<div class="modal-bg" id="m-bewijs"><div class="modal" style="max-width:560px">
+  <button class="modal-close" onclick="sluitBewijsScherm()">✕</button>
+  <h3 id="m-bewijs-titel">📎 Bewijsfoto's</h3><div id="m-bewijs-body"></div>
+</div></div>
 <div class="modal-bg" id="m-del"><div class="modal" style="max-width:420px">
   <button class="modal-close" onclick="sluitModal('m-del')">✕</button>
   <h3 id="m-del-titel">🗑️ Item</h3>
@@ -1710,6 +1714,7 @@ function _renderVerkocht(){
       <td style="white-space:nowrap">
         <button class="btn btn-or btn-xs" onclick="factuurActieArchief('${esc(i.id)}')" title="${factuurBtnTitle}">${factuurBtnLabel}</button>
         <button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${esc(i.id)}')" title="Bewerk verkoop">${ic('pencil')}</button>
+        <button class="btn ${(i.bewijs1_url||i.bewijs2_url)?'btn-gy':'btn-rd'} btn-xs" onclick="openBewijsScherm('${esc(i.id)}')" title="${(i.bewijs1_url||i.bewijs2_url)?'Inkoopbewijzen bekijken of wijzigen':'Geen inkoopbewijs — toevoegen'}">📎</button>
         <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${esc(i.id)}')" title="Verkoop ongedaan">${ic('undo')}</button>
       </td>
     </tr>`;
@@ -1855,9 +1860,10 @@ function _renderAfgestort(){
       <td style="font-size:12px">${i.stortkosten?eur(i.stortkosten):'—'}</td>
       <td style="color:var(--rd);font-weight:600">−${eur(verlies)}</td>
       <td style="font-size:12px;max-width:200px">${reden}</td>
+      <td style="white-space:nowrap"><button class="btn ${(i.bewijs1_url||i.bewijs2_url)?'btn-gy':'btn-rd'} btn-xs" onclick="openBewijsScherm('${esc(i.id)}')" title="${(i.bewijs1_url||i.bewijs2_url)?'Inkoopbewijzen bekijken of wijzigen':'Geen inkoopbewijs — toevoegen'}">📎</button></td>
     </tr>`;
   };
-  const tabelKop='<thead><tr><th>Afgestort</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Stortkosten</th><th>Verlies</th><th>Reden</th></tr></thead>';
+  const tabelKop='<thead><tr><th>Afgestort</th><th>Artikelnr.</th><th>Naam</th><th>Inkoop</th><th>Stortkosten</th><th>Verlies</th><th>Reden</th><th>Bewijs</th></tr></thead>';
   const openAlles=!!(z||mnd);
   cont.innerHTML=_groepeerPerMaand(afgestort,i=>i.afgestortOp||i.datum).map((grp,idx)=>{
     const verlies=grp.rows.reduce((a,i)=>a+i.prijs+(i.stortkosten||0),0);
@@ -2014,11 +2020,15 @@ function kaartHTML(item){
     : `<span class="kico-emoji">🛋️</span>`;
   const artnrHTML = item.artikelnummer ? `<span class="artnr-pill">${esc(item.artikelnummer)}</span>` : '';
   let acts;
+  // Bewijsfoto's horen bij de inkoop, dus ook bereikbaar als het item al weg is
+  const bewijsBtn=`<button class="btn btn-gy btn-xs" onclick="openBewijsScherm('${iid}')" title="Inkoopbewijzen toevoegen of wijzigen">📎 Bewijs</button>`;
   if(item.status==='verkocht'){
     acts=`<button class="btn btn-gy btn-xs" onclick="openBewerkVerkoop('${iid}')">✏️ Bewerk</button>
+          ${bewijsBtn}
           <button class="btn btn-rd btn-xs" onclick="ongedaanVerkoop('${iid}')">↩️ Ongedaan</button>`;
   } else if(item.status==='afgestort'){
     acts=`<span style="font-size:11px;color:var(--gr)">🚮 ${esc(item.del_reden||'—')}${item.stortkosten>0?' · stortk: '+eur(item.stortkosten):''}</span>
+      ${bewijsBtn}
       <button class="btn btn-rd btn-xs" onclick="openDel('${iid}','verwijderen')">🗑️ Verwijder</button>`;
   } else if(Number(item.partij_rest)>0){
     // Partij: losse stukken peel je in de verkoopapp bij het adverteren; hier alleen aantal/beheer.
@@ -2133,7 +2143,11 @@ function bwHerstelFoto(){_bwResetFoto();_bwRenderFoto();}
 // ── Bewijsfoto's in het bewerk-scherm ──────────────────────────────
 // Zelfde werkwijze als de productfoto: kiezen/wissen legt alleen de bedoeling
 // vast, pas bij Opslaan gaat het naar de privébucket.
+// Het bewijsblok wordt door twee schermen gebruikt: het volledige bewerk-scherm
+// (voorraad) en het losse bewijsscherm (verkocht/afgestort). _bewijsCtx houdt bij
+// welk item en welke element-prefix op dit moment aan de beurt is.
 let _bewerkBewijs={1:{blob:null,previewUrl:null,wissen:false},2:{blob:null,previewUrl:null,wissen:false}};
+let _bewijsCtx={itemId:null,prefix:'bw'};
 function _bwResetBewijs(){
   [1,2].forEach(nr=>{
     const s=_bewerkBewijs[nr];
@@ -2142,8 +2156,9 @@ function _bwResetBewijs(){
   });
 }
 function _bwRenderBewijs(nr){
-  const zone=el('bw-bewijs-'+nr);if(!zone)return;
-  const i=DB.items.find(x=>x.id===_bewerkId);
+  const p=_bewijsCtx.prefix;
+  const zone=el(p+'-bewijs-'+nr);if(!zone)return;
+  const i=DB.items.find(x=>x.id===_bewijsCtx.itemId);
   const s=_bewerkBewijs[nr];
   const bestaandPad=i?(nr===1?i.bewijs1_url:i.bewijs2_url):null;
   const heeftBestaand=!!bestaandPad&&!s.wissen&&!s.blob;
@@ -2161,7 +2176,7 @@ function _bwRenderBewijs(nr){
       <div style="width:74px;height:74px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${thumb}</div>
       <div style="flex:1;min-width:140px">
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" class="btn btn-gy btn-xs" onclick="el('bw-bewijs-input-${nr}').click()">${(s.blob||heeftBestaand)?'🔄 Vervang':'📎 Kies'}</button>
+          <button type="button" class="btn btn-gy btn-xs" onclick="el('${p}-bewijs-input-${nr}').click()">${(s.blob||heeftBestaand)?'🔄 Vervang':'📎 Kies'}</button>
           ${(s.blob||heeftBestaand)?`<button type="button" class="btn btn-rd btn-xs" onclick="bwWisBewijs(${nr})">🗑️ Weg</button>`:''}
           ${(s.blob||s.wissen)?`<button type="button" class="btn btn-gy btn-xs" onclick="bwHerstelBewijs(${nr})">↩️ Herstel</button>`:''}
         </div>
@@ -2197,10 +2212,89 @@ function bwHerstelBewijs(nr){
 
 function sluitBewerk(){_bwResetFoto();_bwResetBewijs();sluitModal('m-bewerk');}
 
+// ── LOS BEWIJSFOTO-SCHERM ──────────────────────────────────────────
+// Een inkoopbewijs hoort bij de inkoop, niet bij de voorraadstatus. Ook als het
+// item allang verkocht of afgestort is moet je de bon nog kunnen toevoegen —
+// juist dán heb je 'm nodig voor de boekhouding. Daarom een los scherm dat
+// alleen de bewijsfoto's aanraakt en verder niets aan het item wijzigt.
+function openBewijsScherm(itemId){
+  const i=DB.items.find(x=>x.id===itemId);if(!i)return;
+  _bwResetBewijs();
+  _bewijsCtx={itemId,prefix:'bz'};
+  const statusLbl={verkocht:'✕ Verkocht',afgestort:'🚮 Afgestort',gereserveerd:'🕐 Gereserveerd'}[i.status]||'✓ Beschikbaar';
+  el('m-bewijs-titel').textContent='📎 Bewijsfoto\'s — '+i.naam;
+  el('m-bewijs-body').innerHTML=`
+    <div style="font-size:12.5px;color:var(--gr);margin-bottom:12px;line-height:1.6">
+      ${i.artikelnummer?`<span style="font-family:ui-monospace,monospace;color:var(--or);font-weight:600">${esc(i.artikelnummer)}</span> · `:''}
+      ${i.inkoopbon_nr?`bon ${esc(i.inkoopbon_nr)} · `:''}${statusLbl} · inkoop ${eur(i.prijs)} · ${esc(i.datum||'')}
+    </div>
+    <div class="alert alert-info" style="margin-bottom:12px">Kassabon, betaalbewijs of prijslabel. Deze foto's staan privé — alleen jij en je org kunnen ze zien.</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:230px">
+        <div style="font-size:11px;font-weight:700;color:var(--gr);margin-bottom:6px">📎 BEWIJS 1</div>
+        <div id="bz-bewijs-1"></div>
+        <input type="file" id="bz-bewijs-input-1" accept="image/*" style="display:none" onchange="bwKiesBewijs(event,1)">
+      </div>
+      <div style="flex:1;min-width:230px">
+        <div style="font-size:11px;font-weight:700;color:var(--gr);margin-bottom:6px">📎 BEWIJS 2</div>
+        <div id="bz-bewijs-2"></div>
+        <input type="file" id="bz-bewijs-input-2" accept="image/*" style="display:none" onchange="bwKiesBewijs(event,2)">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-or" id="bz-opslaan" onclick="slaBewijsOp()">💾 Opslaan</button>
+      <button class="btn btn-gy" onclick="sluitBewijsScherm()">Annuleer</button>
+    </div>`;
+  _bwRenderBewijs(1);_bwRenderBewijs(2);
+  openModal('m-bewijs');
+}
+function sluitBewijsScherm(){_bwResetBewijs();sluitModal('m-bewijs');}
+
+async function slaBewijsOp(){
+  const i=DB.items.find(x=>x.id===_bewijsCtx.itemId);if(!i)return;
+  const knop=el('bz-opslaan');
+  const oud={1:i.bewijs1_url||null,2:i.bewijs2_url||null};
+  const nieuw={1:oud[1],2:oud[2]};
+  let gewijzigd=false;
+  for(const nr of [1,2]){
+    const s=_bewerkBewijs[nr];
+    if(s.blob){
+      if(knop){knop.disabled=true;knop.textContent=`📤 Bewijs ${nr} uploaden…`;}
+      try{
+        nieuw[nr]=await uploadBewijsNaarStorage(s.blob,i.id,nr);
+        gewijzigd=true;
+      }catch(e){
+        if(knop){knop.disabled=false;knop.textContent='💾 Opslaan';}
+        toast(`Bewijs ${nr} uploaden mislukt: `+e.message,'#dc2626');return;
+      }
+      if(knop){knop.disabled=false;knop.textContent='💾 Opslaan';}
+    }else if(s.wissen&&oud[nr]){
+      nieuw[nr]=null;gewijzigd=true;
+    }
+  }
+  if(!gewijzigd){sluitBewijsScherm();return;}
+  try{
+    await dbUpdate('items',i.id,{bewijs1_url:nieuw[1],bewijs2_url:nieuw[2]});
+  }catch(e){
+    console.error('Bewijs opslaan mislukt:',e);
+    toast('⚠️ Opslaan mislukt — controleer je verbinding','#dc2626');return;
+  }
+  i.bewijs1_url=nieuw[1];i.bewijs2_url=nieuw[2];
+  [1,2].forEach(nr=>{
+    if(oud[nr]&&oud[nr]!==nieuw[nr])
+      verwijderBewijsUitStorage(oud[nr]).catch(e=>console.warn('Oud bewijs wissen:',e));
+  });
+  _bwResetBewijs();
+  sluitBewijsScherm();
+  renderV();try{renderArchief();}catch(e){}
+  toast('📎 Bewijsfoto opgeslagen');
+}
+
 function openBewerk(id){
   const i=DB.items.find(x=>x.id===id);if(!i)return;
   _bewerkId=id;
   _bwResetFoto();_bwResetBewijs();
+  _bewijsCtx={itemId:id,prefix:'bw'};
   const CATS=['bank','hoekbank','fauteuil','loveseat','kast','dressoir','overig'];
   el('m-bewerk-body').innerHTML=`
     <div class="fgrid">
