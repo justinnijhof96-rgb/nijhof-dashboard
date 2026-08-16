@@ -1786,8 +1786,8 @@ function kiesType(t,silent){
   $('s3-vol-sect').style.display=t==='volledig'?'':'none';
   $('s3-aan-sect').style.display=t==='aanbetaling'?'':'none';
   $('s3-trm-sect').style.display=t==='termijn'?'':'none';
-  // Contract toggle alleen bij termijn/aanbetaling
-  $('s3-ct-row').style.display=(t==='termijn'||t==='aanbetaling')?'':'none';
+  // Contract toggle alleen bij termijn (betaling in 2-3 delen) — NIET bij aanbetaling
+  $('s3-ct-row').style.display=(t==='termijn')?'':'none';
   if(t==='termijn' && !$('s3-trm-rows').children.length){
     _genTermijnen(3);
   }
@@ -1919,7 +1919,7 @@ function updateS3(){
   STATE.klant.pc=$('s3-kn-pc').value.trim();
   STATE.klant.plts=$('s3-kn-plts').value.trim();
   STATE.wilEmailen=$('s3-mail').checked;
-  STATE.wilContract=$('s3-ct').checked && (STATE.type==='termijn'||STATE.type==='aanbetaling');
+  STATE.wilContract=$('s3-ct').checked && STATE.type==='termijn';
 
   // Termijnen bouwen op basis van type
   const factTot=_factuurTotaal();
@@ -2989,7 +2989,11 @@ async function afronden(){
       const inkoop=Number(r.item.prijs)||0;
       const extra=idx===0?servTot:0;                 // bijverkopen op de primaire regel
       const factTotRij=(Number(r.prijs)||0)+extra;
-      const brutoRij=(Number(r.prijs)||0)-inkoop+extra;
+      // Zelfde definitie als het dashboard: bruto = verkoopprijs − inkoop, ZONDER
+      // services; die komen er pas bij in de nettomarge. Tellen we ze al bij bruto
+      // op, dan staat "Marge verkocht" op het dashboard te hoog.
+      const brutoRij=(Number(r.prijs)||0)-inkoop;
+      const nettoRij=brutoRij+extra;
       const btwRij=STATE.btwMethode==='standaard'?factTotRij/1.21*0.21:Math.max(0,(factTotRij-inkoop)/1.21*0.21);
       return {
         id:vid,user_id:STATE.user.id,org_id:STATE.org_id,
@@ -3002,7 +3006,7 @@ async function afronden(){
         factuur_totaal:factTotRij,
         extras_zichtbaar:STATE.extrasVis==='uitgesplitst',
         btw_methode:STATE.btwMethode||'marge',
-        bruto_marge:brutoRij,netto_marge:brutoRij,btw:btwRij,netto_na_btw:brutoRij-btwRij,
+        bruto_marge:brutoRij,netto_marge:nettoRij,btw:btwRij,netto_na_btw:nettoRij-btwRij,
         datum_registratie:new Date().toISOString(),
         ...(idx===0?leverData:{})
       };
@@ -3220,8 +3224,8 @@ async function afronden(){
         }
       }
 
-      // Contract flow — als gewenst en termijn/aanbetaling (vereist klantgegevens)
-      if(heeftKlant && STATE.wilContract && (STATE.type==='termijn'||STATE.type==='aanbetaling')){
+      // Contract flow — alleen bij termijn (betaling in 2-3 delen), vereist klantgegevens
+      if(heeftKlant && STATE.wilContract && STATE.type==='termijn'){
         try{
           const contractnr=await _volgendContractnr();
           const ondertekendToken=_genToken();
