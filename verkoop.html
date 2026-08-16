@@ -1288,30 +1288,32 @@ async function opslaanInkoop(){
     }
 
     // 3. Bewijsfoto's uploaden naar privé bucket (optioneel)
-    let bewijs1Url=null,bewijs2Url=null;
+    // Let op: res.ok MOET gecontroleerd worden. Zonder die check werd het pad ook
+    // opgeslagen als de upload faalde, en verwees items.bewijs1_url naar een
+    // bestand dat nooit bestond.
+    const _uploadBewijs=async(blob,nr)=>{
+      const pad=`${STATE.org_id}/${itemId}-bewijs${nr}-${Date.now()}.jpg`;
+      const res=await fetch(`${SUPABASE_URL}/storage/v1/object/inkoop-bewijzen/${pad}`,{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
+        body:blob
+      });
+      if(!res.ok)throw new Error('upload gaf '+res.status);
+      return pad;
+    };
+    let bewijs1Url=null,bewijs2Url=null,bewijsFout=0;
     if(INKOOP.foto_bew1){
       status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📎 Bewijsfoto 1 uploaden...</div>';
-      try{
-        const padB1=`${STATE.org_id}/${itemId}-bewijs1-${Date.now()}.jpg`;
-        await fetch(`${SUPABASE_URL}/storage/v1/object/inkoop-bewijzen/${padB1}`,{
-          method:'POST',
-          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
-          body:INKOOP.foto_bew1
-        });
-        bewijs1Url=padB1;
-      }catch(e){console.warn('Bewijs1 upload:',e);}
+      try{ bewijs1Url=await _uploadBewijs(INKOOP.foto_bew1,1); }
+      catch(e){ bewijsFout++; console.warn('Bewijs1 upload:',e); }
     }
     if(INKOOP.foto_bew2){
       status.innerHTML='<div style="background:#dbeafe;color:#1d4ed8;padding:10px;border-radius:8px;font-size:13px">📎 Bewijsfoto 2 uploaden...</div>';
-      try{
-        const padB2=`${STATE.org_id}/${itemId}-bewijs2-${Date.now()}.jpg`;
-        await fetch(`${SUPABASE_URL}/storage/v1/object/inkoop-bewijzen/${padB2}`,{
-          method:'POST',
-          headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'image/jpeg'},
-          body:INKOOP.foto_bew2
-        });
-        bewijs2Url=padB2;
-      }catch(e){console.warn('Bewijs2 upload:',e);}
+      try{ bewijs2Url=await _uploadBewijs(INKOOP.foto_bew2,2); }
+      catch(e){ bewijsFout++; console.warn('Bewijs2 upload:',e); }
+    }
+    if(bewijsFout){
+      toast('⚠️ '+bewijsFout+' bewijsfoto niet opgeslagen — voeg toe via Voorraad → wijzig','#c2410c');
     }
     // Bewijsfoto-paden opslaan in items
     if(bewijs1Url||bewijs2Url){

@@ -764,6 +764,9 @@ main{max-width:1280px;margin:0 auto;padding:16px}
 const SUPABASE_URL  = 'https://lcdnquulvkhtotlnlxiv.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjZG5xdXVsdmtodG90bG5seGl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNzM0OTgsImV4cCI6MjA5Mzg0OTQ5OH0.Zah3P1hC1Z9Km84fplP5WgkB9TjAn7KauWXiHSlxfF0';
 const FOTO_BUCKET   = 'item-fotos';
+// Bewijsfoto's (kassabon, betaalbewijs) staan in een privébucket: alleen te
+// bekijken via een tijdelijke signed URL, nooit publiek zoals de productfoto.
+const BEWIJS_BUCKET = 'inkoop-bewijzen';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
@@ -987,6 +990,7 @@ async function laadAllesVanDB(){
       partij_rest:(r.partij_rest==null?null:Number(r.partij_rest)),
       partij_parent_id:r.partij_parent_id||null,
       betaalmethode:r.betaalmethode||null,
+      bewijs1_url:r.bewijs1_url||null, bewijs2_url:r.bewijs2_url||null,
       afgestortOp:r.afgestort_op, aangemaaktOp:r.aangemaakt_op, bewerkt:r.bewerkt||[]
     }));
     const termMap={};
@@ -1068,6 +1072,7 @@ function _itemRow(i,uid_user,org_id){
     foto_url:i.foto_url||null,
     partij_parent_id:i.partij_parent_id||null,
     betaalmethode:i.betaalmethode||null,
+    bewijs1_url:i.bewijs1_url||null,bewijs2_url:i.bewijs2_url||null,
     afgestort_op:i.afgestortOp||null,aangemaakt_op:i.aangemaaktOp||new Date().toISOString(),bewerkt:i.bewerkt||[],
     user_id:uid_user,
     org_id:org_id
@@ -1346,6 +1351,40 @@ async function verwijderFotoUitStorage(url){
   const match=url.match(new RegExp(FOTO_BUCKET+'/(.+)$'));
   if(!match)return;
   await _sb.storage.from(FOTO_BUCKET).remove([match[1]]);
+}
+
+// ── BEWIJSFOTO'S (privébucket) ─────────────────────────────────────
+// In items staat alleen het pad, niet een publieke URL: bekijken kan enkel
+// via een signed URL die na een uur vervalt.
+async function uploadBewijsNaarStorage(blob,itemId,nr){
+  const org_id=_getOrgId();
+  if(!_getUserId())throw new Error('Niet ingelogd');
+  if(!org_id)throw new Error('Geen org_id');
+  const pad=`${org_id}/${itemId}-bewijs${nr}-${Date.now()}.jpg`;
+  const{error}=await _sb.storage.from(BEWIJS_BUCKET).upload(pad,blob,{contentType:'image/jpeg',upsert:false});
+  if(error)throw error;
+  return pad;
+}
+async function verwijderBewijsUitStorage(pad){
+  if(!pad)return;
+  await _sb.storage.from(BEWIJS_BUCKET).remove([pad]);
+}
+async function bewijsSignedUrl(pad){
+  if(!pad)return null;
+  const{data,error}=await _sb.storage.from(BEWIJS_BUCKET).createSignedUrl(pad,3600);
+  if(error)throw error;
+  return data.signedUrl;
+}
+// Bewijsfoto in de lightbox tonen; ontbreekt het bestand, zeg dat dan eerlijk
+// in plaats van een gebroken plaatje te laten zien.
+async function bekijkBewijs(pad){
+  try{
+    const url=await bewijsSignedUrl(pad);
+    if(!url)throw new Error('Geen URL');
+    openLightbox(url);
+  }catch(e){
+    toast('⚠️ Bewijsfoto niet gevonden in opslag','#dc2626');
+  }
 }
 
 async function kiesFoto(evt){
@@ -2008,11 +2047,15 @@ function kaartHTML(item){
   const partijBadge = Number(item.partij_rest)>0
     ? `<span class="badge b-cat" style="background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4">✂️ Partij · nog ${item.partij_rest}</span>`
     : '';
+  const nBewijs = (item.bewijs1_url?1:0)+(item.bewijs2_url?1:0);
+  const bewijsBadge = nBewijs
+    ? `<span class="badge b-cat" title="Klik om te bekijken" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;cursor:pointer" onclick="event.stopPropagation();bekijkBewijs('${esc(item.bewijs1_url||item.bewijs2_url)}')">📎 ${nBewijs}× bewijs</span>`
+    : '';
   return `<div class="kaart${item.status==='verkocht'?' verkocht':item.status==='afgestort'?' afgestort':''}" id="k-${iid}">
     <div class="kico${heeftFoto?' met-foto':''}">${fotoHTML}${artnrHTML}<span class="dpill ${pk}">${d>45?'🔴 ':d>20?'⏰ ':''}${d}d</span>${advOnline?'<span class="adv-live" title="Advertentie staat live online"></span>':''}</div>
     <div class="kbody">
       <div class="kname">${esc(item.naam)}</div>
-      <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}${partijBadge}${bewerktBadge}</div>
+      <div class="badges"><span class="badge b-cat">${esc(item.categorie)}</span>${sb}${partijBadge}${bewijsBadge}${bewerktBadge}</div>
       <div class="kinfo">📍 ${esc(item.locatie)}<br>💶 Inkoop: ${eur(item.prijs)}${item.verwacht_vp>0?`<br>🎯 Verwacht: ${eur(item.verwacht_vp)}`:''}<br>📅 ${esc(item.datum)}</div>
       ${item.notitie?`<div class="knote">📝 ${esc(item.notitie)}</div>`:''}
     </div>
@@ -2086,12 +2129,78 @@ function bwWisFoto(){
   _bwRenderFoto();
 }
 function bwHerstelFoto(){_bwResetFoto();_bwRenderFoto();}
-function sluitBewerk(){_bwResetFoto();sluitModal('m-bewerk');}
+
+// ── Bewijsfoto's in het bewerk-scherm ──────────────────────────────
+// Zelfde werkwijze als de productfoto: kiezen/wissen legt alleen de bedoeling
+// vast, pas bij Opslaan gaat het naar de privébucket.
+let _bewerkBewijs={1:{blob:null,previewUrl:null,wissen:false},2:{blob:null,previewUrl:null,wissen:false}};
+function _bwResetBewijs(){
+  [1,2].forEach(nr=>{
+    const s=_bewerkBewijs[nr];
+    if(s&&s.previewUrl)URL.revokeObjectURL(s.previewUrl);
+    _bewerkBewijs[nr]={blob:null,previewUrl:null,wissen:false};
+  });
+}
+function _bwRenderBewijs(nr){
+  const zone=el('bw-bewijs-'+nr);if(!zone)return;
+  const i=DB.items.find(x=>x.id===_bewerkId);
+  const s=_bewerkBewijs[nr];
+  const bestaandPad=i?(nr===1?i.bewijs1_url:i.bewijs2_url):null;
+  const heeftBestaand=!!bestaandPad&&!s.wissen&&!s.blob;
+  let statusHTML='';
+  if(s.blob)statusHTML=`<div style="font-size:11px;color:#2563eb;font-weight:600;margin-top:4px">Nieuw — wordt geüpload bij Opslaan (${Math.round(s.blob.size/1024)} KB)</div>`;
+  else if(s.wissen&&bestaandPad)statusHTML=`<div style="font-size:11px;color:#dc2626;font-weight:600;margin-top:4px">Wordt verwijderd bij Opslaan</div>`;
+  else if(heeftBestaand)statusHTML=`<div style="font-size:11px;color:var(--gr);margin-top:4px">Opgeslagen — tik de miniatuur om te bekijken</div>`;
+  const thumb=s.blob
+    ? `<img src="${esc(s.previewUrl)}" alt="bewijs ${nr}" style="width:100%;height:100%;object-fit:cover">`
+    : heeftBestaand
+      ? `<div onclick="bekijkBewijs('${esc(bestaandPad)}')" title="Bekijk bewijsfoto" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#eff6ff;color:#1d4ed8;font-size:26px">📎</div>`
+      : `<span style="font-size:24px;opacity:.3">📎</span>`;
+  zone.innerHTML=`
+    <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+      <div style="width:74px;height:74px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${thumb}</div>
+      <div style="flex:1;min-width:140px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="btn btn-gy btn-xs" onclick="el('bw-bewijs-input-${nr}').click()">${(s.blob||heeftBestaand)?'🔄 Vervang':'📎 Kies'}</button>
+          ${(s.blob||heeftBestaand)?`<button type="button" class="btn btn-rd btn-xs" onclick="bwWisBewijs(${nr})">🗑️ Weg</button>`:''}
+          ${(s.blob||s.wissen)?`<button type="button" class="btn btn-gy btn-xs" onclick="bwHerstelBewijs(${nr})">↩️ Herstel</button>`:''}
+        </div>
+        ${statusHTML}
+      </div>
+    </div>`;
+}
+async function bwKiesBewijs(evt,nr){
+  const file=evt.target.files[0];evt.target.value='';
+  if(!file)return;
+  if(!file.type.startsWith('image/')){toast('Alleen afbeeldingen toegestaan','#dc2626');return;}
+  try{
+    // Bonnetjes bevatten kleine cijfers — iets ruimer dan de productfoto
+    const blob=await compressFoto(file,1600,0.9);
+    const s=_bewerkBewijs[nr];
+    if(s.previewUrl)URL.revokeObjectURL(s.previewUrl);
+    _bewerkBewijs[nr]={blob,previewUrl:URL.createObjectURL(blob),wissen:false};
+    _bwRenderBewijs(nr);
+  }catch(e){toast('Foto laden mislukt: '+e.message,'#dc2626');}
+}
+function bwWisBewijs(nr){
+  const s=_bewerkBewijs[nr];
+  if(s.previewUrl)URL.revokeObjectURL(s.previewUrl);
+  _bewerkBewijs[nr]={blob:null,previewUrl:null,wissen:true};
+  _bwRenderBewijs(nr);
+}
+function bwHerstelBewijs(nr){
+  const s=_bewerkBewijs[nr];
+  if(s.previewUrl)URL.revokeObjectURL(s.previewUrl);
+  _bewerkBewijs[nr]={blob:null,previewUrl:null,wissen:false};
+  _bwRenderBewijs(nr);
+}
+
+function sluitBewerk(){_bwResetFoto();_bwResetBewijs();sluitModal('m-bewerk');}
 
 function openBewerk(id){
   const i=DB.items.find(x=>x.id===id);if(!i)return;
   _bewerkId=id;
-  _bwResetFoto();
+  _bwResetFoto();_bwResetBewijs();
   const CATS=['bank','hoekbank','fauteuil','loveseat','kast','dressoir','overig'];
   el('m-bewerk-body').innerHTML=`
     <div class="fgrid">
@@ -2111,9 +2220,24 @@ function openBewerk(id){
       </div>
       <div class="fg" style="grid-column:1/-1"><label>Notities</label><textarea id="bw-not">${esc(i.notitie||'')}</textarea></div>
       <div class="fg" style="grid-column:1/-1">
-        <label>Foto</label>
+        <label>Productfoto <span style="font-weight:400;color:var(--gr);font-size:11px">— staat in het voorraad-overzicht</span></label>
         <div id="bw-foto-zone"></div>
         <input type="file" id="bw-foto-input" accept="image/*" style="display:none" onchange="bwKiesFoto(event)">
+      </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Bewijsfoto's <span style="font-weight:400;color:var(--gr);font-size:11px">— kassabon, betaalbewijs, prijslabel (privé)</span></label>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:230px">
+            <div style="font-size:11px;font-weight:700;color:var(--gr);margin-bottom:6px">📎 BEWIJS 1</div>
+            <div id="bw-bewijs-1"></div>
+            <input type="file" id="bw-bewijs-input-1" accept="image/*" style="display:none" onchange="bwKiesBewijs(event,1)">
+          </div>
+          <div style="flex:1;min-width:230px">
+            <div style="font-size:11px;font-weight:700;color:var(--gr);margin-bottom:6px">📎 BEWIJS 2</div>
+            <div id="bw-bewijs-2"></div>
+            <input type="file" id="bw-bewijs-input-2" accept="image/*" style="display:none" onchange="bwKiesBewijs(event,2)">
+          </div>
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -2121,6 +2245,7 @@ function openBewerk(id){
       <button class="btn btn-gy" onclick="sluitBewerk()">Annuleer</button>
     </div>`;
   _bwRenderFoto();
+  _bwRenderBewijs(1);_bwRenderBewijs(2);
   openModal('m-bewerk');
 }
 async function slaBewerk(){
@@ -2148,21 +2273,52 @@ async function slaBewerk(){
     nieuweFoto=null;fotoGewijzigd=true;
   }
 
+  // Bewijsfoto's — zelfde volgorde: eerst uploaden, pas daarna het item aanpassen
+  const oudBewijs={1:i.bewijs1_url||null,2:i.bewijs2_url||null};
+  const nieuwBewijs={1:oudBewijs[1],2:oudBewijs[2]};
+  let bewijsGewijzigd=false;
+  for(const nr of [1,2]){
+    const s=_bewerkBewijs[nr];
+    if(s.blob){
+      if(knop){knop.disabled=true;knop.textContent=`📤 Bewijs ${nr} uploaden…`;}
+      try{
+        nieuwBewijs[nr]=await uploadBewijsNaarStorage(s.blob,i.id,nr);
+        bewijsGewijzigd=true;
+      }catch(e){
+        if(knop){knop.disabled=false;knop.textContent='💾 Opslaan';}
+        toast(`Bewijs ${nr} uploaden mislukt: `+e.message,'#dc2626');return;
+      }
+      if(knop){knop.disabled=false;knop.textContent='💾 Opslaan';}
+    }else if(s.wissen&&oudBewijs[nr]){
+      nieuwBewijs[nr]=null;bewijsGewijzigd=true;
+    }
+  }
+
   i.naam=naam;i.categorie=cat;i.stof=val('bw-stof').trim();i.locatie=val('bw-loc').trim();
   const oudePrijs=i.prijs;
   i.prijs=fval('bw-ip');i.verwacht_vp=fval('bw-vvp');i.datum=val('bw-dat');
   i.notitie=val('bw-not').trim();
   i.betaalmethode=val('bw-bet')||null;
   i.foto_url=nieuweFoto;
+  i.bewijs1_url=nieuwBewijs[1];i.bewijs2_url=nieuwBewijs[2];
   if(i.prijs!==oudePrijs)_patchItem(i.id,{prijs:i.prijs});
+  if(bewijsGewijzigd)_patchItem(i.id,{bewijs1_url:nieuwBewijs[1],bewijs2_url:nieuwBewijs[2]});
   if(!Array.isArray(i.bewerkt))i.bewerkt=[];
   i.bewerkt.push({ts:new Date().toISOString()});
   slaOp();renderV();renderDash();
-  // Oude foto pas opruimen als de nieuwe stand vaststaat
+  // Oude bestanden pas opruimen als de nieuwe stand vaststaat
   if(fotoGewijzigd&&oudeFoto)verwijderFotoUitStorage(oudeFoto).catch(e=>console.warn('Oude foto wissen:',e));
-  _bwResetFoto();
+  [1,2].forEach(nr=>{
+    if(oudBewijs[nr]&&oudBewijs[nr]!==nieuwBewijs[nr])
+      verwijderBewijsUitStorage(oudBewijs[nr]).catch(e=>console.warn('Oud bewijs wissen:',e));
+  });
+  _bwResetFoto();_bwResetBewijs();
   sluitModal('m-bewerk');
-  toast(fotoGewijzigd?(nieuweFoto?'📷 Item + foto bijgewerkt':'📷 Foto verwijderd, item bijgewerkt'):'✏️ Item bijgewerkt');
+  const melding=fotoGewijzigd&&bewijsGewijzigd?'📷 Foto + bewijs bijgewerkt'
+    :bewijsGewijzigd?'📎 Bewijsfoto bijgewerkt'
+    :fotoGewijzigd?(nieuweFoto?'📷 Item + foto bijgewerkt':'📷 Foto verwijderd, item bijgewerkt')
+    :'✏️ Item bijgewerkt';
+  toast(melding);
 }
 
 // ── PARTIJ SPLITSEN (dashboard): 1 gezamenlijke inkoop → meerdere losse items ──
