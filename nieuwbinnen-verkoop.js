@@ -174,6 +174,11 @@ function _socialKB(ctx,panel,prog,idx,W,fotoH){
 }
 // Tekst met extra letterafstand (voor het merk-label). Verwacht textAlign left + baseline top.
 function _socialSpaced(ctx,text,x,y,ls){ let cx=x; for(const ch of String(text)){ ctx.fillText(ch,cx,y); cx+=ctx.measureText(ch).width+ls; } }
+// WhatsApp click-to-chat link (scan → direct appen) met productcontext als voorvuld bericht.
+function _socialWaLink(p){
+  const txt='Hoi Nijhof Brothers! Ik heb interesse in: '+((p&&p.title)||'jullie meubel');
+  return 'https://wa.me/31555690039?text='+encodeURIComponent(txt);
+}
 // Laadt tot 3 foto's (voor het filmpje), logo, merk-mark en QR één keer — hergebruikt voor foto én video.
 async function _socialAssets(p){
   const a={img:null,logo:null,qr:null,panel:null,panels:[],mark:null,brand:'',imgs:[]};
@@ -183,20 +188,25 @@ async function _socialAssets(p){
   if(a.imgs.length){ a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,Math.round(1920*0.62)); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null; }
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
-  try{ a.qr=await _socialQR(p.url,300); }catch(_e){}
+  try{ a.qr=await _socialQR(_socialWaLink(p),300); }catch(_e){}
   a.brand=_socialBrand(p);
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
 // Wit rondje met het NB-merk midden op de QR. QR staat op correctie-H en de afdekking is
 // ~9% van het oppervlak (ruim binnen de 30% die H aankan) → blijft gewoon scanbaar.
+var _WA_PATH='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.359.101 11.946c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a11.96 11.96 0 005.71 1.454h.006c6.585 0 11.946-5.359 11.949-11.945a11.86 11.86 0 00-3.495-8.404';
+var _waP;
+function _socialWaGlyph(){ if(_waP===undefined){ try{ _waP=new Path2D(_WA_PATH); }catch(_e){ _waP=null; } } return _waP; }
+// Wit rondje met het GROENE WhatsApp-logo midden op de QR (QR wijst naar WhatsApp).
+// QR staat op correctie-H, afdekking ~9% → blijft scanbaar.
 function _socialQRMerk(ctx,a,cx,cy,qs){
-  const R=Math.round(qs*0.17);
+  const R=Math.round(qs*0.17), gr=R-5;
   ctx.save();
   ctx.beginPath(); ctx.arc(cx,cy,R,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
-  ctx.lineWidth=4; ctx.strokeStyle='#E87722'; ctx.stroke();
-  if(a&&a.mark){ const box=R*1.5, mr=a.mark.width/a.mark.height; let mw,mh; if(mr>=1){ mw=box; mh=box/mr; } else { mh=box; mw=box*mr; } ctx.drawImage(a.mark,cx-mw/2,cy-mh/2,mw,mh); }
-  else { ctx.fillStyle='#E87722'; ctx.font='800 '+Math.round(R*0.9)+'px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('NB',cx,cy+2); }
+  ctx.beginPath(); ctx.arc(cx,cy,gr,0,2*Math.PI); ctx.fillStyle='#25D366'; ctx.fill();
+  const g=_socialWaGlyph();
+  if(g){ ctx.translate(cx,cy); const s=(2*gr*0.62)/24; ctx.scale(s,s); ctx.translate(-12,-12); ctx.fillStyle='#ffffff'; ctx.fill(g); }
   ctx.restore();
 }
 function _socialDrawFrame(ctx,a,p,t,DUR){
@@ -231,7 +241,7 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   const prijsY=y+lines.length*62+20;
   // QR rechtsonder + "SCAN MIJ" + webshop-adres
   if(a.qr){ const qs=286,qx=W-qs-78,qy=fotoH+128;
-    ctx.fillStyle=OR; ctx.font='800 30px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillText('SCAN MIJ',qx+qs/2,qy-22); ctx.textBaseline='top';
+    ctx.fillStyle=OR; ctx.font='800 30px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillText('SCAN & APP',qx+qs/2,qy-22); ctx.textBaseline='top';
     _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#e5e7eb'; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.stroke();
     ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
     ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+18); ctx.textAlign='left'; }
@@ -252,8 +262,8 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     const cp=ease((t-(PHOTO_DUR-0.3))/0.5);
     ctx.save(); ctx.globalAlpha=cp*0.92; ctx.fillStyle=OR; ctx.fillRect(0,0,W,fotoH); ctx.restore();
     ctx.save(); ctx.globalAlpha=cp; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse? 💬',W/2,fotoH*0.34);
-    ctx.font='800 52px Sora, sans-serif'; ctx.fillText('Stuur een DM of scan de QR',W/2,fotoH*0.34+112);
+    ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse?',W/2,fotoH*0.34);
+    ctx.font='800 48px Sora, sans-serif'; ctx.fillText('App of ga naar nijhofbrothers.nl',W/2,fotoH*0.34+112);
     ctx.font='700 42px Inter, sans-serif'; ctx.fillText('🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
     ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
   }

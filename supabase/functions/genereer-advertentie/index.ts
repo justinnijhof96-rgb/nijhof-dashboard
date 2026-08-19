@@ -42,6 +42,9 @@ const CM_KEYS = new Set([
 // Labels van maat-specificaties (kleingeschreven) — alleen déze lege "Label:"-regels
 // worden opgeschoond, zodat bewuste sjabloonkopjes ("Afmetingen:", "Kenmerken:") blijven.
 const MAAT_LABEL_SET = new Set(Object.values(MAAT_LABELS).map((l) => l.toLowerCase()));
+// Ook deze specificatieregels moeten verdwijnen als ze leeg blijven ("laat onbekende
+// regels volledig weg"). Kopjes zonder dubbele punt ("Specificaties") blijven staan.
+for (const l of ["materiaal", "kleur", "bijzonderheden", "staat", "merk", "type", "model"]) MAAT_LABEL_SET.add(l);
 
 // Zet de bezorgkeuze van de advertentie om in een nette regel voor de tekst.
 // bezorging = { bezorgen: boolean, kosten: number }. 0 kosten = gratis.
@@ -50,6 +53,24 @@ function bezorgRegel(adv: any): string {
   if (b.bezorgen === false) return "Ophalen (bezorgen niet mogelijk).";
   const k = Number(b.kosten) || 0;
   return k > 0 ? `Bezorgen mogelijk (bezorgkosten € ${k}).` : "Bezorgen mogelijk, gratis in de regio.";
+}
+
+// Marktplaats kapt titels boven de 60 tekens af. Nooit midden in een woord snijden:
+// eerst hele " | "-blokken laten vallen, dan pas op woordgrens afkappen.
+function kortTitel(t: string): string {
+  const s = String(t || "").replace(/\s+/g, " ").trim();
+  if (s.length <= 60) return s;
+  const delen = s.split(/\s*\|\s*/).filter(Boolean);
+  while (delen.length > 1) {
+    delen.pop();
+    const kort = delen.join(" | ");
+    if (kort.length <= 60) return kort;
+  }
+  const eerste = delen[0] || s;
+  if (eerste.length <= 60) return eerste;
+  const knip = eerste.slice(0, 60);
+  const spatie = knip.lastIndexOf(" ");
+  return (spatie > 30 ? knip.slice(0, spatie) : knip).trim();
 }
 
 // Vult placeholders ({{breedte}}, {{materiaal}}, {{specificaties}}, ...) in de vaste
@@ -252,14 +273,72 @@ Deno.serve(async (req: Request) => {
     ].join("\n");
 
     const systemPrompt =
-`Je bent een ervaren tekstschrijver voor tweedehands meubeladvertenties op Marktplaats, voor meubelhandel Nijhof Brothers.
-${sjab?.ai_instructie ?? "Schrijf een wervende maar eerlijke Nederlandse advertentie."}
-${sjab?.titel_hint ? "Titelinstructie: " + sjab.titel_hint : "Titel: maximaal 60 tekens, type + merk + kleur/materiaal + sterk verkooppunt."}
-Regels: gebruik alleen wat je op de foto's ziet of wat als feit is meegegeven, verzin niets. Schrijf de beschrijving in prettig leesbare korte alinea's en varieer de formuleringen per meubel (niet elke keer dezelfde zinnen). Neem in de beschrijving GEEN afmetingen, specificaties, bezorging, prijs of contactgegevens op — die staan al in de vaste tekst van de advertentie.${mmBlok}
-Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst eromheen:
-{"titel":"...","beschrijving":"..."}`;
+`Je bent de vaste advertentiecopywriter van Nijhof Brothers, een familiebedrijf van twee broers uit Apeldoorn.
+Schrijf alsof een goede menselijke meubelverkoper het meubel zélf heeft bekeken en het aan een klant uitlegt.
 
-    const userText = `Feiten over dit meubel:\n${feiten}\n\nBekijk de foto's en schrijf de titel en beschrijving.`;
+TOON
+Rustig, zelfverzekerd, warm, verzorgd, betrouwbaar, toegankelijk, licht premium en menselijk.
+Normaal, natuurlijk Nederlands. Aantrekkelijk, maar nooit overdreven verkooppraat.
+De lezer moet denken: "Dit is een mooie, goede bank die netjes wordt aangeboden door een bedrijf dat weet wat het verkoopt."
+Niet: "Dit is een AI-tekst." Varieer de zinsbouw per advertentie; niet elke advertentie dezelfde omschrijving.
+
+VERTAAL EIGENSCHAPPEN NAAR BETEKENIS
+Beschrijf niet alleen kenmerken, maar wat ze voor de koper betekenen.
+NIET: "De bank heeft een zitdiepte van 62 cm." WEL: "De diepe zit geeft genoeg ruimte om comfortabel achterover of languit te zitten."
+NIET: "De bank is beige." WEL: "De warme beige tint houdt de bank rustig en laat zich makkelijk combineren met natuurlijke en donkere materialen."
+Doe dit alleen als het logisch voortkomt uit de meegegeven gegevens of duidelijk zichtbaar is op de foto's.
+
+VERBODEN (generieke AI-taal — gebruik deze nooit)
+"Ervaar ultiem comfort", "de perfecte mix van comfort en stijl", "een ware eyecatcher", "voegt een vleugje elegantie toe",
+"transformeer uw woonkamer", "past perfect in ieder interieur", "een stijlvolle toevoeging aan uw interieur",
+"optimaal comfort", "heerlijk ontspannen na een lange dag", "deze prachtige bank".
+Vermijd ook clichés als "genoeg zitruimte voor het hele gezin" en "warme, moderne uitstraling".
+
+VERBODEN (romantiseren van tweedehands)
+Het meubel is GEEN artefact, erfstuk of object met een vorig leven. Nooit: "klaar voor een volgend hoofdstuk",
+"een nieuw leven", "heeft al vele verhalen meegemaakt", "wacht op zijn volgende gezin", "een object met geschiedenis",
+"tijdloos erfstuk". Leg ook geen onnodige nadruk op dat iemand het eerder gebruikt heeft.
+De waarde zit in het meubel zelf + de selectie, reiniging en presentatie door Nijhof Brothers.
+
+FEITELIJKHEID
+Verzin NOOIT merk, model, afmetingen, materiaal, functies, leeftijd, herkomst, oorspronkelijke nieuwprijs, conditie,
+afritsbare hoezen, elektrische functies of zitcomfort wanneer dat niet is meegegeven of duidelijk zichtbaar is.
+Bij twijfel: weglaten.
+${sjab?.ai_instructie ? "\nRUBRIEK-SPECIFIEK\n" + sjab.ai_instructie : ""}
+
+TITEL (veld "titel")
+Zoekvriendelijk en duidelijk, niet clickbait. Opbouw: [type meubel] + [belangrijk kenmerk] + [kleur/stof/merk indien relevant] + [sterk verkoopargument], gescheiden door " | ".
+HARDE EIS: maximaal 60 tekens inclusief spaties — Marktplaats kapt langere titels af. Kort af waar nodig
+(bijv. "Gereinigd" i.p.v. "Professioneel gereinigd") en laat het minst belangrijke deel weg. Tel je tekens.
+${sjab?.titel_hint ? "Extra titelinstructie: " + sjab.titel_hint : ""}
+
+KORTE KOP (veld "kop")
+Circa 3 tot 7 woorden die de uitstraling van dít meubel vangen. Bijvoorbeeld: "Royaal comfort, rustige uitstraling",
+"Ruim, zacht en uitnodigend", "Strakke vorm, comfortabele zit", "Rustig design met karakter".
+Gebruik niet steeds dezelfde kop. Geen punt aan het eind.
+
+BESCHRIJVING (veld "beschrijving")
+Maximaal 2 à 3 korte alinea's, gescheiden door een lege regel.
+Alinea 1: wat dit specifieke meubel aantrekkelijk maakt.
+Alinea 2: vertaal vorm, zit, kleur, stof of formaat naar wat de koper ervaart.
+Alinea 3: alleen bij een werkelijk relevante extra eigenschap.
+Sluit af met een regel in de geest van: "Deze bank is door Nijhof Brothers geselecteerd, professioneel gereinigd en netjes klaargemaakt voor gebruik." (varieer de formulering; pas 'bank' aan het type meubel aan).
+Neem GEEN afmetingen, specificatielijst, bezorging, prijs of contactgegevens op — die staan al in de vaste tekst eronder.
+
+Kwaliteits- en lengtereferentie (stijlvoorbeeld, NIET letterlijk overnemen):
+"Een ruime en comfortabele zithoek met bijpassende fauteuil, uitgevoerd in een warme grijs/antraciete stof.
+
+De diepe zit, zachte kussens en brede armleuningen maken dit een set waar je echt goed in kunt ontspannen. Tegelijk zorgen de rustige lijnen en neutrale kleur ervoor dat hij makkelijk zijn plek vindt in zowel een modern als warm interieur.
+
+De bank is door Nijhof Brothers geselecteerd, professioneel gereinigd en netjes klaargemaakt voor gebruik."
+
+GRAMMATICA
+Pas woordkeus aan het werkelijke type aan: losse bank, hoekbank, fauteuil, zithoek, dressoir, tafel enzovoort.${mmBlok}
+
+Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst eromheen:
+{"titel":"...","kop":"...","beschrijving":"..."}`;
+
+    const userText = `Feiten over dit meubel:\n${feiten}\n\nBekijk de foto's en schrijf de titel, de korte kop en de beschrijving.`;
 
     const provider = (Deno.env.get("AI_PROVIDER") || "openai").toLowerCase();
     let rawText = "";
@@ -314,8 +393,12 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       return json({ error: "AI gaf geen bruikbare JSON terug", raw: rawText.slice(0, 500) }, 502);
     }
 
-    const titel = String(parsed.titel).slice(0, 60);
-    const beschrijving = String(parsed.beschrijving || "");
+    const titel = kortTitel(String(parsed.titel));
+    // De korte kop hoort bovenaan het verhaal-gedeelte, zodat élke afnemer (preview,
+    // Marktplaats-tekst, Shopify-omschrijving) hem automatisch meekrijgt.
+    const kop = String(parsed.kop || "").trim().replace(/[.\s]+$/, "");
+    const verhaal = String(parsed.beschrijving || "").trim();
+    const beschrijving = kop ? `${kop}\n\n${verhaal}` : verhaal;
 
     const intro = fillPlaceholders(sjab?.vaste_intro ? String(sjab.vaste_intro) : "", adv, item, maten).trim();
     const blokken = fillPlaceholders(sjab?.vaste_blokken ? String(sjab.vaste_blokken) : "", adv, item, maten).trim();
