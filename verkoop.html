@@ -2328,22 +2328,94 @@ function _debCard(g){
     inner+='<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">';
     g.termijnen.forEach((t,ti)=>{
       const dat=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
-      inner+='<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:8px 10px">'
-        +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--nav)">'+esc(t.label||('Termijn '+t.nr))+'</div>'+(dat?'<div style="font-size:11px;color:var(--gr)">vervalt '+dat+'</div>':'')+'</div>'
-        +'<button class="btn deb-tik" onclick="maakTikkieTermijn('+g._i+','+ti+',this)" style="background:#0f766e;color:#fff;border:none;min-height:40px;padding:0 14px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;white-space:nowrap">💸 '+eur(t.bedrag)+'</button>'
+      inner+='<div>'
+        +'<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:8px 10px">'
+          +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--nav)">'+esc(t.label||('Termijn '+t.nr))+'</div>'+(dat?'<div style="font-size:11px;color:var(--gr)">vervalt '+dat+'</div>':'')+'</div>'
+          +'<button class="btn deb-tik" onclick="maakTikkieTermijn('+g._i+','+ti+',this)" style="background:#0f766e;color:#fff;border:none;min-height:40px;padding:0 14px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;white-space:nowrap">💸 '+eur(t.bedrag)+'</button>'
+          +_debAfmeldKnop(g._i,'t'+ti)
+        +'</div>'
+        +_debAfmeldKeuze(g._i,'t'+ti,t.bedrag)
         +'</div>';
     });
     inner+='</div>';
     // Alles-in-één-keer: als de klant tóch het hele openstaande bedrag ineens wil betalen
-    if(g.termijnen.length>1)inner+='<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="width:100%;margin-top:8px;background:#fff;color:#0f766e;border:1.5px solid #0f766e;min-height:44px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">💸 Alles ineens · '+eur(g.open)+'</button>';
+    if(g.termijnen.length>1)inner+='<div style="margin-top:8px"><div style="display:flex;gap:8px">'
+      +'<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="flex:1;background:#fff;color:#0f766e;border:1.5px solid #0f766e;min-height:44px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer">💸 Alles ineens · '+eur(g.open)+'</button>'
+      +_debAfmeldKnop(g._i,'alles')
+      +'</div>'+_debAfmeldKeuze(g._i,'alles',g.open)+'</div>';
     inner+=_debAanpasBlok(g);
   }else if(g.cat==='woppa'){
     inner+='<div style="margin-top:10px;font-size:12px;color:var(--gr);background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:10px">🏦 Wordt via Woppa uitgekeerd (±1 maand na verkoop) — geen Tikkie nodig.</div>';
+    inner+='<div style="margin-top:8px"><div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'<span style="flex:1;align-self:center;font-size:12px;color:var(--gr)">Al binnen? Meld hem af ›</span>'
+      +_debAfmeldKnop(g._i,'alles')
+      +'</div>'+_debAfmeldKeuze(g._i,'alles',g.open)+'</div>';
   }else{
-    inner+='<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="width:100%;margin-top:10px;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(g.open)+'</button>';
+    inner+='<div style="margin-top:10px"><div style="display:flex;gap:8px">'
+      +'<button class="btn deb-tik" onclick="maakTikkieDebiteur('+g._i+',this)" style="flex:1;background:#0f766e;color:#fff;border:none;min-height:48px;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer">💸 Tikkie maken · '+eur(g.open)+'</button>'
+      +_debAfmeldKnop(g._i,'alles')
+      +'</div>'+_debAfmeldKeuze(g._i,'alles',g.open)+'</div>';
     inner+=_debAanpasBlok(g);
   }
   return '<div class="card" style="margin-bottom:10px">'+inner+'</div>';
+}
+// ── Handmatig afmelden: contant betaald, of een Tikkie die buiten de app om is
+// voldaan (dan krijgt de app het niet door). Klein ✓-knopje naast de betaalknop;
+// pas na het kiezen van de methode wordt er echt afgemeld — dus nooit met één tik.
+// De gekozen methode gaat mee naar de termijn, zodat 'contant' meteen in het kasboek
+// van het dashboard verschijnt (dat leidt contant live af uit de termijnen).
+const DEB_METHODES=[['contant','💵 Cash'],['tikkie','📲 Tikkie'],['bank','🏦 Bank']];
+// Klein ✓-knopje dat naast een betaalknop staat. `sleutel` is uniek per rij.
+function _debAfmeldKnop(gi,sleutel){
+  return '<button type="button" title="Al betaald? Handmatig afmelden" onclick="_debAfmeldOpen('+gi+',\''+sleutel+'\')"'
+    +' style="flex:0 0 auto;width:46px;align-self:stretch;min-height:40px;border:1.5px solid var(--bd);background:#fff;color:#0f766e;'
+    +'font-size:17px;font-weight:800;border-radius:8px;cursor:pointer;line-height:1">✓</button>';
+}
+// Het keuzerijtje dat onder de betaalknop verschijnt zodra je op ✓ tikt.
+function _debAfmeldKeuze(gi,sleutel,bedrag){
+  let knoppen='';
+  DEB_METHODES.forEach(([k,lbl])=>{
+    knoppen+='<button type="button" onclick="_debAfmeld('+gi+',\''+sleutel+'\',\''+k+'\',this)"'
+      +' style="flex:1 1 0;min-height:40px;padding:0 6px;font-size:12.5px;font-weight:700;border-radius:8px;cursor:pointer;'
+      +'border:1.5px solid #0f766e;background:#fff;color:#0f766e;white-space:nowrap">'+lbl+'</button>';
+  });
+  return '<div id="deb-mth-'+gi+'-'+sleutel+'" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid var(--bd);border-radius:10px;padding:8px">'
+    +'<div style="font-size:11px;color:var(--gr);font-weight:700;margin-bottom:6px">'+eur(bedrag)+' — HOE IS ER BETAALD?</div>'
+    +'<div style="display:flex;gap:6px">'+knoppen+'</div>'
+    +'</div>';
+}
+function _debAfmeldOpen(gi,sleutel){
+  const b=$('deb-mth-'+gi+'-'+sleutel);if(!b)return;
+  const open=b.style.display==='block';
+  // Alle andere keuzerijtjes dicht, zodat er nooit twee tegelijk openstaan.
+  document.querySelectorAll('[id^="deb-mth-"]').forEach(x=>x.style.display='none');
+  b.style.display=open?'none':'block';
+}
+// Welke termijn-ids hangen aan deze sleutel? 'alles' = het hele openstaande bedrag.
+function _debIdsVoor(g,sleutel){
+  if(sleutel==='alles')return (g.termijnen||[]).map(t=>t.id).filter(Boolean);
+  const i=Number(String(sleutel).replace('t',''));
+  const t=(g.termijnen||[])[i];
+  return t&&t.id?[t.id]:[];
+}
+async function _debAfmeld(gi,sleutel,mth,btn){
+  const g=DEBITEUREN[gi];if(!g)return;
+  const ids=_debIdsVoor(g,sleutel);
+  if(!ids.length){toast('Geen termijn gevonden om af te melden','#dc2626');return;}
+  const bedrag=sleutel==='alles'?g.open:(Number((g.termijnen[Number(String(sleutel).replace('t',''))]||{}).bedrag)||0);
+  const oud=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳';}
+  const nu=_dISO(new Date());
+  let fout=0;
+  for(const id of ids){
+    try{ await _restPatch('termijnen?id=eq.'+encodeURIComponent(id),{betaald:true,betaald_op:nu,betaalmethode:mth}); }
+    catch(e){ fout++; console.warn('Afmelden mislukt:',e); }
+  }
+  if(btn){btn.disabled=false;btn.innerHTML=oud;}
+  if(fout){toast('⚠️ '+fout+' termijn(en) niet afgemeld','#dc2626');return;}
+  const lbl=(DEB_METHODES.find(m=>m[0]===mth)||[,mth])[1].replace(/^\S+\s/,'');
+  toast('✓ '+eur(bedrag)+' afgemeld ('+lbl+')'+(mth==='contant'?' → staat in het kasboek':''),'#0f766e');
+  laadDebiteuren();
 }
 async function _maakTikkieVoor(cent,factNr,product,btn,termijnIds,extra){
   if(cent<=0){toast('Geen bedrag om te innen','#dc2626');return;}
