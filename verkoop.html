@@ -217,6 +217,17 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <input type="file" id="bon-foto-input" accept="image/*" style="display:none" onchange="bonKiesFoto(event)">
       </div>
       <div class="fg">
+        <label>Bedrag</label>
+        <input id="bon-bedrag" type="text" inputmode="decimal" placeholder="bijv. 24,95">
+      </div>
+      <div class="fg">
+        <label>Betaald met</label>
+        <div style="display:flex;gap:8px">
+          <button type="button" id="bon-m-contant" onclick="bonKiesBetaal('contant')" style="flex:1;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer;border:1.5px solid var(--bd);background:#fff;color:var(--gr)">💵 Cash</button>
+          <button type="button" id="bon-m-pin" onclick="bonKiesBetaal('pin')" style="flex:1;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer;border:1.5px solid var(--bd);background:#fff;color:var(--gr)">💳 PIN</button>
+        </div>
+      </div>
+      <div class="fg">
         <label>Datum op de bon</label>
         <input type="date" id="bon-datum">
       </div>
@@ -305,6 +316,13 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
         <div class="fg"><label class="r">Inkoopprijs (€)</label><input type="number" id="ink-prijs" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="updInkStap1()"></div>
         <div class="fg"><label>Verwachte verkoopprijs (€)</label><input type="number" id="ink-vvp" inputmode="decimal" min="0" step="0.01" placeholder="optioneel"></div>
         <div class="fg"><label class="r">Inkoopdatum</label><input type="date" id="ink-dat" oninput="updInkStap1()"></div>
+        <div class="fg">
+          <label>Betaald met</label>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="ink-m-contant" onclick="inkKiesBetaal('contant')" style="flex:1;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer;border:1.5px solid var(--bd);background:#fff;color:var(--gr)">💵 Cash</button>
+            <button type="button" id="ink-m-bank" onclick="inkKiesBetaal('bank')" style="flex:1;min-height:46px;font-size:14px;font-weight:700;border-radius:10px;cursor:pointer;border:1.5px solid var(--bd);background:#fff;color:var(--gr)">🏦 Bank</button>
+          </div>
+        </div>
         <div class="fg"><label>Notitie</label><textarea id="ink-not" rows="2" placeholder="optioneel"></textarea></div>
       </div>
     </div>
@@ -971,8 +989,23 @@ function herstartBonnetje(){
   $('bon-foto-leeg').style.display='';
   $('bon-datum').value=_dISO(new Date());
   $('bon-omschr').value='';
+  $('bon-bedrag').value='';
+  bonKiesBetaal('pin');
   $('bon-status').innerHTML='';
   const btn=$('bon-verstuur');btn.disabled=false;btn.textContent='📤 Naar invoice@';
+}
+// Betaalmethode van het bonnetje. Bepaalt of de kosten in het kasboek belanden:
+// het dashboard leidt contante uitgaven live af uit lasten met betaalmethode 'contant'.
+let _bonBetaal='pin';
+function bonKiesBetaal(m){
+  _bonBetaal=m;
+  [['contant','bon-m-contant'],['pin','bon-m-pin']].forEach(([k,id])=>{
+    const b=$(id);if(!b)return;
+    const aan=(k===m);
+    b.style.borderColor=aan?'#0f766e':'var(--bd)';
+    b.style.background=aan?'#0f766e':'#fff';
+    b.style.color=aan?'#fff':'var(--gr)';
+  });
 }
 async function bonKiesFoto(ev){
   const file=ev.target.files&&ev.target.files[0];
@@ -987,7 +1020,7 @@ async function bonKiesFoto(ev){
     $('bon-status').innerHTML=`<div class="alert alert-err">⚠️ Foto verwerken mislukt: ${esc(e.message)}</div>`;
   }
 }
-function _maakBonPDF({dataUrl,datum,omschrijving}){
+function _maakBonPDF({dataUrl,datum,omschrijving,bedrag,betaalmethode}){
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF();
   // Header in huisstijl
@@ -999,14 +1032,16 @@ function _maakBonPDF({dataUrl,datum,omschrijving}){
   doc.text('FURNITURE — BONNETJE',15,19);
   // Gegevens
   doc.setTextColor(30,47,58);doc.setFontSize(11);doc.setFont('helvetica','bold');
-  doc.text('Datum:',15,38);doc.text('Omschrijving:',15,45);
+  doc.text('Datum:',15,38);doc.text('Bedrag:',15,45);doc.text('Betaald met:',15,52);doc.text('Omschrijving:',15,59);
   doc.setFont('helvetica','normal');
   const d=new Date(datum);
   doc.text(isNaN(d)?datum:`${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`,50,38);
+  doc.text('EUR '+(Number(bedrag)||0).toFixed(2).replace('.',','),50,45);
+  doc.text(betaalmethode==='contant'?'Contant':'PIN',50,52);
   const omsLines=doc.splitTextToSize(omschrijving,140);
-  doc.text(omsLines,50,45);
+  doc.text(omsLines,50,59);
   // Foto passend schalen binnen A4-marges
-  const startY=50+omsLines.length*5;
+  const startY=64+omsLines.length*5;
   const img=new Image();
   return new Promise((resolve,reject)=>{
     img.onload=()=>{
@@ -1029,12 +1064,14 @@ async function verstuurBonnetje(){
   if(!_bonFotoBlob){status.innerHTML='<div class="alert alert-err">⚠️ Maak eerst een foto van de bon</div>';return;}
   if(!datum){status.innerHTML='<div class="alert alert-err">⚠️ Vul de datum in</div>';return;}
   if(!omschrijving){status.innerHTML='<div class="alert alert-err">⚠️ Vul een korte omschrijving in</div>';return;}
+  const bedrag=_parseBedrag($('bon-bedrag').value);
+  if(!(bedrag>0)){status.innerHTML='<div class="alert alert-err">⚠️ Vul het bedrag van de bon in</div>';return;}
   const btn=$('bon-verstuur');
   btn.disabled=true;btn.textContent='⏳ Versturen...';
   status.innerHTML='<div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">⏳ PDF maken en mailen...</div>';
   try{
     const dataUrl=await _blobNaarDataUrl(_bonFotoBlob);
-    const doc=await _maakBonPDF({dataUrl,datum,omschrijving});
+    const doc=await _maakBonPDF({dataUrl,datum,omschrijving,bedrag,betaalmethode:_bonBetaal});
     const pdfBase64=doc.output('datauristring').split(',')[1];
     const fotoBase64=dataUrl.split(',')[1];
     const res=await fetch(SUPABASE_URL+'/functions/v1/verstuur-bonnetje',{
@@ -1048,9 +1085,23 @@ async function verstuurBonnetje(){
     });
     const json=await res.json();
     if(!res.ok||!json.success)throw new Error(json.error||'versturen mislukt');
-    status.innerHTML='<div class="alert alert-ok">✅ Bonnetje verstuurd naar invoice@nijhofbrothers.nl</div>';
+    // Boeken als variabele kostenpost. Bij 'contant' verschijnt hij daardoor
+    // automatisch in het kasboek (dat leidt contante uitgaven af uit lasten).
+    let geboekt=true;
+    try{
+      await _restPost('lasten',{
+        id:_genId(),org_id:STATE.org_id,user_id:STATE.user?.id||null,
+        naam:omschrijving,bedrag:bedrag,btw_pct:0,btw_type:'incl',
+        betaalmethode:_bonBetaal,betaaldatum:datum,
+        type_kosten:'variabel',terugkerend:false,fluctuerend:false,betaald:true,actief:true
+      });
+    }catch(e){ geboekt=false; console.warn('Bonnetje boeken mislukt:',e); }
+    const kasNoot=_bonBetaal==='contant'?' en staat in het kasboek':'';
+    status.innerHTML=geboekt
+      ? '<div class="alert alert-ok">✅ Bonnetje verstuurd naar invoice@nijhofbrothers.nl, geboekt als kosten'+kasNoot+'</div>'
+      : '<div class="alert alert-err">✅ Bonnetje gemaild, maar ⚠️ het boeken in de administratie mislukte — voeg de kosten handmatig toe.</div>';
     btn.textContent='✅ Verstuurd';
-    setTimeout(()=>{herstartBonnetje();terugNaarKeuze();},1800);
+    setTimeout(()=>{herstartBonnetje();terugNaarKeuze();},geboekt?1800:4500);
   }catch(e){
     console.error('Bonnetje fout:',e);
     status.innerHTML=`<div class="alert alert-err">⚠️ Mislukt: ${esc(e.message)}</div>`;
@@ -1065,7 +1116,7 @@ function terugNaarKeuze(){
 // ── INKOOP FLOW ───────────────────────────────────────────────────
 const INKOOP = {
   // form data
-  naam:'', categorie:'', stof:'', locatie:'', prijs:null, vvp:0, datum:'', notitie:'',
+  naam:'', categorie:'', stof:'', locatie:'', prijs:null, vvp:0, datum:'', notitie:'', betaalmethode:'bank',
   // foto's (Blobs voor upload, dataUrls voor preview)
   foto_prod:null, foto_prod_dataUrl:null,
   foto_bew1:null, foto_bew1_dataUrl:null,
@@ -1076,7 +1127,7 @@ const INKOOP = {
 
 function resetInkoop(){
   Object.assign(INKOOP,{
-    naam:'',categorie:'',stof:'',locatie:'',prijs:null,vvp:0,datum:'',notitie:'',
+    naam:'',categorie:'',stof:'',locatie:'',prijs:null,vvp:0,datum:'',notitie:'',betaalmethode:'bank',
     foto_prod:null,foto_prod_dataUrl:null,
     foto_bew1:null,foto_bew1_dataUrl:null,
     foto_bew2:null,foto_bew2_dataUrl:null,
@@ -1086,8 +1137,21 @@ function resetInkoop(){
     const e=$(id);if(e)e.value='';
   });
   const dat=$('ink-dat');if(dat)dat.value=new Date().toISOString().split('T')[0];
+  inkKiesBetaal('bank');
   ['ink-foto-prod-preview','ink-foto-bew1-preview','ink-foto-bew2-preview'].forEach(id=>{
     const e=$(id);if(e)e.innerHTML='';
+  });
+}
+// Contant of via de bank ingekocht. 'contant' laat de inkoop automatisch als
+// uitgave in het kasboek verschijnen (dat leest items met betaalmethode 'contant').
+function inkKiesBetaal(m){
+  INKOOP.betaalmethode=m;
+  [['contant','ink-m-contant'],['bank','ink-m-bank']].forEach(([k,id])=>{
+    const b=$(id);if(!b)return;
+    const aan=(k===m);
+    b.style.borderColor=aan?'#0f766e':'var(--bd)';
+    b.style.background=aan?'#0f766e':'#fff';
+    b.style.color=aan?'#fff':'var(--gr)';
   });
 }
 
@@ -1114,6 +1178,7 @@ function updInkStap1(){
   INKOOP.vvp=parseFloat($('ink-vvp').value)||0;
   INKOOP.datum=$('ink-dat').value;
   INKOOP.notitie=$('ink-not').value.trim();
+  if(!INKOOP.betaalmethode)INKOOP.betaalmethode='bank';
   updInkStapBtn();
 }
 
@@ -1260,6 +1325,9 @@ async function opslaanInkoop(){
       verwacht_vp:INKOOP.vvp,
       datum:INKOOP.datum,
       notitie:INKOOP.notitie,
+      // Contant ingekocht = uitgave uit de kas; het dashboard leidt dat live af
+      // uit items met betaalmethode 'contant' (geen dubbele boeking).
+      betaalmethode:INKOOP.betaalmethode||'bank',
       status:'beschikbaar',
       stortkosten:0,
       foto_url:null,
