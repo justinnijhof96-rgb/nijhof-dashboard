@@ -156,14 +156,35 @@ function _socialLogoTransparant(img){
   }catch(_e){ /* getImageData kan falen bij taint — logo blijft dan met witte achtergrond */ }
   return c;
 }
-// Laadt foto (met CORS-cachebuster), logo (vrijstaand gemaakt) en QR één keer — hergebruikt voor foto én video-frames
+// Merk/designer uit de tags (conventie 'merk-<naam>') of het vendor-veld; leeg = niets tonen.
+function _socialBrand(p){
+  const tags=Array.isArray(p.tags)?p.tags:(typeof p.tags==='string'?p.tags.split(','):[]);
+  const merk=tags.map(s=>String(s).trim()).find(t=>/^merk-/i.test(t));
+  let b='';
+  if(merk) b=merk.replace(/^merk-/i,'').replace(/[-_]+/g,' ').trim();
+  else if(p.vendor && !/nijhof/i.test(String(p.vendor))) b=String(p.vendor).trim();
+  return b ? b.replace(/\b\w/g,c=>c.toUpperCase()) : '';
+}
+// Langzame in-zoom + zachte pan (Ken Burns) van een voorgerenderd fotopaneel binnen het fotovlak.
+function _socialKB(ctx,panel,prog,idx,W,fotoH){
+  const p=Math.max(0,Math.min(1,prog));
+  const sc=1.03+0.10*p, dw=W*sc, dh=fotoH*sc, mx=(dw-W)/2, my=(dh-fotoH)/2;
+  const dir=(idx%2===0)?1:-1, dx=-mx+dir*mx*(p-0.5);
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,fotoH); ctx.clip(); ctx.drawImage(panel,dx,-my,dw,dh); ctx.restore();
+}
+// Tekst met extra letterafstand (voor het merk-label). Verwacht textAlign left + baseline top.
+function _socialSpaced(ctx,text,x,y,ls){ let cx=x; for(const ch of String(text)){ ctx.fillText(ch,cx,y); cx+=ctx.measureText(ch).width+ls; } }
+// Laadt tot 3 foto's (voor het filmpje), logo, merk-mark en QR één keer — hergebruikt voor foto én video.
 async function _socialAssets(p){
-  const a={img:null,logo:null,qr:null,panel:null,mark:null};
-  try{ const src=p.image+(p.image.indexOf('?')>=0?'&':'?')+'_cb=cors'; a.img=await _socialImg(src,true); }catch(_e){}
+  const a={img:null,logo:null,qr:null,panel:null,panels:[],mark:null,brand:'',imgs:[]};
+  const srcs=(Array.isArray(p.images)&&p.images.length?p.images:[p.image]).filter(Boolean).slice(0,3);
+  const loaded=await Promise.all(srcs.map(s=>{ const src=s+(String(s).indexOf('?')>=0?'&':'?')+'_cb=cors'; return _socialImg(src,true).catch(()=>null); }));
+  a.imgs=loaded.filter(Boolean);
+  if(a.imgs.length){ a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,Math.round(1920*0.62)); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null; }
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
   try{ a.qr=await _socialQR(p.url,300); }catch(_e){}
-  if(a.img){ try{ a.panel=_socialPhotoPanel(a.img,1080,Math.round(1920*0.62)); }catch(_e){} }
+  a.brand=_socialBrand(p);
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
@@ -178,51 +199,69 @@ function _socialQRMerk(ctx,a,cx,cy,qs){
   else { ctx.fillStyle='#E87722'; ctx.font='800 '+Math.round(R*0.9)+'px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('NB',cx,cy+2); }
   ctx.restore();
 }
-function _socialDrawFrame(ctx,a,p,t){
+function _socialDrawFrame(ctx,a,p,t,DUR){
   const W=1080,H=1920,OR='#E87722',INK='#242424',GREY='#94a3b8';
   const fotoH=Math.round(H*0.62);
+  DUR=DUR||7.5;
+  const isStatic=t>=900;
   const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
-  if(a.panel)ctx.drawImage(a.panel,0,0); else if(a.img)_socialCover(ctx,a.img,0,0,W,fotoH);
-  // pulserende doorschijnende oranje gloed rond de foto
-  const gl=0.30+0.65*(0.5-0.5*Math.cos(2*Math.PI*t/1.8));
+  // --- fotovlak: statisch 1 foto, of tot 3 foto's met Ken Burns + crossfade ---
+  const panels=(a.panels&&a.panels.length)?a.panels:(a.panel?[a.panel]:[]);
+  if(isStatic){ if(panels[0])ctx.drawImage(panels[0],0,0); else if(a.img)_socialCover(ctx,a.img,0,0,W,fotoH); }
+  else if(panels.length){
+    const N=panels.length, slot=DUR/N, XF=Math.min(0.55,slot*0.32);
+    let idx=Math.floor(t/slot); if(idx>N-1)idx=N-1; if(idx<0)idx=0;
+    _socialKB(ctx,panels[idx],(t-idx*slot)/slot,idx,W,fotoH);
+    const lsec=t-idx*slot;
+    if(idx<N-1 && lsec>slot-XF){ const fa=(lsec-(slot-XF))/XF; ctx.save(); ctx.globalAlpha=Math.max(0,Math.min(1,fa)); _socialKB(ctx,panels[idx+1],0,idx+1,W,fotoH); ctx.restore(); }
+  } else if(a.img){ _socialCover(ctx,a.img,0,0,W,fotoH); }
+  // pulserende oranje gloed rond de foto + merk-band
+  const gl=0.30+0.65*(0.5-0.5*Math.cos(2*Math.PI*(isStatic?0.9:t)/1.8));
   ctx.save(); ctx.globalAlpha=gl; ctx.strokeStyle=OR; ctx.lineWidth=26; ctx.shadowColor=OR; ctx.shadowBlur=44; ctx.strokeRect(15,15,W-30,fotoH-30); ctx.restore();
-  // oranje merk-band
   ctx.fillStyle=OR; ctx.fillRect(0,fotoH,W,10);
-  // wit info-vlak: titel (statisch)
+  // --- info-vlak ---
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.font='800 58px Sora, sans-serif';
-  const lines=_socialWrap(ctx,p.title,600,2); const tY=fotoH+64;
-  ctx.fillStyle=INK; lines.forEach((ln,i)=>ctx.fillText(ln,70,tY+i*70));
-  const prijsY=tY+lines.length*70+26;
-  // QR rechtsonder + webshop-adres
-  if(a.qr){ const qs=286,qx=W-qs-78,qy=fotoH+104; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#e5e7eb'; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.stroke(); ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs); ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+16); ctx.textAlign='left'; }
-  // volledig Nijhof Brothers-logo linksonder op het witte vlak
-  if(a.logo){ const lw=234, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=H-lh-60; ctx.drawImage(a.logo,70,ly,lw,lh); }
-  // badge NIEUW BINNEN — komt binnen vanaf 0,5s
-  if(t>=0.5){
-    const bp=ease((t-0.5)/0.35);
-    ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle';
-    const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp;
-    ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc);
-    _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill();
-    ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2);
+  let y=fotoH+42;
+  if(a.brand){ ctx.font='800 32px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),70,y,4); y+=48; }
+  else { y=fotoH+58; }
+  ctx.font='800 52px Sora, sans-serif'; ctx.fillStyle=INK;
+  const lines=_socialWrap(ctx,p.title,600,2); lines.forEach((ln,i)=>ctx.fillText(ln,70,y+i*62));
+  const prijsY=y+lines.length*62+20;
+  // QR rechtsonder + "SCAN MIJ" + webshop-adres
+  if(a.qr){ const qs=286,qx=W-qs-78,qy=fotoH+128;
+    ctx.fillStyle=OR; ctx.font='800 30px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillText('SCAN MIJ',qx+qs/2,qy-22); ctx.textBaseline='top';
+    _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#e5e7eb'; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.stroke();
+    ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+    ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+18); ctx.textAlign='left'; }
+  // prijs — schuift van links in (groot, oranje)
+  const pin=isStatic?1:ease((t-1.4)/0.45);
+  if(pin>0){
+    ctx.save(); ctx.globalAlpha=pin; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.font='800 96px Sora, sans-serif';
+    const ptxt=eur(p.price), startX=-ctx.measureText(ptxt).width-120, x=startX+(70-startX)*pin;
+    ctx.fillStyle=OR; ctx.fillText(ptxt,x,prijsY);
     ctx.restore();
   }
-  // prijs — schuift van links in vanaf 2s
-  if(t>=2.0){
-    const pp=ease((t-2.0)/0.4);
-    ctx.save(); ctx.globalAlpha=pp; ctx.textBaseline='top'; ctx.font='800 100px Sora, sans-serif';
-    const startX=-ctx.measureText(eur(p.price)).width-120, x=startX+(70-startX)*pp;
-    ctx.fillStyle=OR; ctx.fillText(eur(p.price),x,prijsY);
-    ctx.restore();
+  // volledig Nijhof Brothers-logo linksonder
+  if(a.logo){ const lw=206, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=H-lh-52; ctx.drawImage(a.logo,70,ly,lw,lh); }
+  // badge NIEUW BINNEN
+  if(isStatic||t>=0.5){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
+  // CTA-eindkaart (alleen video, laatste ~1,6s): oranje sluier over de foto + witte CTA
+  if(!isStatic && t>=DUR-1.6){
+    const cp=ease((t-(DUR-1.6))/0.5);
+    ctx.save(); ctx.globalAlpha=cp*0.92; ctx.fillStyle=OR; ctx.fillRect(0,0,W,fotoH); ctx.restore();
+    ctx.save(); ctx.globalAlpha=cp; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse? 💬',W/2,fotoH*0.34);
+    ctx.font='800 52px Sora, sans-serif'; ctx.fillText('Stuur een DM of scan de QR',W/2,fotoH*0.34+112);
+    ctx.font='700 42px Inter, sans-serif'; ctx.fillText('🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
+    ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
   }
 }
 async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
   try{ await document.fonts.ready; }catch(_e){}
-  _socialDrawFrame(canvas.getContext('2d'),a,p,999);
+  _socialDrawFrame(canvas.getContext('2d'),a,p,999,7.5);
   return canvas;
 }
 // Laadt de mp4-muxer lib pas wanneer nodig (video maken)
@@ -241,11 +280,11 @@ async function _pickAvcConfig(W,H,FPS){
   for(const codec of codecs){ try{ const s=await VideoEncoder.isConfigSupported({...base,codec}); if(s&&s.supported)return {...base,codec}; }catch(_e){} }
   return {...base,codec:'avc1.42001f'};
 }
-// Bouwt een MP4 (~5,5s) van de geanimeerde story via WebCodecs.
+// Bouwt een MP4 (~7,5s) van de geanimeerde story via WebCodecs.
 async function _socialVideo(p,onProgress){
   if(typeof VideoEncoder==='undefined')throw new Error('Dit toestel kan geen video in de browser maken — gebruik de foto-optie.');
   const M=await _ensureMuxer();
-  const W=1080,H=1920,FPS=30,DUR=5.5,TOTAL=Math.round(FPS*DUR);
+  const W=1080,H=1920,FPS=30,DUR=7.5,TOTAL=Math.round(FPS*DUR);
   const a=await _socialAssets(p);
   try{ await document.fonts.ready; }catch(_e){}
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H; const ctx=canvas.getContext('2d');
@@ -257,7 +296,7 @@ async function _socialVideo(p,onProgress){
   for(let f=0;f<TOTAL;f++){
     if(encErr)throw encErr;
     const t=f/FPS;
-    _socialDrawFrame(ctx,a,p,t);
+    _socialDrawFrame(ctx,a,p,t,DUR);
     const frame=new VideoFrame(canvas,{timestamp:Math.round(t*1e6),duration:Math.round(1e6/FPS)});
     enc.encode(frame,{keyFrame:f%30===0}); frame.close();
     if(onProgress&&f%5===0)onProgress(f/TOTAL);
