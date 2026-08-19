@@ -126,7 +126,7 @@ function _socialQR(text,size){
     try{
       if(typeof QRCode==='undefined'){reject(new Error('QR-lib niet geladen'));return;}
       const holder=document.createElement('div'); holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.top='0'; document.body.appendChild(holder);
-      new QRCode(holder,{text:text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
+      new QRCode(holder,{text:text,width:size,height:size,correctLevel:QRCode.CorrectLevel.H});
       setTimeout(()=>{
         const c=holder.querySelector('canvas'), im=holder.querySelector('img');
         if(c){ resolve(c); setTimeout(()=>holder.remove(),60); }
@@ -154,14 +154,26 @@ function _socialLogoTransparant(img){
 }
 // Laadt foto (met CORS-cachebuster), logo (vrijstaand gemaakt) en QR één keer — hergebruikt voor foto én video-frames
 async function _socialAssets(p){
-  const a={img:null,logo:null,qr:null,panel:null};
+  const a={img:null,logo:null,qr:null,panel:null,mark:null};
   try{ const src=p.image+(p.image.indexOf('?')>=0?'&':'?')+'_cb=cors'; a.img=await _socialImg(src,true); }catch(_e){}
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
+  try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
   try{ a.qr=await _socialQR(p.url,300); }catch(_e){}
   if(a.img){ try{ a.panel=_socialPhotoPanel(a.img,1080,Math.round(1920*0.62)); }catch(_e){} }
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
+// Wit rondje met het NB-merk midden op de QR. QR staat op correctie-H en de afdekking is
+// ~9% van het oppervlak (ruim binnen de 30% die H aankan) → blijft gewoon scanbaar.
+function _socialQRMerk(ctx,a,cx,cy,qs){
+  const R=Math.round(qs*0.17);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.lineWidth=4; ctx.strokeStyle='#E87722'; ctx.stroke();
+  if(a&&a.mark){ const box=R*1.5, mr=a.mark.width/a.mark.height; let mw,mh; if(mr>=1){ mw=box; mh=box/mr; } else { mh=box; mw=box*mr; } ctx.drawImage(a.mark,cx-mw/2,cy-mh/2,mw,mh); }
+  else { ctx.fillStyle='#E87722'; ctx.font='800 '+Math.round(R*0.9)+'px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('NB',cx,cy+2); }
+  ctx.restore();
+}
 function _socialDrawFrame(ctx,a,p,t){
   const W=1080,H=1920,OR='#E87722',INK='#242424',GREY='#94a3b8';
   const fotoH=Math.round(H*0.62);
@@ -180,14 +192,14 @@ function _socialDrawFrame(ctx,a,p,t){
   ctx.fillStyle=INK; lines.forEach((ln,i)=>ctx.fillText(ln,70,tY+i*70));
   const prijsY=tY+lines.length*70+26;
   // QR rechtsonder + webshop-adres
-  if(a.qr){ const qs=286,qx=W-qs-78,qy=fotoH+104; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#e5e7eb'; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.stroke(); ctx.drawImage(a.qr,qx,qy,qs,qs); ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+16); ctx.textAlign='left'; }
+  if(a.qr){ const qs=286,qx=W-qs-78,qy=fotoH+104; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#e5e7eb'; _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.stroke(); ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs); ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+16); ctx.textAlign='left'; }
   // volledig Nijhof Brothers-logo linksonder op het witte vlak
   if(a.logo){ const lw=234, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=H-lh-60; ctx.drawImage(a.logo,70,ly,lw,lh); }
   // badge NIEUW BINNEN — komt binnen vanaf 0,5s
   if(t>=0.5){
     const bp=ease((t-0.5)/0.35);
     ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle';
-    const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=54,sc=0.9+0.1*bp;
+    const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp;
     ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc);
     _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill();
     ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2);
