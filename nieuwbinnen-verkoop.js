@@ -275,6 +275,7 @@ async function socialMaak(i,type){
       const blob=await _socialVideo(p,fr=>{const pr=el('social-prog'); if(pr)pr.textContent=Math.round(fr*100)+'%';});
       _social.blob=blob; _social.mime='video/mp4'; _social.ext='mp4';
       if(prev){ prev.innerHTML=''; const v=document.createElement('video'); v.src=URL.createObjectURL(blob); v.controls=true; v.autoplay=true; v.loop=true; v.muted=true; v.setAttribute('playsinline',''); v.style.width='250px'; v.style.borderRadius='12px'; v.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'; prev.appendChild(v); }
+      if(hint)hint.textContent='📲 Deel werkt direct naar Instagram Stories en WhatsApp. Voor je Feed of een Reel: tik 📥 Download en plaats de video daarna vanuit de Instagram-app (kies ’m uit je galerij) — Instagram laat video niet rechtstreeks via Delen op je feed. Bijschrift staat op je klembord.';
     }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de video niet maken: '+esc(String(e.message||e))+'<br><br>Gebruik anders de 📷 Foto-knop.</div>'; }
     return;
   }
@@ -290,26 +291,24 @@ function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.
 async function socialDeel(){
   if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
   if(!_social.blob){ toast('Nog even geduld — de foto/video wordt nog gemaakt','#b45309'); return; }
+  const isVideo=(_social.mime||'').indexOf('video')===0;
   const cap=_socialCaption();
   const naam='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png');
   const file=new File([_social.blob],naam,{type:_social.mime||'image/png'});
   // Bijschrift alvast naar het klembord (NIET awaiten → de tik blijft geldig voor 'share').
   try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(cap).catch(function(){}); }catch(_e){}
-  // Deel ALLEEN het bestand, zonder tekst: dan herkent Instagram het als foto/video en biedt Feed/
-  // Stories/Reels aan. Tekst meesturen duwt de share naar Direct/chats. Bijschrift staat op 't klembord.
-  const kanBestand = !navigator.canShare || navigator.canShare({files:[file]});
+  // Deel ALLEEN het bestand, zonder tekst (foto → Instagram Feed/Stories; video → Stories/WhatsApp).
+  // LET OP: Instagram neemt video's NIET naar Feed/Reels via het deelmenu — dat kan enkel in de app.
+  const kanBestand = !!(navigator.canShare && navigator.canShare({files:[file]}));
   if(navigator.share && kanBestand){
-    try{ await navigator.share({files:[file]}); toast('Gedeeld ✓ — bijschrift staat op je klembord, plak het in je post','#0f766e'); return; }
+    try{ await navigator.share({files:[file]}); toast('Gedeeld ✓ — bijschrift staat op je klembord','#0f766e'); return; }
     catch(e){ if(e&&e.name==='AbortError') return; }
   }
-  // Bestand-delen lukt niet → deel tenminste tekst+link via het deelmenu.
-  if(navigator.share){
-    try{ await navigator.share({title:'Nieuw binnen bij Nijhof Brothers',text:cap}); return; }
-    catch(e){ if(e&&e.name==='AbortError') return; }
-  }
-  // Geen deel-API in deze browser → tekst kopiëren.
-  socialKopieer();
-  toast('Direct delen lukt niet in deze browser — tekst gekopieerd. Open de verkoopapp in Chrome op je telefoon, of gebruik de 📥 Download-knop.','#b45309');
+  // Bestand-delen kan niet (of mislukte) → BESTAND OPSLAAN i.p.v. alleen-tekst, zodat je 'm alsnog
+  // vanuit Instagram/WhatsApp uit je galerij kunt plaatsen. (Nooit stilletjes alleen de tekst delen.)
+  socialDownload();
+  if(isVideo) toast('Video opgeslagen op je telefoon 📥 — open Instagram, maak een Reel/post en kies de video uit je galerij. Bijschrift staat op je klembord.','#b45309');
+  else toast('Foto opgeslagen op je telefoon 📥 — plaats ’m vanuit Instagram/WhatsApp uit je galerij. Bijschrift staat op je klembord.','#b45309');
 }
 function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png'); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
 function socialKopieer(){ const t=_socialCaption(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>toast('Tekst gekopieerd ✓')).catch(()=>prompt('Kopieer de tekst:',t)); } else prompt('Kopieer de tekst:',t); }
