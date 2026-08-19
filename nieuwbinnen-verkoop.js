@@ -207,12 +207,13 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
   // --- fotovlak: statisch 1 foto, of tot 3 foto's met Ken Burns + crossfade ---
+  const CTA_DUR=3.5, PHOTO_DUR=Math.max(1,DUR-CTA_DUR);
   const panels=(a.panels&&a.panels.length)?a.panels:(a.panel?[a.panel]:[]);
   if(isStatic){ if(panels[0])ctx.drawImage(panels[0],0,0); else if(a.img)_socialCover(ctx,a.img,0,0,W,fotoH); }
   else if(panels.length){
-    const N=panels.length, slot=DUR/N, XF=Math.min(0.55,slot*0.32);
+    const N=panels.length, slot=PHOTO_DUR/N, XF=Math.min(0.55,slot*0.32);
     let idx=Math.floor(t/slot); if(idx>N-1)idx=N-1; if(idx<0)idx=0;
-    _socialKB(ctx,panels[idx],(t-idx*slot)/slot,idx,W,fotoH);
+    _socialKB(ctx,panels[idx],Math.min(1,(t-idx*slot)/slot),idx,W,fotoH);
     const lsec=t-idx*slot;
     if(idx<N-1 && lsec>slot-XF){ const fa=(lsec-(slot-XF))/XF; ctx.save(); ctx.globalAlpha=Math.max(0,Math.min(1,fa)); _socialKB(ctx,panels[idx+1],0,idx+1,W,fotoH); ctx.restore(); }
   } else if(a.img){ _socialCover(ctx,a.img,0,0,W,fotoH); }
@@ -243,12 +244,12 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.restore();
   }
   // volledig Nijhof Brothers-logo linksonder
-  if(a.logo){ const lw=206, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=H-lh-52; ctx.drawImage(a.logo,70,ly,lw,lh); }
+  if(a.logo){ const lw=190, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=prijsY+128; ctx.drawImage(a.logo,70,ly,lw,lh); }
   // badge NIEUW BINNEN
   if(isStatic||t>=0.5){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
-  // CTA-eindkaart (alleen video, laatste ~1,6s): oranje sluier over de foto + witte CTA
-  if(!isStatic && t>=DUR-1.6){
-    const cp=ease((t-(DUR-1.6))/0.5);
+  // CTA-eindkaart (alleen video, laatste ~3,5s): oranje sluier over de foto + witte CTA
+  if(!isStatic && t>=PHOTO_DUR-0.3){
+    const cp=ease((t-(PHOTO_DUR-0.3))/0.5);
     ctx.save(); ctx.globalAlpha=cp*0.92; ctx.fillStyle=OR; ctx.fillRect(0,0,W,fotoH); ctx.restore();
     ctx.save(); ctx.globalAlpha=cp; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse? 💬',W/2,fotoH*0.34);
@@ -261,7 +262,7 @@ async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
   try{ await document.fonts.ready; }catch(_e){}
-  _socialDrawFrame(canvas.getContext('2d'),a,p,999,7.5);
+  _socialDrawFrame(canvas.getContext('2d'),a,p,999,9.5);
   return canvas;
 }
 // Laadt de mp4-muxer lib pas wanneer nodig (video maken)
@@ -280,11 +281,11 @@ async function _pickAvcConfig(W,H,FPS){
   for(const codec of codecs){ try{ const s=await VideoEncoder.isConfigSupported({...base,codec}); if(s&&s.supported)return {...base,codec}; }catch(_e){} }
   return {...base,codec:'avc1.42001f'};
 }
-// Bouwt een MP4 (~7,5s) van de geanimeerde story via WebCodecs.
+// Bouwt een MP4 (~9,5s) van de geanimeerde story via WebCodecs.
 async function _socialVideo(p,onProgress){
   if(typeof VideoEncoder==='undefined')throw new Error('Dit toestel kan geen video in de browser maken — gebruik de foto-optie.');
   const M=await _ensureMuxer();
-  const W=1080,H=1920,FPS=30,DUR=7.5,TOTAL=Math.round(FPS*DUR);
+  const W=1080,H=1920,FPS=30,DUR=9.5,TOTAL=Math.round(FPS*DUR);
   const a=await _socialAssets(p);
   try{ await document.fonts.ready; }catch(_e){}
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H; const ctx=canvas.getContext('2d');
