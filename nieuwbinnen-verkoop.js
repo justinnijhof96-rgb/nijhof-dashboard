@@ -275,7 +275,7 @@ async function socialMaak(i,type){
       const blob=await _socialVideo(p,fr=>{const pr=el('social-prog'); if(pr)pr.textContent=Math.round(fr*100)+'%';});
       _social.blob=blob; _social.mime='video/mp4'; _social.ext='mp4';
       if(prev){ prev.innerHTML=''; const v=document.createElement('video'); v.src=URL.createObjectURL(blob); v.controls=true; v.autoplay=true; v.loop=true; v.muted=true; v.setAttribute('playsinline',''); v.style.width='250px'; v.style.borderRadius='12px'; v.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'; prev.appendChild(v); }
-      if(hint)hint.textContent='📲 Deel werkt direct naar Instagram Stories en WhatsApp. Voor je Feed of een Reel: tik 📥 Download en plaats de video daarna vanuit de Instagram-app (kies ’m uit je galerij) — Instagram laat video niet rechtstreeks via Delen op je feed. Bijschrift staat op je klembord.';
+      if(hint)hint.textContent='Voor Instagram: tik 📥 Download — de video komt in je galerij; deel ’m van daaruit naar Instagram (Feed/Reel/Stories). 📲 Deel werkt ook direct naar Stories/WhatsApp. Bijschrift staat op je klembord.';
     }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de video niet maken: '+esc(String(e.message||e))+'<br><br>Gebruik anders de 📷 Foto-knop.</div>'; }
     return;
   }
@@ -307,7 +307,7 @@ async function socialDeel(){
   // Bestand-delen kan niet (of mislukte) → BESTAND OPSLAAN i.p.v. alleen-tekst, zodat je 'm alsnog
   // vanuit Instagram/WhatsApp uit je galerij kunt plaatsen. (Nooit stilletjes alleen de tekst delen.)
   socialDownload();
-  if(isVideo) toast('Video opgeslagen op je telefoon 📥 — open Instagram, maak een Reel/post en kies de video uit je galerij. Bijschrift staat op je klembord.','#b45309');
+  if(isVideo) toast('Video staat in je galerij 📥 — deel ’m van daaruit naar Instagram. Bijschrift staat op je klembord.','#b45309');
   else toast('Foto opgeslagen op je telefoon 📥 — plaats ’m vanuit Instagram/WhatsApp uit je galerij. Bijschrift staat op je klembord.','#b45309');
 }
 function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png'); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
