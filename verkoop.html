@@ -2480,7 +2480,11 @@ async function laadRitten(){
   const body=$('rit-body');if(!body)return;
   body.innerHTML='<div style="padding:40px;text-align:center;color:var(--gr)">⏳ Leveringen laden…</div>';
   try{
-    const verk=(await _restGet('verkopen?select=*&order=lever_datum.asc')||[]).filter(v=>v.lever_datum);
+    // Alleen ritten van vandaag en later: een levering van gisteren is gereden en hoort
+    // niet meer in de lijst. Server-side gefilterd (scheelt ook data) + client-side geborgd.
+    const _vandaag=_dISO(new Date());
+    const verk=(await _restGet('verkopen?select=*&lever_datum=gte.'+_vandaag+'&order=lever_datum.asc')||[])
+      .filter(v=>v.lever_datum && String(v.lever_datum).slice(0,10)>=_vandaag);
     if(!verk.length){body.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--gr)"><div style="font-size:40px">🚚</div><div style="margin-top:8px;font-weight:600">Geen geplande leveringen</div><div style="font-size:12px;margin-top:4px">Vul bij een verkoop een leverdatum in.</div></div>';RITTEN=[];return;}
     const vkIds=[...new Set(verk.map(v=>v.id).filter(Boolean))];
     const idList='('+vkIds.map(id=>encodeURIComponent(id)).join(',')+')';
