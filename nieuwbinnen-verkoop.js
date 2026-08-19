@@ -39,10 +39,14 @@
       '<div id="social-grid"></div>' +
       '</main>' +
       '<div id="social-ov" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px">' +
-        '<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
+        '<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="color:var(--nav);font-size:15px">🆕 Story-voorbeeld</strong><button onclick="socialSluit()" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:var(--gr)">×</button></div>' +
           '<div id="social-prev" style="display:flex;justify-content:center;min-height:120px"></div>' +
-          '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-or btn-sm" onclick="socialDeel()" style="flex:1 1 auto">📲 Deel</button><button class="btn btn-gy btn-sm" onclick="socialDownload()" style="flex:1 1 auto">📥 Download</button><button class="btn btn-gy btn-sm" onclick="socialKopieer()" style="flex:1 1 auto">🔗 Tekst</button></div>' +
+          '<div id="social-cap-wrap" style="display:none;margin-top:12px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:11px;color:var(--gr);font-weight:800;letter-spacing:.03em">📝 BIJSCHRIFT VOOR JE POST</span><button id="social-cap-btn" class="btn btn-or" onclick="socialKopieer()" style="padding:6px 14px;min-height:0;font-size:12px">📋 Kopieer</button></div>' +
+            '<textarea id="social-cap-text" readonly onclick="this.select()" style="width:100%;box-sizing:border-box;height:118px;resize:none;border:1px solid var(--bd);border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.45;color:var(--nav);background:#f8fafc;font-family:inherit"></textarea>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-or btn-sm" onclick="socialDeel()" style="flex:1 1 auto">📲 Deel</button><button class="btn btn-gy btn-sm" onclick="socialDownload()" style="flex:1 1 auto">📥 Download</button></div>' +
           '<div style="font-size:11px;color:var(--gr);margin-top:10px" id="social-hint"></div>' +
         '</div>' +
       '</div>';
@@ -266,16 +270,17 @@ async function _socialVideo(p,onProgress){
 async function socialMaak(i,type){
   const p=_social.producten[i]; if(!p)return; type=type||'foto';
   _social.laatste=p; _social.blob=null; _social.canvas=null; _social.mime=''; _social.ext='';
+  { const ct=el('social-cap-text'), cw=el('social-cap-wrap'), cb=el('social-cap-btn'); if(ct)ct.value=_socialCaption(); if(cb)cb.textContent='📋 Kopieer'; if(cw)cw.style.display='block'; }
   const ov=el('social-ov'); if(ov)ov.style.display='flex';
   const prev=el('social-prev'), hint=el('social-hint');
-  if(hint)hint.textContent='Tip: "Deel" opent je deelmenu → kies Instagram of WhatsApp. Het bijschrift zet ik automatisch op je klembord; plak het in je post. Op de laptop: gebruik Download.';
+  if(hint)hint.textContent='Kopieer het bijschrift hieronder met 📋, tik dan 📲 Deel (of 📥 Download) en plak het in je post.';
   if(type==='video'){
     if(prev)prev.innerHTML='<div style="padding:40px 20px;color:var(--gr);text-align:center">🎬 Video maken…<div id="social-prog" style="margin-top:10px;font-weight:800;font-size:20px;color:var(--or)">0%</div><div style="font-size:11px;margin-top:6px">een paar seconden</div></div>';
     try{
       const blob=await _socialVideo(p,fr=>{const pr=el('social-prog'); if(pr)pr.textContent=Math.round(fr*100)+'%';});
       _social.blob=blob; _social.mime='video/mp4'; _social.ext='mp4';
       if(prev){ prev.innerHTML=''; const v=document.createElement('video'); v.src=URL.createObjectURL(blob); v.controls=true; v.autoplay=true; v.loop=true; v.muted=true; v.setAttribute('playsinline',''); v.style.width='250px'; v.style.borderRadius='12px'; v.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'; prev.appendChild(v); }
-      if(hint)hint.textContent='Voor Instagram: tik 📥 Download — de video komt in je galerij; deel ’m van daaruit naar Instagram (Feed/Reel/Stories). 📲 Deel werkt ook direct naar Stories/WhatsApp. Bijschrift staat op je klembord.';
+      if(hint)hint.textContent='1) 📋 Kopieer het bijschrift. 2) 📥 Download — de video komt in je galerij. 3) Deel ’m van daaruit naar Instagram en plak het bijschrift. (📲 Deel werkt ook direct naar Stories/WhatsApp.)';
     }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de video niet maken: '+esc(String(e.message||e))+'<br><br>Gebruik anders de 📷 Foto-knop.</div>'; }
     return;
   }
@@ -311,8 +316,14 @@ async function socialDeel(){
   else toast('Foto opgeslagen op je telefoon 📥 — plaats ’m vanuit Instagram/WhatsApp uit je galerij. Bijschrift staat op je klembord.','#b45309');
 }
 function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png'); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
-function socialKopieer(){ const t=_socialCaption(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>toast('Tekst gekopieerd ✓')).catch(()=>prompt('Kopieer de tekst:',t)); } else prompt('Kopieer de tekst:',t); }
-function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none'; _social.blob=null; _social.canvas=null; }
+function socialKopieer(){
+  const t=_socialCaption();
+  const ok=()=>{ toast('Bericht gekopieerd ✓'); const b=el('social-cap-btn'); if(b){ b.textContent='✓ Gekopieerd'; setTimeout(function(){ b.textContent='📋 Kopieer'; },1600); } };
+  const viaTa=()=>{ const ta=el('social-cap-text'); if(!ta)return false; try{ ta.focus(); ta.select(); if(ta.setSelectionRange)ta.setSelectionRange(0,(ta.value||'').length); return !!(document.execCommand&&document.execCommand('copy')); }catch(_e){ return false; } };
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(ok).catch(function(){ if(viaTa())ok(); else prompt('Kopieer de tekst:',t); }); }
+  else { if(viaTa())ok(); else prompt('Kopieer de tekst:',t); }
+}
+function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none'; const cw=el('social-cap-wrap'); if(cw)cw.style.display='none'; _social.blob=null; _social.canvas=null; }
 
   /* ---- Publieke handlers voor inline onclick ---- */
   window.socialLaad = socialLaad;
