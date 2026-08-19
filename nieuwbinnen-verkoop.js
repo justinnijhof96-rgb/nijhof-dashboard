@@ -96,6 +96,18 @@ function socialRenderGrid(){
 function _socialImg(src,cross){ return new Promise((resolve,reject)=>{ const img=new Image(); if(cross)img.crossOrigin='anonymous'; img.onload=()=>resolve(img); img.onerror=()=>reject(new Error('afbeelding laden mislukt')); img.src=src; }); }
 function _socialRR(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function _socialCover(ctx,img,x,y,w,h){ const ir=img.width/img.height,r=w/h; let sw,sh,sx,sy; if(ir>r){ sh=img.height; sw=sh*r; sx=(img.width-sw)/2; sy=0; } else { sw=img.width; sh=sw/r; sx=0; sy=(img.height-sh)/2; } ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h); }
+function _socialCoverZoom(ctx,img,x,y,w,h,zoom){ zoom=zoom||1; const ir=img.width/img.height,r=w/h; let sw,sh; if(ir>r){ sh=img.height; sw=sh*r; } else { sw=img.width; sh=sw/r; } sw/=zoom; sh/=zoom; const sx=(img.width-sw)/2, sy=(img.height-sh)/2; ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h); }
+function _socialContain(ctx,img,x,y,w,h){ const ir=img.width/img.height, r=w/h; let dw,dh; if(ir>r){ dw=w; dh=w/ir; } else { dh=h; dw=h*ir; } ctx.drawImage(img,0,0,img.width,img.height,x+(w-dw)/2,y+(h-dh)/2,dw,dh); }
+// Bouwt het foto-vlak: de HELE productfoto blijft altijd zichtbaar (contain), met een zachte,
+// uitvergrote blur van dezelfde foto als vulling. Nooit meer een afgesneden hoek van de bank.
+function _socialPhotoPanel(img,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d');
+  x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
+  try{ x.save(); x.beginPath(); x.rect(0,0,w,h); x.clip(); x.filter='blur(34px)'; _socialCoverZoom(x,img,0,0,w,h,1.16); x.filter='none'; x.fillStyle='rgba(255,255,255,0.20)'; x.fillRect(0,0,w,h); x.restore(); }
+  catch(_e){ /* canvas-blur niet ondersteund → witte achtergrond blijft staan */ }
+  _socialContain(x,img,0,0,w,h);
+  return c;
+}
 function _socialWrap(ctx,text,maxW,maxLines){
   const words=String(text||'').split(/\s+/).filter(Boolean);
   const lines=[]; let cur=''; let i=0;
@@ -142,10 +154,11 @@ function _socialLogoTransparant(img){
 }
 // Laadt foto (met CORS-cachebuster), logo (vrijstaand gemaakt) en QR één keer — hergebruikt voor foto én video-frames
 async function _socialAssets(p){
-  const a={img:null,logo:null,qr:null};
+  const a={img:null,logo:null,qr:null,panel:null};
   try{ const src=p.image+(p.image.indexOf('?')>=0?'&':'?')+'_cb=cors'; a.img=await _socialImg(src,true); }catch(_e){}
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.qr=await _socialQR(p.url,300); }catch(_e){}
+  if(a.img){ try{ a.panel=_socialPhotoPanel(a.img,1080,Math.round(1920*0.62)); }catch(_e){} }
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
@@ -154,7 +167,7 @@ function _socialDrawFrame(ctx,a,p,t){
   const fotoH=Math.round(H*0.62);
   const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
-  if(a.img)_socialCover(ctx,a.img,0,0,W,fotoH);
+  if(a.panel)ctx.drawImage(a.panel,0,0); else if(a.img)_socialCover(ctx,a.img,0,0,W,fotoH);
   // pulserende doorschijnende oranje gloed rond de foto
   const gl=0.30+0.65*(0.5-0.5*Math.cos(2*Math.PI*t/1.8));
   ctx.save(); ctx.globalAlpha=gl; ctx.strokeStyle=OR; ctx.lineWidth=26; ctx.shadowColor=OR; ctx.shadowBlur=44; ctx.strokeRect(15,15,W-30,fotoH-30); ctx.restore();
@@ -243,7 +256,7 @@ async function socialMaak(i,type){
   _social.laatste=p; _social.blob=null; _social.canvas=null; _social.mime=''; _social.ext='';
   const ov=el('social-ov'); if(ov)ov.style.display='flex';
   const prev=el('social-prev'), hint=el('social-hint');
-  if(hint)hint.textContent='Tip: tik "Deel" → kies WhatsApp (Status) of Instagram. Op de laptop kun je \'m downloaden.';
+  if(hint)hint.textContent='Tip: "Deel" opent je deelmenu → kies Instagram of WhatsApp. Het bijschrift zet ik automatisch op je klembord; plak het in je post. Op de laptop: gebruik Download.';
   if(type==='video'){
     if(prev)prev.innerHTML='<div style="padding:40px 20px;color:var(--gr);text-align:center">🎬 Video maken…<div id="social-prog" style="margin-top:10px;font-weight:800;font-size:20px;color:var(--or)">0%</div><div style="font-size:11px;margin-top:6px">een paar seconden</div></div>';
     try{
@@ -263,22 +276,26 @@ async function socialMaak(i,type){
 function _socialCaption(){ const p=_social.laatste; if(!p)return ''; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
+  if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
   if(!_social.blob){ toast('Nog even geduld — de foto/video wordt nog gemaakt','#b45309'); return; }
   const cap=_socialCaption();
   const naam='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png');
   const file=new File([_social.blob],naam,{type:_social.mime||'image/png'});
-  // 1) Deel het bestand (foto/video) direct via het deelmenu
-  if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file],text:cap}); return; }
-    catch(e){ if(e&&e.name==='AbortError') return;
-      try{ await navigator.share({files:[file]}); return; }catch(e2){ if(e2&&e2.name==='AbortError') return; } }
+  // Bijschrift alvast naar het klembord (NIET awaiten → de tik blijft geldig voor 'share').
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(cap).catch(function(){}); }catch(_e){}
+  // Deel ALLEEN het bestand, zonder tekst: dan herkent Instagram het als foto/video en biedt Feed/
+  // Stories/Reels aan. Tekst meesturen duwt de share naar Direct/chats. Bijschrift staat op 't klembord.
+  const kanBestand = !navigator.canShare || navigator.canShare({files:[file]});
+  if(navigator.share && kanBestand){
+    try{ await navigator.share({files:[file]}); toast('Gedeeld ✓ — bijschrift staat op je klembord, plak het in je post','#0f766e'); return; }
+    catch(e){ if(e&&e.name==='AbortError') return; }
   }
-  // 2) Bestand-delen niet ondersteund → deel tenminste tekst+link via het deelmenu (géén download)
+  // Bestand-delen lukt niet → deel tenminste tekst+link via het deelmenu.
   if(navigator.share){
     try{ await navigator.share({title:'Nieuw binnen bij Nijhof Brothers',text:cap}); return; }
     catch(e){ if(e&&e.name==='AbortError') return; }
   }
-  // 3) Geen deel-API in deze browser → tekst kopiëren (nog steeds geen automatische download)
+  // Geen deel-API in deze browser → tekst kopiëren.
   socialKopieer();
   toast('Direct delen lukt niet in deze browser — tekst gekopieerd. Open de verkoopapp in Chrome op je telefoon, of gebruik de 📥 Download-knop.','#b45309');
 }

@@ -203,18 +203,18 @@ h2{font-size:16px;color:var(--gr);margin-bottom:20px;font-weight:500}
   </div>
   <main>
     <h1>Bonnetje insturen</h1>
-    <h2>Maak een foto, wij mailen 'm als PDF naar invoice@</h2>
+    <h2>Maak of kies een foto, wij mailen 'm als PDF naar invoice@</h2>
     <div class="card">
       <div class="fg">
         <label>Foto van de bon</label>
         <div id="bon-foto-zone" onclick="document.getElementById('bon-foto-input').click()" style="border:2px dashed var(--bd);border-radius:12px;padding:20px;text-align:center;cursor:pointer;background:#fafbfc">
           <div id="bon-foto-leeg">
             <div style="font-size:38px;opacity:.4">📷</div>
-            <div style="font-size:14px;color:var(--gr);margin-top:6px;font-weight:600">Tik om een foto te maken</div>
+            <div style="font-size:14px;color:var(--gr);margin-top:6px;font-weight:600">Tik om een foto te maken of te kiezen</div>
           </div>
           <img id="bon-foto-preview" style="display:none;max-width:100%;max-height:280px;border-radius:8px" alt="Bonnetje">
         </div>
-        <input type="file" id="bon-foto-input" accept="image/*" capture="environment" style="display:none" onchange="bonKiesFoto(event)">
+        <input type="file" id="bon-foto-input" accept="image/*" style="display:none" onchange="bonKiesFoto(event)">
       </div>
       <div class="fg">
         <label>Datum op de bon</label>
