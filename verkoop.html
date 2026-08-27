@@ -2392,7 +2392,11 @@ function _debCard(g){
     +'<div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:var(--gr)">Openstaand</div><div style="font-weight:800;font-size:20px;color:#dc2626">'+eur(g.open)+'</div></div>'
     +'</div>';
   if(g.totaal>0)inner+='<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gr);margin-top:6px;padding-top:6px;border-top:1px solid var(--bd)"><span>Totaal '+eur(g.totaal)+'</span><span style="color:var(--gn)">✓ betaald '+eur(betaald)+'</span></div>';
-  if(g.cat==='termijn'){
+  // Per-termijn rijen (met los ✓-afmeldknopje per termijn) niet alleen bij echte
+  // termijnverkopen, maar bij ELKE verkoop met meerdere open delen — bijv. een
+  // aanbetaling + restbetaling. Anders kun je een al betaalde aanbetaling niet
+  // los afmelden en zit je vast aan "alles ineens" (Leolux-case, 27 aug 2026).
+  if(g.cat==='termijn'||(g.cat!=='woppa'&&(g.termijnen||[]).length>1)){
     inner+='<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">';
     g.termijnen.forEach((t,ti)=>{
       const dat=t.vervaldatum?new Date(t.vervaldatum).toLocaleDateString('nl-NL'):'';
