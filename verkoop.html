@@ -709,6 +709,7 @@ function toonScherm(id){
   });
   $(id).classList.add('show');
   _onthoudScherm(id);
+  if(id==='screen-keuze'){try{_conceptBanner();}catch(e){console.warn('Concept-melding:',e);}} // onafgeronde verkoop bovenaan
 }
 
 // ── Onthoud het huidige scherm, zodat een pagina-reload je niet naar het keuzescherm gooit ──
@@ -779,6 +780,7 @@ function toonStap(n){
   _onStapEnter(n);
   _updateNextEnabled();
   window.scrollTo({top:0,behavior:'smooth'});
+  if(_conceptActief)_conceptBewaar(); // verkoop met Tikkie actueel houden op dit toestel
 }
 
 function _updateNextEnabled(){
@@ -834,9 +836,13 @@ function _resetVerkoopDOM(){
   const warn=$('s3-warn');if(warn)warn.innerHTML='';
   STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
 }
-function herstart(){
+function herstart(stil){
+  // Staat er nog een verkoop met een Tikkie open, dan die niet stil overschrijven:
+  // eerst afronden of bewust weggooien (stil=true na zo'n keuze).
+  if(!stil&&_conceptLees()){_conceptNieuwVraag();return;}
   const stateVuil = STATE.regels.length>0 || STATE.klant.naam || STATE.termijnen.length>0;
-  if(stateVuil && !confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
+  if(!stil && stateVuil && !confirm('Verkoop opnieuw beginnen? Niet-opgeslagen gegevens gaan verloren.'))return;
+  _conceptActief=false;STATE._conceptDatum=null;
   STATE.gekozen=null;
   STATE.regels=[];
   STATE.prijs=0;
@@ -1110,6 +1116,11 @@ async function verstuurBonnetje(){
 }
 
 function terugNaarKeuze(){
+  // Niet stil weglopen uit een verkoop waarvoor al een Tikkie is gemaakt
+  if(_conceptActief&&$('screen-app')&&$('screen-app').classList.contains('show')){
+    try{_conceptBewaar();_conceptWegVraag(()=>toonScherm('screen-keuze'));return;}
+    catch(e){console.warn('Concept-vraag:',e);}
+  }
   toonScherm('screen-keuze');
 }
 
@@ -2242,7 +2253,9 @@ async function _s4TikkieExtra(btn){
   if(!(s.totaal>0)){toast('Vul een geldig totaalbedrag in','#dc2626');var inp=document.getElementById('s4-tot');if(inp){inp.focus();inp.select();}return;}
   await _zorgFactuurnr();
   var extra=(s.etage>0||s.fooi>0)?{etage:s.etage,fooi:s.fooi,verkoopId:null,klant:(STATE.klant&&STATE.klant.naam)||'',factNr:STATE.factuurnr||''}:null;
+  const _voor=TIKKIE.token;
   await _maakTikkieVoor(Math.round(s.totaal*100),STATE.factuurnr,_tikkieOmschrijving(),btn,null,extra);
+  if(TIKKIE.token&&TIKKIE.token!==_voor)_conceptStart(Math.round(s.totaal*100));
 }
 
 // force=false: eerste keer aanmaken, of QR opnieuw tonen als het al bestaat.
@@ -2273,6 +2286,7 @@ async function maakTikkie(force){
     TIKKIE.url=j.url;
     TIKKIE.termijnIds=null;
     toonTikkieQr(j.url,b);
+    _conceptStart(b.cent); // vanaf nu kan de klant betalen → bewaren tot de verkoop is afgerond
   }catch(e){
     toast('⚠️ '+(e.message||e),'#dc2626');
   }finally{
@@ -2327,6 +2341,220 @@ function _kopieerTikkieLink(btn){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(ok).catch(()=>prompt('Kopieer de Tikkie-link:',url));}
   else{prompt('Kopieer de Tikkie-link:',url);}
 }
+
+// ── ONAFGERONDE VERKOOP: vangnet zodra er een Tikkie is gemaakt ───────
+// Na een Tikkie in stap 4 kan de klant al betalen terwijl de verkoop nog niet is
+// opgeslagen. Wegklikken liet dan alleen een losse Tikkie achter, zonder verkoop of
+// factuur (Leolux 27 aug, Kivik 4 sep 2026). Daarom bewaart de app de verkoop vanaf dat
+// moment op dit toestel, waarschuwt hij bij weggaan en vraagt hij bij het openen om hem
+// af te ronden. Pas een geslaagd afronden of bewust weggooien wist het concept.
+const _CONCEPT_KEY='nb-verkoop-concept';
+const _CONCEPT_VELDEN=['gekozen','regels','prijs','services','extrasVis','btwMethode','klant','type','termijnen','kanaal','wilEmailen','wilContract','_bet','factuurnr'];
+let _conceptActief=false,_conceptCent=null;
+
+function _conceptLees(){
+  try{
+    const c=JSON.parse(localStorage.getItem(_CONCEPT_KEY)||'null');
+    return (c&&c.state&&Array.isArray(c.state.regels)&&c.state.regels.length)?c:null;
+  }catch(e){return null;}
+}
+function _conceptBewaar(){
+  if(!_conceptActief)return;
+  try{
+    const oud=_conceptLees();
+    // Velden van stap 2/3 die deels buiten STATE leven (services, aanbetaling, levering)
+    // meenemen, zodat terugbladeren na het hervatten ze niet leegmaakt.
+    const dom={};
+    document.querySelectorAll('#stap-2 [id],#stap-3 [id]').forEach(el=>{
+      if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))return;
+      dom[el.id]=(el.type==='checkbox'||el.type==='radio')?{c:el.checked}:{v:el.value};
+    });
+    // Extra servicerijen zijn dynamisch: de huidige waarden in de HTML vastleggen
+    const extra=$('s2-extra-rows');
+    if(extra)extra.querySelectorAll('input,select,textarea').forEach(el=>{
+      if(el.type==='checkbox'||el.type==='radio'){if(el.checked)el.setAttribute('checked','');else el.removeAttribute('checked');}
+      else if(el.tagName==='SELECT'){[...el.options].forEach(o=>{if(o.selected)o.setAttribute('selected','');else o.removeAttribute('selected');});}
+      else el.setAttribute('value',el.value);
+    });
+    const state={};_CONCEPT_VELDEN.forEach(k=>{state[k]=STATE[k];});
+    localStorage.setItem(_CONCEPT_KEY,JSON.stringify({
+      v:1,
+      sinds:(oud&&oud.sinds)||new Date().toISOString(),
+      datum:STATE._conceptDatum||(oud&&oud.datum)||_dISO(new Date()),
+      state,
+      tikkie:{laatste:TIKKIE.laatste,token:TIKKIE.token,url:TIKKIE.url,keuze:TIKKIE.keuze,cent:_conceptCent},
+      dom,
+      extraRows:extra?extra.innerHTML:''
+    }));
+  }catch(e){console.warn('Onafgeronde verkoop bewaren mislukt:',e);}
+}
+function _conceptStart(cent){
+  _conceptActief=true;
+  if(cent)_conceptCent=cent;
+  if(!STATE._conceptDatum)STATE._conceptDatum=_dISO(new Date());
+  _conceptBewaar();
+}
+function _conceptWis(){
+  _conceptActief=false;_conceptCent=null;STATE._conceptDatum=null;
+  try{localStorage.removeItem(_CONCEPT_KEY);}catch(e){}
+  const b=$('kz-concept');if(b)b.remove();
+}
+function _conceptSamenvatting(c){
+  const namen=(c.state.regels||[]).map(r=>(r&&r.naam&&String(r.naam).trim())||(r&&r.item&&(r.item.adv_titel||r.item.naam))).filter(Boolean);
+  const wat=namen.length===1?namen[0]:(namen.length+' artikelen');
+  const cent=(c.tikkie&&(c.tikkie.cent||(c.tikkie.laatste&&c.tikkie.laatste.cent)))||0;
+  let wanneer='';
+  try{wanneer=new Date(c.sinds).toLocaleString('nl-NL',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){}
+  return {wat,cent,wanneer};
+}
+// Keuzevenster in app-stijl: een knop sluit het venster en voert daarna zijn actie uit
+function _nbKeuze(titel,html,knoppen,klein){
+  const oud=$('nb-keuze');if(oud)oud.remove();
+  const ov=document.createElement('div');ov.id='nb-keuze';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML='<div role="dialog" aria-modal="true" style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)">'
+    +'<div style="font-size:18px;font-weight:800;color:var(--nav);margin-bottom:10px">'+esc(titel)+'</div>'
+    +'<div style="font-size:14px;color:var(--nav);line-height:1.5">'+html+'</div>'
+    +'<div class="nb-keuze-knoppen" style="display:flex;gap:8px;margin-top:16px"></div>'
+    +(klein?'<button type="button" class="nb-keuze-klein" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--gr);font-size:13px;text-decoration:underline;cursor:pointer">'+esc(klein.tekst)+'</button>':'')
+    +'</div>';
+  document.body.appendChild(ov);
+  const rij=ov.querySelector('.nb-keuze-knoppen');
+  (knoppen||[]).forEach(k=>{
+    const b=document.createElement('button');b.type='button';
+    b.className='btn '+(k.klasse||'btn-gy');b.textContent=k.tekst;
+    b.style.cssText='min-height:48px;padding:12px 10px;font-size:15px';
+    b.onclick=()=>{ov.remove();if(k.actie)k.actie();};
+    rij.appendChild(b);
+  });
+  if(klein)ov.querySelector('.nb-keuze-klein').onclick=()=>{ov.remove();if(klein.actie)klein.actie();};
+}
+async function _conceptBetaald(c){
+  const token=c&&c.tikkie&&(c.tikkie.token||(c.tikkie.laatste&&c.tikkie.laatste.token));
+  if(!token)return null;
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/check-tikkie',{
+      method:'POST',
+      headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+      body:JSON.stringify({paymentRequestToken:token})
+    });
+    const j=await res.json().catch(()=>({}));
+    return res.ok?!!j.betaald:null;
+  }catch(e){return null;}
+}
+// Oranje melding bovenaan het keuzescherm zolang er een onafgeronde verkoop is
+function _conceptBanner(){
+  const main=document.querySelector('#screen-keuze main');if(!main)return;
+  let b=$('kz-concept');
+  const c=_conceptLees();
+  if(!c){if(b)b.remove();return;}
+  const s=_conceptSamenvatting(c);
+  if(!b){b=document.createElement('div');b.id='kz-concept';main.insertBefore(b,main.firstChild);}
+  b.style.cssText='flex-shrink:0;box-sizing:border-box;width:100%;max-width:460px;margin:0 auto 14px;background:#fff7ed;border:1.5px solid #fdba74;border-left:4px solid var(--or);border-radius:12px;padding:12px 14px;font-size:13px;color:#9a3412;line-height:1.45';
+  b.innerHTML='⚠️ <b>Onafgeronde verkoop:</b> '+esc(s.wat)+(s.cent?' · Tikkie '+eur(s.cent/100):'')
+    +(s.wanneer?' <span style="color:var(--gr)">('+esc(s.wanneer)+')</span>':'')
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button type="button" class="btn btn-or" style="min-height:42px;padding:10px;font-size:14px" onclick="_conceptHervat()">✓ Nu afronden</button>'
+    +'<button type="button" class="btn btn-gy" style="min-height:42px;padding:10px 14px;font-size:14px;flex:0 0 auto" onclick="_conceptWeggooien()">Weggooien</button>'
+    +'</div>';
+}
+// Bij het openen van de app: meteen vragen, met de actuele betaalstatus van de Tikkie
+function _conceptBijOpenen(){
+  const c=_conceptLees();if(!c)return;
+  _conceptBanner();
+  const s=_conceptSamenvatting(c);
+  _nbKeuze('Onafgeronde verkoop',
+    '<div style="margin-bottom:8px"><b>'+esc(s.wat)+'</b>'+(s.cent?' · Tikkie van <b>'+eur(s.cent/100)+'</b>':'')+'</div>'
+    +'<div style="font-size:13px;color:var(--gr)">'+(s.wanneer?'Tikkie gemaakt op '+esc(s.wanneer)+'. ':'')+'De verkoop is nog niet opgeslagen: er is nog geen factuur en hij telt niet mee in je omzet.</div>'
+    +'<div id="concept-betaalstatus" style="margin-top:10px;font-size:13px;color:var(--gr)">⏳ Betaalstatus controleren…</div>',
+    [{tekst:'✓ Nu afronden',klasse:'btn-or',actie:()=>_conceptHervat()},{tekst:'Later',klasse:'btn-gy'}],
+    {tekst:'Verkoop weggooien',actie:()=>_conceptWeggooien()});
+  _conceptBetaald(c).then(b=>{
+    const el=$('concept-betaalstatus');if(!el)return;
+    if(b===true)el.innerHTML='<span style="color:var(--gn);font-weight:700">✅ De Tikkie is betaald.</span> Rond de verkoop af, anders mist hij in je administratie.';
+    else if(b===false)el.textContent='De Tikkie is nog niet betaald.';
+    else el.textContent='';
+  });
+}
+// Wegklikken uit een verkoop waarvoor al een Tikkie is gemaakt
+function _conceptWegVraag(doorgaan){
+  const cent=_conceptCent||(TIKKIE.laatste&&TIKKIE.laatste.cent)||0;
+  _nbKeuze('Verkoop nog niet afgerond',
+    'Je hebt al een Tikkie'+(cent?' van <b>'+eur(cent/100)+'</b>':'')+' gemaakt, maar de verkoop is nog niet opgeslagen. Rond hem nu af, anders mist hij in je administratie.'
+    +'<div style="font-size:12px;color:var(--gr);margin-top:8px">Kies je "Later", dan bewaart de app deze verkoop en vraagt hij er de volgende keer weer naar.</div>',
+    [{tekst:'✓ Nu afronden',klasse:'btn-or',actie:()=>{
+        if(STATE.stap!==4){toast('Loop de stappen door en tik op ✓ Verkoop afronden');return;}
+        const b=$('btn-next');
+        if(b){b.scrollIntoView({block:'center',behavior:'smooth'});if(b.animate)b.animate([{transform:'scale(1)'},{transform:'scale(1.05)'},{transform:'scale(1)'}],{duration:450,iterations:2});}
+      }},
+     {tekst:'Later',klasse:'btn-gy',actie:doorgaan}]);
+}
+// Nieuwe verkoop starten terwijl er nog een onafgeronde verkoop bewaard staat
+function _conceptNieuwVraag(){
+  const c=_conceptLees();if(!c)return;
+  const s=_conceptSamenvatting(c);
+  _nbKeuze('Eerst de vorige verkoop afronden?',
+    'Er staat nog een onafgeronde verkoop: <b>'+esc(s.wat)+'</b>'+(s.cent?' · Tikkie '+eur(s.cent/100):'')+(s.wanneer?' <span style="color:var(--gr)">('+esc(s.wanneer)+')</span>':'')+'.',
+    [{tekst:'✓ Die eerst afronden',klasse:'btn-or',actie:()=>_conceptHervat()},{tekst:'Terug',klasse:'btn-gy',actie:()=>toonScherm('screen-keuze')}],
+    {tekst:'Vorige weggooien en nieuw beginnen',actie:()=>{if(_conceptWeggooien(true)){toonScherm('screen-app');herstart(true);}}});
+}
+function _conceptWeggooien(zonderNavigatie){
+  const c=_conceptLees();
+  const s=c?_conceptSamenvatting(c):{wat:'deze verkoop',cent:0};
+  if(!confirm('Verkoop weggooien?\n\n'+s.wat+(s.cent?' · Tikkie '+eur(s.cent/100):'')+'\n\nDe verkoop wordt dan NIET opgeslagen. De Tikkie zelf blijft bestaan: is die al betaald, dan mist deze verkoop in je administratie.'))return false;
+  _conceptWis();
+  if(!zonderNavigatie){herstart(true);toonScherm('screen-keuze');}
+  return true;
+}
+// Verder met de bewaarde verkoop: alles terugzetten en naar stap 4 (afronden)
+async function _conceptHervat(){
+  const c=_conceptLees();if(!c){toonScherm('screen-keuze');return;}
+  // Vangnet tegen dubbel invoeren: is een item intussen verkocht (bv. omdat de verkoop
+  // opnieuw is ingevoerd), dan niet hervatten, anders staat hij er twee keer in.
+  try{
+    const ids=(c.state.regels||[]).map(r=>r&&r.item&&r.item.id).filter(Boolean);
+    const rows=ids.length?((await _restGet('items?select=id,naam,artikelnummer,status&id=in.('+ids.join(',')+')'))||[]):[];
+    const weg=rows.filter(r=>r.status!=='beschikbaar'&&r.status!=='gereserveerd');
+    if(weg.length){
+      _nbKeuze('Al ingevoerd?',
+        '<b>'+weg.map(r=>esc([r.artikelnummer,r.naam].filter(Boolean).join(' '))).join(', ')+'</b> staat inmiddels op <b>'+esc(weg[0].status)+'</b>. Waarschijnlijk is deze verkoop al opnieuw ingevoerd; hervatten zou hem dubbel boeken.',
+        [{tekst:'Concept weggooien',klasse:'btn-or',actie:()=>{_conceptWis();herstart(true);toonScherm('screen-keuze');}},{tekst:'Laten staan',klasse:'btn-gy',actie:()=>toonScherm('screen-keuze')}]);
+      return;
+    }
+  }catch(e){console.warn('Controle onafgeronde verkoop:',e);}
+  _resetTikkie();
+  _resetVerkoopDOM();
+  const st=JSON.parse(JSON.stringify(c.state));
+  _CONCEPT_VELDEN.forEach(k=>{if(k in st)STATE[k]=st[k];});
+  STATE.gekozen=STATE.regels[0]?STATE.regels[0].item:null;
+  STATE._conceptDatum=c.datum||null;
+  const t=c.tikkie||{};
+  TIKKIE.laatste=t.laatste||null;TIKKIE.token=t.token||null;TIKKIE.url=t.url||null;TIKKIE.keuze=(t.keuze!=null)?t.keuze:null;
+  _conceptCent=t.cent||null;
+  const extra=$('s2-extra-rows');if(extra&&c.extraRows)extra.innerHTML=c.extraRows;
+  Object.keys(c.dom||{}).forEach(id=>{const el=$(id),w=c.dom[id];if(!el||!w)return;if('c' in w)el.checked=!!w.c;else el.value=w.v;});
+  _conceptActief=true;
+  // Het nummer op de Tikkie kan intussen (bv. op het andere toestel) aan een andere
+  // verkoop gegeven zijn: dan een nieuw nummer voor de oorspronkelijke dag.
+  if(STATE.factuurnr){
+    try{
+      const nr=encodeURIComponent(STATE.factuurnr);
+      const [f,v]=await Promise.all([
+        _restGet('facturen?select=id&factuurnummer=eq.'+nr).catch(()=>[]),
+        _restGet('verkopen?select=id&factuur=eq.'+nr).catch(()=>[])
+      ]);
+      if((f&&f.length)||(v&&v.length))STATE.factuurnr=await _volgendeFactuurnr(STATE._conceptDatum);
+    }catch(e){console.warn('Factuurnummer controleren:',e);}
+  }
+  document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='');
+  const klaar=$('stap-klaar');if(klaar)klaar.classList.remove('show');
+  const s4=$('s4-status');if(s4)s4.innerHTML='';
+  toonScherm('screen-app');
+  toonStap(4);
+  toast('Verkoop hervat — controleer alles en tik op ✓ Verkoop afronden');
+}
+window.addEventListener('beforeunload',e=>{if(_conceptActief){_conceptBewaar();e.preventDefault();e.returnValue='';}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&_conceptActief)_conceptBewaar();});
 
 // ── DEBITEUREN: openstaande betalingen → Tikkie in 1 klik ─────────
 let DEBITEUREN=[],DEB_FACTMAP={};
@@ -3138,8 +3366,9 @@ async function splitPeelDoen(){
   }
 }
 
-async function _volgendeFactuurnr(){
-  const d=new Date();
+async function _volgendeFactuurnr(datumISO){
+  // datumISO: nummer voor een andere dag (een hervatte verkoop houdt zijn oorspronkelijke datum)
+  const d=datumISO?new Date(datumISO+'T12:00:00'):new Date();
   const pad=n=>String(n).padStart(2,'0');
   const datStr=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
   const prefix=`NBF-${datStr}-`;
@@ -3153,6 +3382,10 @@ async function _volgendeFactuurnr(){
     const nrsF=(factRows||[]).map(f=>f.factuurnummer&&f.factuurnummer.match(regex)).filter(m=>m).map(m=>parseInt(m[1],10));
     const nrsV=(verkRows||[]).map(v=>v.factuur&&v.factuur.match(regex)).filter(m=>m).map(m=>parseInt(m[1],10));
     const alle=[...nrsF,...nrsV];
+    // Het nummer dat een onafgeronde verkoop op dit toestel al op zijn Tikkie heeft,
+    // niet opnieuw uitgeven: die verkoop wordt later alsnog met dat nummer opgeslagen.
+    const _c=_conceptLees(),_cm=_c&&_c.state&&_c.state.factuurnr&&String(_c.state.factuurnr).match(regex);
+    if(_cm)alle.push(parseInt(_cm[1],10));
     const nextN=alle.length?Math.max(...alle)+1:1;
     return prefix+nextN;
   }catch(e){
@@ -3216,7 +3449,8 @@ async function afronden(){
     const item=STATE.regels[0].item; // backward-compat referentie (primair item)
     const verkoopId=_genId();        // primaire verkoop-id (voor termijnen/factuur/contract)
     const factuurnr=await _zorgFactuurnr(); // hergebruik het nr dat evt. al op de Tikkie staat
-    const verkoopDatum=_dISO(new Date());
+    // Hervatte verkoop (Tikkie eerder gemaakt) houdt de dag waarop hij echt plaatsvond
+    const verkoopDatum=STATE._conceptDatum||_dISO(new Date());
     // Vangnet: een termijn zonder vervaldatum (bv. aanbetaling zonder leverdatum) krijgt de
     // verkoopdatum — een lege datum laat de database-insert falen en zet "Invalid Date" op de factuur
     (STATE.termijnen||[]).forEach(t=>{if(!t.vervaldatum)t.vervaldatum=verkoopDatum;});
@@ -3550,6 +3784,7 @@ async function afronden(){
     if(_s4Waarsch)$('klaar-info').insertAdjacentHTML('beforeend',_s4Waarsch);
     // En altijd: wat er met de website (en daarmee Marktplaats) is gebeurd.
     _advToonResultaat(advRes);
+    _conceptWis(); // verkoop staat erin → het vangnet voor de Tikkie is niet meer nodig
     document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='none');
     toonScherm('screen-app');
     $('stap-4').classList.remove('show');
@@ -3665,6 +3900,7 @@ async function nieuweVerkoop(){
   STATE._bet={vol:'pin',aan:'pin',rest:'pin'};
   STATE.wilEmailen=false;
   STATE.wilContract=false;
+  STATE._conceptDatum=null;
   _resetTikkie();
   _resetVerkoopDOM();
   // UI reset: statusmeldingen en knop van de vorige ronde wissen
@@ -3688,6 +3924,8 @@ async function naApp(){
   const dat=$('ink-dat');if(dat&&!dat.value)dat.value=new Date().toISOString().split('T')[0];
   // Herstel het scherm waar je was (i.p.v. altijd het keuzescherm)
   _herstelScherm();
+  // Onafgeronde verkoop met Tikkie op dit toestel? Meteen vragen om hem af te ronden.
+  try{_conceptBijOpenen();}catch(e){console.warn('Concept bij openen:',e);}
 }
 
 async function init(){
