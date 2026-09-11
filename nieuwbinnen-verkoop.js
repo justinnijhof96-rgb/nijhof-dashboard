@@ -31,16 +31,20 @@
     sc.innerHTML =
       '<div class="top">' +
       '<button class="btn-icon" onclick="toonScherm(\'screen-keuze\')" title="Terug">←</button>' +
-      '<div class="logo">NIEUW BINNEN <small>Story maken &amp; delen</small></div>' +
-      '<button class="btn-icon" onclick="socialLaad(true)" title="Ververs">↻</button>' +
+      '<div class="logo" id="social-titel">NIEUW BINNEN <small>Story maken &amp; delen</small></div>' +
+      '<button class="btn-icon" onclick="socialVerversen()" title="Ververs">↻</button>' +
       '</div>' +
       '<main>' +
-      '<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5">Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.</div>' +
+      '<div id="social-tabs" style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<button id="social-tab-nieuw" class="btn btn-or btn-sm" style="flex:1" onclick="socialModus(\'nieuw\')">🆕 Nieuw binnen</button>' +
+      '<button id="social-tab-verkocht" class="btn btn-gy btn-sm" style="flex:1" onclick="socialModus(\'verkocht\')">✅ Verkocht</button>' +
+      '</div>' +
+      '<div id="social-intro" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5">Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.</div>' +
       '<div id="social-grid"></div>' +
       '</main>' +
       '<div id="social-ov" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px">' +
         '<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="color:var(--nav);font-size:15px">🆕 Story-voorbeeld</strong><button onclick="socialSluit()" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:var(--gr)">×</button></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong id="social-ov-titel" style="color:var(--nav);font-size:15px">🆕 Story-voorbeeld</strong><button onclick="socialSluit()" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:var(--gr)">×</button></div>' +
           '<div id="social-prev" style="display:flex;justify-content:center;min-height:120px"></div>' +
           '<div id="social-cap-wrap" style="display:none;margin-top:12px">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:11px;color:var(--gr);font-weight:800;letter-spacing:.03em">📝 BIJSCHRIFT VOOR JE POST</span><button id="social-cap-btn" class="btn btn-or" onclick="socialKopieer()" style="padding:6px 14px;min-height:0;font-size:12px">📋 Kopieer</button></div>' +
@@ -59,15 +63,15 @@
     var btn = document.createElement("button");
     btn.id = "keuze-social"; btn.className = "kz-tegel"; btn.setAttribute("style", "--kz:#db2777");
     btn.onclick = openSocial;
-    btn.innerHTML = '<span class="kz-ic">🆕</span><span class="kz-t">Nieuw binnen</span><span class="kz-s">Story maken &amp; delen</span>';
+    btn.innerHTML = '<span class="kz-ic">🆕</span><span class="kz-t">Nieuw binnen</span><span class="kz-s">Nieuw &amp; verkocht delen</span>';
     box.appendChild(btn);
   }
   function openSocial() { injectScreen(); toonScherm("screen-social"); try { socialEnsure(); } catch (_e) {} }
 
   /* ============ Story-generator (geport uit het dashboard) ============ */
 /* ── NIEUW BINNEN: branded story-generator uit nieuwste webshop-producten ── */
-let _social={producten:[],bezig:false,blob:null,canvas:null,laatste:null,mime:'',ext:''};
-function socialEnsure(){ if(!_social.producten.length && !_social.bezig) socialLaad(false); }
+let _social={producten:[],bezig:false,blob:null,canvas:null,laatste:null,mime:'',ext:'',modus:'nieuw',verkocht:[],vbezig:false};
+function socialEnsure(){ if(_social.modus==='verkocht'){ if(!_social.verkocht.length&&!_social.vbezig)verkochtLaad(); return; } if(!_social.producten.length && !_social.bezig) socialLaad(false); }
 async function socialLaad(force){
   const grid=el('social-grid'); if(!grid)return;
   if(_social.bezig)return; _social.bezig=true;
@@ -77,8 +81,8 @@ async function socialLaad(force){
     const j=await res.json().catch(()=>({error:'ongeldig antwoord'}));
     if(!res.ok||j.error)throw new Error(j.error||('HTTP '+res.status));
     _social.producten=Array.isArray(j.products)?j.products:[];
-    socialRenderGrid();
-  }catch(e){ grid.innerHTML='<div style="padding:18px;color:var(--rd);background:#fef2f2;border:1px solid #fecaca;border-radius:10px">Kon producten niet laden: '+esc(String(e.message||e))+'</div>'; }
+    if(_social.modus==='nieuw')socialRenderGrid(); // intussen naar Verkocht gewisseld? Dan dat overzicht niet overschrijven
+  }catch(e){ if(_social.modus==='nieuw')grid.innerHTML='<div style="padding:18px;color:var(--rd);background:#fef2f2;border:1px solid #fecaca;border-radius:10px">Kon producten niet laden: '+esc(String(e.message||e))+'</div>'; }
   finally{ _social.bezig=false; }
 }
 function socialRenderGrid(){
@@ -91,6 +95,80 @@ function socialRenderGrid(){
       +'<div style="padding:9px 10px">'
       +'<div style="font-size:12px;font-weight:700;color:var(--nav);line-height:1.3;height:32px;overflow:hidden">'+esc(p.title)+'</div>'
       +'<div style="font-size:12.5px;color:var(--or);font-weight:800;margin:4px 0 8px">'+eur(p.price)+'</div>'
+      +'<div style="display:flex;gap:6px"><button class="btn btn-gy btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="socialMaak('+i+',\'foto\')">📷 Foto</button><button class="btn btn-or btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="socialMaak('+i+',\'video\')">🎬 Video</button></div>'
+      +'</div></div>';
+  });
+  h+='</div>';
+  grid.innerHTML=h;
+}
+/* ── VERKOCHT: branded story van een verkochte bank (laat zien dat het loopt: weg = weg) ── */
+function socialModus(m){
+  _social.modus=(m==='verkocht')?'verkocht':'nieuw';
+  const v=_social.modus==='verkocht';
+  const tn=el('social-tab-nieuw'), tv=el('social-tab-verkocht');
+  if(tn)tn.className='btn btn-sm '+(v?'btn-gy':'btn-or');
+  if(tv)tv.className='btn btn-sm '+(v?'btn-or':'btn-gy');
+  const ti=el('social-titel'); if(ti)ti.innerHTML=(v?'VERKOCHT':'NIEUW BINNEN')+' <small>Story maken &amp; delen</small>';
+  const it=el('social-intro'); if(it)it.innerHTML=v
+    ?'Kies een verkochte bank en ik maak er een <strong>branded &quot;VERKOCHT&quot;-story</strong> van: de foto met een verkocht-stempel, hoe snel hij weg was en een QR om te appen. Deel &#39;m met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.'
+    :'Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.';
+  if(v){ if(_social.verkocht.length)verkochtRenderGrid(); else verkochtLaad(); }
+  else { if(_social.producten.length)socialRenderGrid(); else socialLaad(false); }
+}
+function socialVerversen(){ if(_social.modus==='verkocht')verkochtLaad(); else socialLaad(true); }
+async function _vkRest(pad){
+  const res=await fetch(SUPABASE_URL+'/rest/v1/'+pad,{headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON)}});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return res.json();
+}
+// Dagen tussen online zetten en verkoop → korte, trotse tekst. Stond hij langer dan 14 dagen,
+// dan "Alweer verkocht!", zodat een post nooit laat zien dat iets lang bleef staan.
+function _vkDagenTekst(d){ if(d==null||d>14)return 'Alweer verkocht!'; if(d<=0)return 'Dezelfde dag verkocht'; return 'In '+d+(d===1?' dag':' dagen')+' verkocht'; }
+async function verkochtLaad(){
+  const grid=el('social-grid'); if(!grid)return;
+  if(_social.vbezig)return; _social.vbezig=true;
+  grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">⏳ Verkochte banken ophalen…</div>';
+  try{
+    const vk=(await _vkRest('verkopen?select=id,item_id,datum,datum_registratie&order=datum.desc,datum_registratie.desc&limit=40'))||[];
+    const ids=[...new Set(vk.map(v=>v.item_id).filter(Boolean))];
+    const items=ids.length?((await _vkRest('items?select=id,naam,artikelnummer,foto_url,partij_parent_id&id=in.('+ids.join(',')+')'))||[]):[];
+    const ouders=[...new Set(items.map(i=>i.partij_parent_id).filter(Boolean))];
+    const alleIds=[...new Set([...ids,...ouders])];
+    const advs=alleIds.length?((await _vkRest('advertenties?select=item_id,ai_titel,fotos,gepubliceerd_op,merk&item_id=in.('+alleIds.join(',')+')'))||[]):[];
+    const iMap={},aMap={};
+    items.forEach(i=>{iMap[i.id]=i;});
+    advs.forEach(a=>{if(!aMap[a.item_id])aMap[a.item_id]=a;});
+    const fotosVan=a=>(a&&Array.isArray(a.fotos)?a.fotos.map(f=>f&&f.url).filter(Boolean):[]);
+    const lijst=[];
+    vk.forEach(v=>{
+      const it=iMap[v.item_id]; if(!it)return;
+      // Foto's: eigen advertentie → advertentie van de set (afgesplitst stuk) → inkoopfoto
+      const eigen=aMap[it.id], ouder=it.partij_parent_id?aMap[it.partij_parent_id]:null;
+      let imgs=fotosVan(eigen); if(!imgs.length)imgs=fotosVan(ouder); if(!imgs.length&&it.foto_url)imgs=[it.foto_url];
+      if(!imgs.length)return; // zonder foto geen story
+      const a=eigen||ouder;
+      let d=null;
+      if(eigen&&eigen.gepubliceerd_op){ d=Math.round((Date.parse(v.datum+'T12:00:00')-Date.parse(String(eigen.gepubliceerd_op).slice(0,10)+'T12:00:00'))/864e5); if(!(d>=0))d=null; }
+      lijst.push({verkocht:true,title:(a&&a.ai_titel&&a.ai_titel.trim())||it.naam||'Meubel',images:imgs.slice(0,3),image:imgs[0],
+        vendor:(a&&a.merk)||'',tags:[],handle:String(it.artikelnummer||'story').toLowerCase(),datum:v.datum,dagen:d,dagenTekst:_vkDagenTekst(d),
+        url:'https://nijhofbrothers.nl/collections/occasions'});
+    });
+    _social.verkocht=lijst;
+    if(_social.modus==='verkocht')verkochtRenderGrid(); // intussen terug naar Nieuw binnen? Dan niet overschrijven
+  }catch(e){ if(_social.modus==='verkocht')grid.innerHTML='<div style="padding:18px;color:var(--rd);background:#fef2f2;border:1px solid #fecaca;border-radius:10px">Kon verkochte banken niet laden: '+esc(String(e.message||e))+'</div>'; }
+  finally{ _social.vbezig=false; }
+}
+function verkochtRenderGrid(){
+  const grid=el('social-grid'); if(!grid)return;
+  if(!_social.verkocht.length){ grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">Nog geen verkochte banken met een foto gevonden.</div>'; return; }
+  const fmt=d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('nl-NL',{day:'numeric',month:'short'}); }catch(_e){ return d; } };
+  let h='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
+  _social.verkocht.forEach((p,i)=>{
+    h+='<div style="border:1px solid var(--bd);border-radius:12px;overflow:hidden;background:#fff">'
+      +'<div style="position:relative;aspect-ratio:1/1;background:#f1f5f9 center/cover no-repeat url(\''+esc(p.image)+'\')"><span style="position:absolute;top:8px;left:8px;background:#E87722;color:#fff;font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 7px;border-radius:6px">VERKOCHT</span></div>'
+      +'<div style="padding:9px 10px">'
+      +'<div style="font-size:12px;font-weight:700;color:var(--nav);line-height:1.3;height:32px;overflow:hidden">'+esc(p.title)+'</div>'
+      +'<div style="font-size:11.5px;color:var(--gr);margin:4px 0 8px">'+esc(fmt(p.datum))+(p.dagen!=null?' · '+(p.dagen<=0?'zelfde dag':'na '+p.dagen+(p.dagen===1?' dag':' dagen')):'')+'</div>'
       +'<div style="display:flex;gap:6px"><button class="btn btn-gy btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="socialMaak('+i+',\'foto\')">📷 Foto</button><button class="btn btn-or btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="socialMaak('+i+',\'video\')">🎬 Video</button></div>'
       +'</div></div>';
   });
@@ -176,7 +254,7 @@ function _socialKB(ctx,panel,prog,idx,W,fotoH){
 function _socialSpaced(ctx,text,x,y,ls){ let cx=x; for(const ch of String(text)){ ctx.fillText(ch,cx,y); cx+=ctx.measureText(ch).width+ls; } }
 // WhatsApp click-to-chat link (scan → direct appen) met productcontext als voorvuld bericht.
 function _socialWaLink(p){
-  const txt='Hoi Nijhof Brothers! Ik heb interesse in: '+((p&&p.title)||'jullie meubel');
+  const txt=(p&&p.verkocht)?'Hoi Nijhof Brothers! Ik zoek een bank zoals: '+((p&&p.title)||'jullie verkochte bank'):'Hoi Nijhof Brothers! Ik heb interesse in: '+((p&&p.title)||'jullie meubel');
   return 'https://wa.me/31555690039?text='+encodeURIComponent(txt);
 }
 // Laadt tot 3 foto's (voor het filmpje), logo, merk-mark en QR één keer — hergebruikt voor foto én video.
@@ -231,6 +309,19 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   const gl=0.30+0.65*(0.5-0.5*Math.cos(2*Math.PI*(isStatic?0.9:t)/1.8));
   ctx.save(); ctx.globalAlpha=gl; ctx.strokeStyle=OR; ctx.lineWidth=26; ctx.shadowColor=OR; ctx.shadowBlur=44; ctx.strokeRect(15,15,W-30,fotoH-30); ctx.restore();
   ctx.fillStyle=OR; ctx.fillRect(0,fotoH,W,10);
+  // VERKOCHT-stempel schuin over de foto; in de video 'slaat' hij erop na ±1 seconde
+  if(p.verkocht){
+    const sp=isStatic?1:ease((t-0.9)/0.35);
+    if(sp>0){
+      ctx.save(); ctx.globalAlpha=Math.min(1,sp*1.2); ctx.translate(W/2,fotoH*0.5); ctx.rotate(-0.17); const ssc=1+0.6*(1-sp); ctx.scale(ssc,ssc);
+      ctx.font='800 124px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      const stt='VERKOCHT', stw=ctx.measureText(stt).width+120, sth=200;
+      _socialRR(ctx,-stw/2,-sth/2,stw,sth,26); ctx.fillStyle='rgba(255,255,255,0.93)'; ctx.fill();
+      ctx.lineWidth=12; ctx.strokeStyle=OR; _socialRR(ctx,-stw/2,-sth/2,stw,sth,26); ctx.stroke();
+      ctx.fillStyle=OR; ctx.fillText(stt,0,6);
+      ctx.restore(); ctx.textAlign='left'; ctx.textBaseline='top';
+    }
+  }
   // --- info-vlak ---
   ctx.textAlign='left'; ctx.textBaseline='top';
   let y=fotoH+42;
@@ -247,24 +338,33 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+18); ctx.textAlign='left'; }
   // prijs — schuift van links in (groot, oranje)
   const pin=isStatic?1:ease((t-1.4)/0.45);
+  // Bij VERKOCHT staat hier "In X dagen verkocht" (max. 2 regels) in plaats van de prijs
+  let vLines=null; if(p.verkocht){ ctx.font='800 72px Sora, sans-serif'; vLines=_socialWrap(ctx,p.dagenTekst||'Alweer verkocht!',600,2); }
   if(pin>0){
-    ctx.save(); ctx.globalAlpha=pin; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.font='800 96px Sora, sans-serif';
-    const ptxt=eur(p.price), startX=-ctx.measureText(ptxt).width-120, x=startX+(70-startX)*pin;
-    ctx.fillStyle=OR; ctx.fillText(ptxt,x,prijsY);
+    ctx.save(); ctx.globalAlpha=pin; ctx.textAlign='left'; ctx.textBaseline='top';
+    if(vLines){
+      ctx.font='800 72px Sora, sans-serif';
+      const vw=Math.max(...vLines.map(l=>ctx.measureText(l).width)), startX=-vw-120, x=startX+(70-startX)*pin;
+      ctx.fillStyle=OR; vLines.forEach((l,i)=>ctx.fillText(l,x,prijsY+i*82));
+    } else {
+      ctx.font='800 96px Sora, sans-serif';
+      const ptxt=eur(p.price), startX=-ctx.measureText(ptxt).width-120, x=startX+(70-startX)*pin;
+      ctx.fillStyle=OR; ctx.fillText(ptxt,x,prijsY);
+    }
     ctx.restore();
   }
   // volledig Nijhof Brothers-logo linksonder
-  if(a.logo){ const lw=190, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=prijsY+128; ctx.drawImage(a.logo,70,ly,lw,lh); }
+  if(a.logo){ const lw=190, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=prijsY+(vLines?vLines.length*82+46:128); ctx.drawImage(a.logo,70,ly,lw,lh); }
   // badge NIEUW BINNEN
-  if(isStatic||t>=0.5){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
+  if(!p.verkocht&&(isStatic||t>=0.5)){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
   // CTA-eindkaart (alleen video, laatste ~3,5s): oranje sluier over de foto + witte CTA
   if(!isStatic && t>=PHOTO_DUR-0.3){
     const cp=ease((t-(PHOTO_DUR-0.3))/0.5);
     ctx.save(); ctx.globalAlpha=cp*0.92; ctx.fillStyle=OR; ctx.fillRect(0,0,W,fotoH); ctx.restore();
     ctx.save(); ctx.globalAlpha=cp; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse?',W/2,fotoH*0.34);
-    ctx.font='800 48px Sora, sans-serif'; ctx.fillText('App of ga naar nijhofbrothers.nl',W/2,fotoH*0.34+112);
-    ctx.font='700 42px Inter, sans-serif'; ctx.fillText('🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
+    ctx.font='800 82px Sora, sans-serif'; ctx.fillText(p.verkocht?'Ook zo’n bank?':'Interesse?',W/2,fotoH*0.34);
+    ctx.font='800 48px Sora, sans-serif'; ctx.fillText(p.verkocht?'Kijk op nijhofbrothers.nl':'App of ga naar nijhofbrothers.nl',W/2,fotoH*0.34+112);
+    ctx.font='700 42px Inter, sans-serif'; ctx.fillText(p.verkocht?'of stuur ons een appje':'🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
     ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
   }
 }
@@ -318,10 +418,11 @@ async function _socialVideo(p,onProgress){
   return new Blob([target.buffer],{type:'video/mp4'});
 }
 async function socialMaak(i,type){
-  const p=_social.producten[i]; if(!p)return; type=type||'foto';
+  const p=(_social.modus==='verkocht'?_social.verkocht:_social.producten)[i]; if(!p)return; type=type||'foto';
   _social.laatste=p; _social.blob=null; _social.canvas=null; _social.mime=''; _social.ext='';
   { const ct=el('social-cap-text'), cw=el('social-cap-wrap'), cb=el('social-cap-btn'); if(ct)ct.value=_socialCaption(); if(cb)cb.textContent='📋 Kopieer'; if(cw)cw.style.display='block'; }
   const ov=el('social-ov'); if(ov)ov.style.display='flex';
+  { const ot=el('social-ov-titel'); if(ot)ot.textContent=p.verkocht?'✅ Verkocht-story':'🆕 Story-voorbeeld'; }
   const prev=el('social-prev'), hint=el('social-hint');
   if(hint)hint.textContent='Kopieer het bijschrift hieronder met 📋, tik dan 📲 Deel (of 📥 Download) en plak het in je post.';
   if(type==='video'){
@@ -341,14 +442,15 @@ async function socialMaak(i,type){
     canvas.toBlob(b=>{ _social.blob=b; _social.mime='image/png'; _social.ext='png'; if(!b&&hint)hint.textContent='⚠️ Deze foto kon niet geëxporteerd worden (bron blokkeert export). Probeer een ander product.'; },'image/png');
   }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de story niet maken: '+esc(String(e.message||e))+'</div>'; }
 }
-function _socialCaption(){ const p=_social.laatste; if(!p)return ''; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
+function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.verkocht?'verkocht-':'nieuw-binnen-')+(p.handle||'story')+'.'+(_social.ext||'png'); }
+function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Alweer verkocht! ✅\n'+p.title+(p.dagenTekst&&p.dagenTekst!=='Alweer verkocht!'?' — '+p.dagenTekst.charAt(0).toLowerCase()+p.dagenTekst.slice(1)+'.':'')+'\n\nOok op zoek naar een kwaliteitsbank? Bekijk ons actuele aanbod of stuur ons een appje.\n'+p.url; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
   if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
   if(!_social.blob){ toast('Nog even geduld — de foto/video wordt nog gemaakt','#b45309'); return; }
   const isVideo=(_social.mime||'').indexOf('video')===0;
   const cap=_socialCaption();
-  const naam='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png');
+  const naam=_socialBestandsnaam();
   const file=new File([_social.blob],naam,{type:_social.mime||'image/png'});
   // Bijschrift alvast naar het klembord (NIET awaiten → de tik blijft geldig voor 'share').
   try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(cap).catch(function(){}); }catch(_e){}
@@ -365,7 +467,7 @@ async function socialDeel(){
   if(isVideo) toast('Video staat in je galerij 📥 — deel ’m van daaruit naar Instagram. Bijschrift staat op je klembord.','#b45309');
   else toast('Foto opgeslagen op je telefoon 📥 — plaats ’m vanuit Instagram/WhatsApp uit je galerij. Bijschrift staat op je klembord.','#b45309');
 }
-function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nieuw-binnen-'+((_social.laatste&&_social.laatste.handle)||'story')+'.'+(_social.ext||'png'); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
+function socialDownload(){ _socialBlob(blob=>{ if(!blob){toast('Kon het bestand niet maken','#b91c1c');return;} const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=_socialBestandsnaam(); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500); }); }
 function socialKopieer(){
   const t=_socialCaption();
   const ok=()=>{ toast('Bericht gekopieerd ✓'); const b=el('social-cap-btn'); if(b){ b.textContent='✓ Gekopieerd'; setTimeout(function(){ b.textContent='📋 Kopieer'; },1600); } };
@@ -376,6 +478,8 @@ function socialKopieer(){
 function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none'; const cw=el('social-cap-wrap'); if(cw)cw.style.display='none'; _social.blob=null; _social.canvas=null; }
 
   /* ---- Publieke handlers voor inline onclick ---- */
+  window.socialModus = socialModus;
+  window.socialVerversen = socialVerversen;
   window.socialLaad = socialLaad;
   window.socialMaak = socialMaak;
   window.socialDeel = socialDeel;
