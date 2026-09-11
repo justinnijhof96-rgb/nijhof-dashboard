@@ -1586,9 +1586,15 @@ async function laadVoorraad(){
     try{
       const ids=items.map(i=>i.id).filter(Boolean);
       if(ids.length){
-        const advs=await _restGet('advertenties?select=item_id,ai_titel&item_id=in.('+ids.join(',')+')');
-        const map={};(advs||[]).forEach(a=>{if(a.ai_titel&&a.ai_titel.trim())map[a.item_id]=a.ai_titel.trim();});
-        items.forEach(i=>{i.adv_titel=map[i.id]||null;});
+        const advs=await _restGet('advertenties?select=item_id,ai_titel,status,shopify_product_id&item_id=in.('+ids.join(',')+')');
+        const map={},online={};
+        (advs||[]).forEach(a=>{
+          if(a.ai_titel&&a.ai_titel.trim())map[a.item_id]=a.ai_titel.trim();
+          // Staat dit item echt op de website? Dan krijgt het een 🌐 in de lijst, zodat je bij
+          // twee gelijkende banken het record kiest waar de website-advertentie aan hangt.
+          if(a.shopify_product_id&&(a.status==='live'||a.status==='gereserveerd'))online[a.item_id]=true;
+        });
+        items.forEach(i=>{i.adv_titel=map[i.id]||null;i.online=!!online[i.id];});
       }
     }catch(e){console.warn('Advertentietitels laden:',e);}
     STATE.items=items;
@@ -1611,6 +1617,7 @@ function renderItems(){
   if(zk){
     items=items.filter(i=>
       (i.naam||'').toLowerCase().includes(zk)||
+      (i.adv_titel||'').toLowerCase().includes(zk)||   // ook zoeken op de titel zoals hij op de website staat
       (i.artikelnummer||'').toLowerCase().includes(zk)||
       (i.categorie||'').toLowerCase().includes(zk)
     );
@@ -1638,8 +1645,10 @@ function renderItems(){
             <div style="font-weight:700;font-size:15px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.naam||'?')}</div>
             <div style="font-size:12px;color:var(--gr);margin-top:2px">
               ${i.artikelnummer?`<span style="background:var(--orl);color:var(--or);padding:2px 8px;border-radius:10px;font-weight:600;font-family:ui-monospace,monospace">${esc(i.artikelnummer)}</span>`:''}
+              ${i.online?`<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-weight:600;margin-left:4px">🌐 online</span>`:''}
               ${i.categorie?` · ${esc(i.categorie)}`:''}
             </div>
+            ${i.online&&i.adv_titel&&i.adv_titel!==i.naam?`<div style="font-size:12px;color:var(--gr);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Op de website: ${esc(i.adv_titel)}</div>`:''}
           </div>
         </div>
       </div>`;
@@ -3310,34 +3319,29 @@ async function afronden(){
       }catch(e){console.warn('Agenda-event mislukt:',e);}
     }
 
-    // 2. Alle verkochte items → status verkocht + hun advertenties offline halen (niet-blokkerend)
-    //    Mislukt het offline halen (netwerk, inlog, of een fout-status van de functie),
-    //    dan onthouden we het item en waarschuwen we onderaan — anders zou de advertentie
-    //    stil op Shopify/Marktplaats kunnen blijven staan terwijl het item verkocht is.
-    const advFouten=[];
+    // 2. Alle verkochte items → status verkocht + van de website halen (niet-blokkerend).
+    //    De webshop is de bron voor Marktplaats: staat het product niet meer te koop op de
+    //    website, dan haalt Woosa de Marktplaats-advertentie ook weg. Een verkoop mag nooit
+    //    stil zonder website-actie blijven: hangt er geen advertentie aan het verkochte item
+    //    (dubbel voorraadrecord, of een stuk dat uit een set is afgesplitst), dan vraagt het
+    //    klaar-scherm welke online advertentie bij deze verkoop hoort — zie _advToonResultaat.
+    const advRes={offline:[],fouten:[],zonder:[]};
     for(const r of STATE.regels){
       const itId=r.item.id;
       const itNaam=_regelNaam(r)||r.item?.naam||'dit item';
       try{ await _restPatch(`items?id=eq.${encodeURIComponent(itId)}`,{status:'verkocht'}); }
       catch(e){ console.warn('Itemstatus verkocht mislukt:',itId,e); }
       try{
-        const advs=await _restGet(`advertenties?select=id,shopify_product_id&item_id=eq.${encodeURIComponent(itId)}&limit=1`);
-        const a=advs&&advs[0];
-        if(a&&a.shopify_product_id){
-          const res=await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
-            method:'POST',
-            headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
-            body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
-          });
-          if(!res.ok){ const t=await res.text().catch(()=>''); throw new Error('HTTP '+res.status+' '+t.slice(0,200)); }
+        // Álle advertenties van het item met een Shopify-product (voorheen alleen de eerste).
+        const advs=await _restGet(`advertenties?select=id,ai_titel&item_id=eq.${encodeURIComponent(itId)}&shopify_product_id=not.is.null`);
+        if(advs&&advs.length){
+          for(const a of advs){ await _advOffline(a.id,'verkocht'); advRes.offline.push(a.ai_titel||itNaam); }
+        }else{
+          advRes.zonder.push(r.item);
         }
-      }catch(e){ console.warn('Advertentie offline halen mislukt:',itId,e); advFouten.push(itNaam); }
+      }catch(e){ console.warn('Advertentie offline halen mislukt:',itId,e); advRes.fouten.push(itNaam); }
     }
-    if(advFouten.length){
-      toast('⚠️ Advertentie niet automatisch offline — check Shopify/Marktplaats','#dc2626');
-      const s4=$('s4-status');
-      if(s4) s4.innerHTML+='<div class="alert alert-err">⚠️ Let op: de advertentie van <strong>'+advFouten.map(esc).join(', ')+'</strong> kon niet automatisch offline gehaald worden. Haal hem handmatig offline via het advertentiecentrum of Shopify, anders blijft hij op Marktplaats staan.</div>';
-    }
+    if(advRes.fouten.length) toast('⚠️ Advertentie niet automatisch offline — zie het klaar-scherm','#dc2626');
 
     // 3. Factuur wordt ALTIJD gemaakt — klant opslaan en contract alleen bij ingevulde klantgegevens
     let factuurId=null,contractId=null,klantId=null,mailGelukt=false;
@@ -3540,6 +3544,12 @@ async function afronden(){
           ?(mailGelukt?'<div style="margin-top:10px;color:var(--gn)">📥 Factuur naar eigen invoice-adres gestuurd</div>':'<div style="margin-top:10px;color:#dc2626">⚠️ Factuur-mail naar invoice-adres NIET verstuurd — check het dashboard</div>')
           :'<div style="margin-top:10px;color:#c2410c">💾 Factuur opgeslagen — stel een invoice-adres in via het dashboard (⚙️ Instellingen)</div>')}
     `;
+    // Waarschuwingen uit het afronden (betaalschema, contract) blijven zichtbaar op het
+    // klaar-scherm — s4-status wordt hieronder leeggemaakt, waardoor ze voorheen nooit te zien waren.
+    const _s4Waarsch=[...document.querySelectorAll('#s4-status .alert-err')].map(n=>n.outerHTML).join('');
+    if(_s4Waarsch)$('klaar-info').insertAdjacentHTML('beforeend',_s4Waarsch);
+    // En altijd: wat er met de website (en daarmee Marktplaats) is gebeurd.
+    _advToonResultaat(advRes);
     document.querySelectorAll('.steps,.bot').forEach(e=>e.style.display='none');
     toonScherm('screen-app');
     $('stap-4').classList.remove('show');
@@ -3556,6 +3566,91 @@ async function afronden(){
     _afrondenBezig=false;
   }
 }
+
+// ── Website/Marktplaats na een verkoop ─────────────────────────────
+// Eén advertentie via de edge function offline halen (hetzelfde pad als het
+// advertentiecentrum): Shopify op concept + voorraad 0 + tag verkocht + van de kanalen af.
+// Staat hij niet meer te koop op de website, dan haalt Woosa hem ook van Marktplaats.
+async function _advOffline(advId,actie){
+  const res=await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+    method:'POST',
+    headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getStoredAuth()?.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({advertentie_id:advId,actie})
+  });
+  if(!res.ok){ const t=await res.text().catch(()=>''); throw new Error('HTTP '+res.status+' '+t.slice(0,200)); }
+  return res.json().catch(()=>({}));
+}
+
+// Uitkomst op het klaar-scherm: je ziet altijd wat er met de website is gebeurd.
+function _advToonResultaat(res){
+  const box=$('klaar-info');if(!box||!res)return;
+  let h='';
+  if(res.offline.length) h+='<div style="margin-top:12px;color:var(--gn)">🌐 Van de website gehaald: <strong>'+res.offline.map(esc).join(', ')+'</strong><br><span style="font-size:12px;color:var(--gr)">Marktplaats volgt automatisch via Woosa.</span></div>';
+  if(res.fouten.length) h+='<div class="alert alert-err" style="margin-top:12px;text-align:left">⚠️ <strong>'+res.fouten.map(esc).join(', ')+'</strong> kon niet automatisch van de website gehaald worden. Zet de advertentie op verkocht in het advertentiecentrum, anders blijft hij online en op Marktplaats staan.</div>';
+  box.insertAdjacentHTML('beforeend',h+'<div id="klaar-adv-kies"></div>');
+  if(res.zonder.length) _advKiesVoorVerkocht(res.zonder);
+}
+
+// Verkocht item zonder eigen website-advertentie → laat kiezen welke online advertentie bij
+// deze verkoop hoort. Eerst de advertentie van de set waaruit het stuk is afgesplitst, dan
+// advertenties waarvan de titel op dit item lijkt. Nooit automatisch: jij tikt aan.
+const _ADV_STOPWOORDEN=new Set(['hoekbank','bank','banken','zitbank','zithoek','tweedehands','gereinigd','professioneel','nieuwstaat','staat','uitstekende','met','van','het','een','set','stof','comfort','stijl','luxe','luxueus','design','uniek','complete']);
+function _advWoorden(s){
+  return new Set(String(s||'').toLowerCase().normalize('NFD').replace(/\p{M}/gu,'')
+    .split(/[^a-z0-9]+/).filter(w=>w.length>=3&&!_ADV_STOPWOORDEN.has(w)&&!/^\d+$/.test(w)));
+}
+async function _advKiesVoorVerkocht(items){
+  const doel=$('klaar-adv-kies');if(!doel)return;
+  let live=[];
+  try{
+    live=await _restGet('advertenties?select=id,item_id,ai_titel,vraagprijs,fotos&shopify_product_id=not.is.null&status=in.(live,gereserveerd)&order=gepubliceerd_op.desc')||[];
+  }catch(e){console.warn('Online advertenties laden:',e);}
+  doel.innerHTML=items.map(it=>{
+    const woorden=_advWoorden([it.naam,it.adv_titel,it.stof].filter(Boolean).join(' '));
+    let kand=live.map(a=>{
+      const ouder=!!(it.partij_parent_id&&a.item_id===it.partij_parent_id);
+      let score=0;_advWoorden(a.ai_titel).forEach(w=>{if(woorden.has(w))score++;});
+      return {a,ouder,score};
+    }).filter(x=>x.ouder||x.score>0).sort((x,y)=>(y.ouder-x.ouder)||(y.score-x.score)).slice(0,4);
+    if(!kand.length)kand=live.slice(0,6).map(a=>({a,ouder:false}));
+    const kaarten=kand.map(({a,ouder})=>{
+      const foto=Array.isArray(a.fotos)&&a.fotos[0]&&a.fotos[0].url;
+      return `<button type="button" onclick="_advKies(this,'${esc(a.id)}','${ouder?esc(it.partij_parent_id):''}')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--bd);border-radius:10px;padding:8px;margin-top:8px;cursor:pointer;font:inherit">
+        ${foto?`<img src="${esc(foto)}" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0">`:'<span style="width:52px;height:52px;border-radius:8px;background:#f3f4f6;flex-shrink:0"></span>'}
+        <span style="flex:1;min-width:0"><span class="adv-kies-titel" style="display:block;font-weight:700;font-size:13px;color:var(--nav);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.ai_titel||'Advertentie')}</span>
+        <span style="font-size:12px;color:var(--gr)">${ouder?'Advertentie van de set · ':''}${eur(Number(a.vraagprijs)||0)}</span></span>
+        <span style="font-size:12px;font-weight:700;color:var(--or);flex-shrink:0">Deze is verkocht</span>
+      </button>`;
+    }).join('');
+    return `<div class="adv-kies-blok" style="margin-top:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:10px;font-size:13px;line-height:1.45;text-align:left">
+      ⚠️ <strong>${esc(_klantNaam(it)||'Dit item')}</strong> heeft geen eigen website-advertentie. Staat hij tóch online? Tik aan welke advertentie nu verkocht is:
+      ${kaarten||'<div style="margin-top:8px;color:var(--gr)">Er staan geen advertenties online.</div>'}
+      <button type="button" onclick="_advKiesNiet(this)" style="margin-top:10px;background:none;border:none;color:var(--gr);font-size:13px;text-decoration:underline;cursor:pointer;padding:4px 0">Stond niet online</button>
+    </div>`;
+  }).join('');
+}
+async function _advKies(btn,advId,ouderId){
+  const blok=btn.closest('.adv-kies-blok');if(!blok)return;
+  blok.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const titel=btn.querySelector('.adv-kies-titel')?.textContent||'De advertentie';
+  try{
+    // Advertentie van een set met nog stukken over: alleen offline halen, niet op verkocht
+    // zetten — dat zou de rest van de partij uit de voorraad halen.
+    let actie='verkocht';
+    if(ouderId){
+      const p=await _restGet('items?select=partij_rest&id=eq.'+encodeURIComponent(ouderId));
+      if(p&&p[0]&&Number(p[0].partij_rest)>0)actie='verwijderen';
+    }
+    await _advOffline(advId,actie);
+    blok.style.background='#f0fdf4';blok.style.borderColor='#bbf7d0';blok.style.color='#166534';
+    blok.innerHTML='🌐 <strong>'+esc(titel)+'</strong> is van de website gehaald. Marktplaats volgt automatisch via Woosa.';
+  }catch(e){
+    console.warn('Gekozen advertentie offline halen:',e);
+    blok.querySelectorAll('button').forEach(b=>b.disabled=false);
+    blok.insertAdjacentHTML('beforeend','<div style="margin-top:8px;color:#dc2626">⚠️ Offline halen mislukt ('+esc(e.message)+'). Probeer het opnieuw, of zet hem op verkocht in het advertentiecentrum.</div>');
+  }
+}
+function _advKiesNiet(btn){ btn.closest('.adv-kies-blok')?.remove(); }
 
 async function nieuweVerkoop(){
   // Reset alles — óók opties die van de vorige verkoop bleven staan

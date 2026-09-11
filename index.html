@@ -2591,6 +2591,32 @@ async function bevestigDel(){
   }
 }
 
+// Verkocht via het dashboard → ook de advertentie(s) van dat item van de website halen.
+// De webshop voedt Marktplaats (Woosa): staat hij niet meer te koop op de website, dan
+// verdwijnt de Marktplaats-advertentie ook. Zelfde regel als in de verkoopapp.
+async function _advVerkochtOffline(item){
+  const naam=item?.naam||'Dit item';
+  try{
+    const advs=(await dbSelect('advertenties','select=id&item_id=eq.'+encodeURIComponent(item.id)+'&shopify_product_id=not.is.null'))||[];
+    if(!advs.length){
+      toast('ℹ️ '+naam+' had geen eigen website-advertentie. Staat hij tóch online? Zet die advertentie op verkocht via Adverteren.','#c2410c');
+      return;
+    }
+    for(const a of advs){
+      const res=await fetch(SUPABASE_URL+'/functions/v1/plaats-advertentie',{
+        method:'POST',
+        headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+_getToken(),'Content-Type':'application/json'},
+        body:JSON.stringify({advertentie_id:a.id,actie:'verkocht'})
+      });
+      if(!res.ok)throw new Error('HTTP '+res.status);
+    }
+    toast('🌐 '+naam+' van de website gehaald — Marktplaats volgt via Woosa');
+  }catch(e){
+    console.warn('Advertentie offline halen na verkoop:',e);
+    toast('⚠️ '+naam+' niet automatisch van de website gehaald — zet de advertentie op verkocht via Adverteren','#dc2626');
+  }
+}
+
 function openBewerkVerkoop(itemId) {
   const item = DB.items.find(x=>x.id===itemId);
   const vk   = DB.verkopen.find(v=>v.itemId===itemId);
@@ -3404,6 +3430,7 @@ async function bevestigVk(){
   });
   item.status='verkocht';
   _patchItem(item.id,{status:'verkocht'});
+  _advVerkochtOffline(item); // niet-blokkerend: van de website, en daarmee via Woosa van Marktplaats
   slaOp();renderV();renderDash();renderDebiteuren();sluitModal('m-vk');toast('Verkoop opgeslagen ✓');
   setTimeout(()=>toonPopup(item,DB.verkopen[DB.verkopen.length-1]),700);
 
