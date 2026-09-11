@@ -6284,9 +6284,10 @@ function renderMp(){
   const perAd={};
   rijen.forEach(r=>{
     const k=r.advnr||r.titel||r.url;
-    if(!perAd[k])perAd[k]={titel:r.titel,rubriek:r.rubriek,url:r.url,besteed:0,clicks:0,impressies:0,urlclicks:0,emails:0,dagen:0};
+    if(!perAd[k])perAd[k]={titel:r.titel,rubriek:r.rubriek,url:r.url,besteed:0,clicks:0,impressies:0,urlclicks:0,emails:0,dagen:0,_ds:new Set()};
     const a=perAd[k];
-    a.besteed+=r.besteed;a.clicks+=r.clicks;a.impressies+=r.impressies;a.urlclicks+=r.urlclicks;a.emails+=r.emails;a.dagen++;
+    a.besteed+=r.besteed;a.clicks+=r.clicks;a.impressies+=r.impressies;a.urlclicks+=r.urlclicks;a.emails+=r.emails;
+    a._ds.add(r.datum||'?');a.dagen=a._ds.size; // uniek per dag: bij een bodwijziging staan er meerdere regels op één dag
     if(!a.titel&&r.titel)a.titel=r.titel;if(!a.url&&r.url)a.url=r.url;if(!a.rubriek&&r.rubriek)a.rubriek=r.rubriek;
   });
   const ads=Object.values(perAd).sort((a,b)=>b.besteed-a.besteed);
@@ -6307,6 +6308,31 @@ function renderMp(){
     ${kpi('Naar website',nf(T.urlclicks),T.urlclicks>0?eur(kpUrl)+' per doorklik':'')}
     ${kpi('Leads (e-mails)',nf(T.emails),T.emails>0?eur(kpLead)+' per lead':'nog geen')}
   </div>`;
+  // ── Wat kost een advertentie gemiddeld? ──
+  // Per maand = gemiddeld per advertentie per dag × 30, zodat een advertentie die maar een
+  // paar dagen liep het gemiddelde niet omlaag trekt. Bedragen in het rapport zijn excl. btw.
+  const nAds=ads.length;
+  const adDagen=ads.reduce((s,a)=>s+a.dagen,0);
+  const perDag=adDagen>0?T.besteed/adDagen:0;
+  const perMaand=perDag*30;
+  // Verkocht = het meubel staat in de app op verkocht (ook als de verkoop op een ander
+  // voorraadrecord staat) of heeft een gekoppelde verkoop.
+  let nMeubel=0,nVerk=0;
+  ads.forEach(a=>{const k=_mpKoppel(a.url);if(k&&k.art){nMeubel++;if(k.item&&(k.verkocht||k.item.status==='verkocht'))nVerk++;}});
+  const perMnd={};
+  rijen.forEach(r=>{const m=(r.datum||'').slice(0,7);if(m)perMnd[m]=(perMnd[m]||0)+r.besteed;});
+  const mndTekst=Object.keys(perMnd).sort().map(m=>{
+    let naam=m;try{naam=new Date(m+'-01T12:00:00').toLocaleDateString('nl-NL',{month:'long',year:'numeric'});}catch(e){}
+    return `<span style="white-space:nowrap"><strong>${esc(naam)}</strong> ${eur(perMnd[m])} <span style="color:var(--gr)">(incl. btw ${eur(perMnd[m]*1.21)})</span></span>`;
+  }).join(' &nbsp;·&nbsp; ');
+  const gemBlok=`<div style="font-weight:700;font-size:14px;margin:22px 0 10px">💶 Wat kost een advertentie gemiddeld?</div>
+    <div class="mgrid">
+      ${kpi('Per advertentie per maand',eur(perMaand),'incl. btw '+eur(perMaand*1.21)+' · '+eur(perDag)+' per dag')}
+      ${kpi('Per advertentie in deze periode',eur(nAds?T.besteed/nAds:0),nAds+' advertenties · gem. '+(nAds?Math.round(adDagen/nAds):0)+' dagen online')}
+      ${kpi('Per verkochte bank',nVerk?eur(T.besteed/nVerk):'—',nVerk?(nVerk+' van '+nMeubel+' geadverteerde meubels verkocht'):'nog geen verkopen gekoppeld')}
+      ${kpi('Totaal incl. btw',eur(T.besteed*1.21),'zoals op je factuur (21% btw)')}
+    </div>
+    ${mndTekst?`<div style="font-size:12px;margin-top:10px;line-height:1.9">Per maand, excl. btw: ${mndTekst}</div>`:''}`;
   const th=(t,r)=>`<th style="padding:8px;${r?'text-align:right':'text-align:left'}">${t}</th>`;
   const td=(v,r)=>`<td style="padding:8px;border-top:1px solid var(--bd)${r?';text-align:right':''}"${r?' class="num"':''}>${v}</td>`;
   const rijenHtml=ads.map(a=>{
@@ -6318,13 +6344,15 @@ function renderMp(){
       if(k.verkocht){
         const netto=(k.marge||0)-a.besteed;
         meubel=`<span style="color:var(--gn);font-weight:600">✓ verkocht</span><br><span style="font-size:11px;color:var(--gr)">marge ${eur(k.marge||0)} − ad ${eur(a.besteed)} = <strong style="color:${netto>=0?'var(--gn)':'var(--rd)'}">${eur(netto)}</strong></span>`;
-      }else meubel=`<span style="color:var(--or)">nog niet verkocht</span><br><span style="font-size:11px;color:var(--gr)">${esc(k.art)}</span>`;
+      }else if(k.item.status==='verkocht')meubel=`<span style="color:var(--gn);font-weight:600">✓ verkocht</span><br><span style="font-size:11px;color:var(--gr)">${esc(k.art)}</span>`;
+      else meubel=`<span style="color:var(--or)">nog niet verkocht</span><br><span style="font-size:11px;color:var(--gr)">${esc(k.art)}</span>`;
     }else if(k&&k.art)meubel=`<span style="color:var(--gr)">${esc(k.art)} — niet gevonden</span>`;
     return `<tr>${td(`<div style="font-weight:600">${esc(a.titel||'?')}</div><div style="font-size:11px;color:var(--gr)">${esc(a.rubriek||'')}</div>`)}${td(nf(a.impressies),1)}${td(nf(a.clicks),1)}${td(actr.toFixed(1)+'%',1)}${td(eur(a.besteed),1)}${td(eur(acpc),1)}${td(a.emails,1)}${td(meubel)}</tr>`;
   }).join('');
   wrap.innerHTML=`
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">📊 Totalen ${periode?`<span style="font-weight:400;color:var(--gr);font-size:12px">(${esc(periode)})</span>`:''}</div>
     ${kpis}
+    ${gemBlok}
     <div style="font-weight:700;font-size:14px;margin:22px 0 10px">Per advertentie</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="border-bottom:2px solid var(--bd)">${th('Advertentie')}${th('Impr.',1)}${th('Kliks',1)}${th('CTR',1)}${th('Kosten',1)}${th('CPC',1)}${th('Leads',1)}${th('Meubel / verkoop')}</tr></thead>
