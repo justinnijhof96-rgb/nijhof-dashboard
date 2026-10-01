@@ -248,6 +248,9 @@ function _socialWrap(ctx,text,maxW,maxLines){
   if(overflow && lines.length){ let last=lines[lines.length-1]; while(last.length && ctx.measureText(last+'…').width>maxW) last=last.slice(0,-1); lines[lines.length-1]=last+'…'; }
   return lines;
 }
+// Weergavegrootte van de QR in de story. De code wordt op exact deze grootte gegenereerd en
+// 1-op-1 getekend; verkleinen van een grotere QR maakt de randen zacht en dan haakt de scanner af.
+var _QR_PX=200;
 function _socialQR(text,size){
   return new Promise((resolve,reject)=>{
     try{
@@ -297,9 +300,13 @@ function _socialKB(ctx,panel,prog,idx,W,fotoH){
 }
 // Tekst met extra letterafstand (voor het merk-label). Verwacht textAlign left + baseline top.
 function _socialSpaced(ctx,text,x,y,ls){ let cx=x; for(const ch of String(text)){ ctx.fillText(ch,cx,y); cx+=ctx.measureText(ch).width+ls; } }
-// WhatsApp click-to-chat link (scan → direct appen) met productcontext als voorvuld bericht.
+// WhatsApp click-to-chat link (scan → direct appen) met het artikelnummer als voorvuld bericht.
+// ⚠️ HOUD DEZE TEKST KORT. De volledige advertentietitel erin zetten maakte de QR zo dicht
+// (versie 13+, ~70 blokjes) dat hij op een telefoonscherm niet meer te scannen was (user 1 okt
+// 2026). Met het artikelnummer blijft hij rond versie 5 (~37 blokjes) en dus goed leesbaar.
 function _socialWaLink(p){
-  const txt=(p&&p.verkocht)?'Hoi Nijhof Brothers! Ik zoek een bank zoals: '+((p&&p.title)||'jullie verkochte bank'):'Hoi Nijhof Brothers! Ik heb interesse in: '+((p&&p.title)||'jullie meubel');
+  const nr=String((p&&p.handle)||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');
+  const txt=(p&&p.verkocht)?('Zoiets zoek ik'+(nr?': '+nr:'')):('Interesse in'+(nr?' '+nr:' jullie meubel'));
   return 'https://wa.me/31555690039?text='+encodeURIComponent(txt);
 }
 // Laadt tot 3 foto's (voor het filmpje), logo, merk-mark en QR één keer — hergebruikt voor foto én video.
@@ -318,7 +325,7 @@ async function _socialAssets(p){
   }
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
-  try{ a.qr=await _socialQR(_socialWaLink(p),300); }catch(_e){}
+  try{ a.qr=await _socialQR(_socialWaLink(p),_QR_PX); }catch(_e){}
   a.brand=_socialBrand(p);
   try{ a.grain=_socialGrain(); }catch(_e){}
   // hooguit 1,2 s wachten op de actuele Google-score; daarna gewoon doorgaan
@@ -348,7 +355,7 @@ function _socialQRMerk(ctx,a,cx,cy,qs){
 // Verkocht is donker met de foto over het hele beeld, Nieuw binnen blijft LICHT met de
 // foto bovenin en een papierkleurig infovlak eronder. Weg: de pulserende oranje gloed en
 // de schermvullende oranje eindkaart (user 1 okt 2026: niet schreeuwen).
-var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1570,FOTO_H:1000,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1570,FOTO_H:920,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
 function _socialDrawFrame(ctx,a,p,t,DUR){
   const W=_NB.W,H=_NB.H,M=_NB.M,OR=_NB.OR,INK=_NB.INK,PAP=_NB.PAPIER,FH=_NB.FOTO_H;
   DUR=DUR||8;
@@ -402,7 +409,7 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     let tl=_socialWrap(ctx,d.hoofd,maxW,2), tf=60, lh=70;
     if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=50; lh=60; ctx.font='800 50px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
     const hoogte=(a.brand?42:0)+tl.length*lh+(d.sub?46:0)+96+(feiten?44:0)+(ster?46:0);
-    let y=1390-hoogte;
+    let y=1330-hoogte;  // ruimte voor de grotere QR eronder
     if(a.brand){ ctx.font='800 30px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=42; }
     ctx.fillStyle=INK; ctx.font='800 '+tf+'px Sora, sans-serif';
     tl.forEach((l,i)=>ctx.fillText(l,M,y+i*lh)); y+=tl.length*lh;
@@ -424,16 +431,18 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   const fi=isStatic?1:ease((t-1.5)/0.6);
   if(fi>0){
     ctx.save(); ctx.globalAlpha=ov*fi;
-    if(a.qr){ const qs=140, qx=M, qy=_NB.BOT-qs;
-      _socialRR(ctx,qx-12,qy-12,qs+24,qs+24,14); ctx.fillStyle='#ffffff'; ctx.fill();
-      ctx.lineWidth=2; ctx.strokeStyle='rgba(36,36,36,0.12)'; _socialRR(ctx,qx-12,qy-12,qs+24,qs+24,14); ctx.stroke();
-      ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+    const qy=_NB.BOT-_QR_PX;
+    if(a.qr){ const qs=_QR_PX, qx=M;
+      _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.fillStyle='#ffffff'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='rgba(36,36,36,0.12)'; _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.stroke();
+      ctx.imageSmoothingEnabled=false; ctx.drawImage(a.qr,qx,qy,qs,qs); ctx.imageSmoothingEnabled=true;
+      _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
       ctx.textAlign='left'; ctx.textBaseline='top';
-      ctx.fillStyle=OR; ctx.font='800 24px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+34,qy+30,3);
-      ctx.fillStyle=_NB.GRIJS; ctx.font='600 29px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+34,qy+72);
+      ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+40,qy+60,3);
+      ctx.fillStyle=_NB.GRIJS; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+40,qy+104);
     }
     if(a.logo){ const lw=168, lsc=lw/a.logo.width, lh2=a.logo.height*lsc;
-      ctx.drawImage(a.logo,W-M-lw,_NB.BOT-lh2-6,lw,lh2); }
+      ctx.drawImage(a.logo,W-M-lw,qy+(_QR_PX-lh2)/2,lw,lh2); }
     ctx.restore();
   }
   // 7. filmkorrel
@@ -609,7 +618,7 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
     if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=52; lh=63; ctx.font='800 52px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
     const ster=(_GOOGLE&&_GOOGLE.sterren)?_GOOGLE.sterren:0;
     const hoogte=(a.brand?44:0)+tl.length*lh+(d.sub?50:0)+34+(feiten?48:0)+46+(ster?48:0);
-    let y=1380-hoogte;
+    let y=1330-hoogte;  // ruimte voor de grotere QR eronder
     if(a.brand){ ctx.font='800 32px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=44; }
     ctx.fillStyle=WIT; ctx.font='800 '+tf+'px Sora, sans-serif';
     tl.forEach((l,i)=>ctx.fillText(l,M,y+i*lh)); y+=tl.length*lh;
@@ -627,13 +636,14 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
   // 7. QR linksonder (rechts blijft vrij voor de Reels-knoppen), met het adres ernaast
   const fi=isStatic?1:ease((t-1.4)/0.6);
   if(a.qr&&fi>0){
-    const qs=150, qx=M, qy=_VK.BOT-qs;
+    const qs=_QR_PX, qx=M, qy=_VK.BOT-qs;
     ctx.save(); ctx.globalAlpha=ov*fi;
-    _socialRR(ctx,qx-12,qy-12,qs+24,qs+24,14); ctx.fillStyle=WIT; ctx.fill();
-    ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+    _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.fillStyle='#ffffff'; ctx.fill();
+    ctx.imageSmoothingEnabled=false; ctx.drawImage(a.qr,qx,qy,qs,qs); ctx.imageSmoothingEnabled=true;
+    _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
     ctx.textAlign='left'; ctx.textBaseline='top';
-    ctx.fillStyle=OR; ctx.font='800 24px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+38,qy+32,3);
-    ctx.fillStyle='rgba(250,247,242,0.82)'; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+38,qy+76);
+    ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+40,qy+62,3);
+    ctx.fillStyle='rgba(250,247,242,0.82)'; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+40,qy+106);
     ctx.restore();
   }
   // 8. filmkorrel over het geheel
