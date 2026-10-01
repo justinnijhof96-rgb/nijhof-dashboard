@@ -38,6 +38,7 @@
       '<div id="social-tabs" style="display:flex;gap:8px;margin-bottom:12px">' +
       '<button id="social-tab-nieuw" class="btn btn-or btn-sm" style="flex:1" onclick="socialModus(\'nieuw\')">🆕 Nieuw binnen</button>' +
       '<button id="social-tab-verkocht" class="btn btn-gy btn-sm" style="flex:1" onclick="socialModus(\'verkocht\')">✅ Verkocht</button>' +
+      '<button id="social-tab-review" class="btn btn-gy btn-sm" style="flex:1" onclick="socialModus(\'review\')">⭐ Review</button>' +
       '</div>' +
       '<div id="social-intro" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5">Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.</div>' +
       '<div id="social-grid"></div>' +
@@ -52,6 +53,18 @@
           '</div>' +
           '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-or btn-sm" onclick="socialDeel()" style="flex:1 1 auto">📲 Deel</button><button class="btn btn-gy btn-sm" onclick="socialDownload()" style="flex:1 1 auto">📥 Download</button></div>' +
           '<div style="font-size:11px;color:var(--gr);margin-top:10px" id="social-hint"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="review-ov" style="display:none;position:fixed;inset:0;z-index:620;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px">' +
+        '<div style="background:#fff;border-radius:16px;max-width:360px;width:100%;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="color:var(--nav);font-size:15px">✂️ Review inkorten</strong><button onclick="reviewInkortSluit()" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:var(--gr)">×</button></div>' +
+          '<div style="font-size:12px;color:var(--gr);line-height:1.5;margin-bottom:8px">Deze review is te lang voor één beeld. Haal er gerust stukken uit, maar <strong>laat de woorden van de klant staan</strong> — herschrijven doen we niet.</div>' +
+          '<textarea id="review-kort" style="width:100%;box-sizing:border-box;height:150px;resize:none;border:1px solid var(--bd);border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.45;color:var(--nav);font-family:inherit"></textarea>' +
+          '<div id="review-tel" style="font-size:11.5px;color:var(--gr);margin-top:5px"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:12px">' +
+            '<button class="btn btn-gy btn-sm" onclick="reviewHerstel()" style="flex:1">↺ Hele tekst</button>' +
+            '<button class="btn btn-or btn-sm" onclick="reviewInkortOk()" style="flex:1.4">Gebruik deze tekst</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(sc);
@@ -81,6 +94,7 @@
       '<div style="display:grid;gap:14px;max-width:460px;margin:0 auto">' +
       _contentKaart("nieuw", "🆕", "Nieuw binnen", "Story van je nieuwste bank uit de webshop", "#db2777") +
       _contentKaart("verkocht", "✅", "Verkocht", "Story van een bank die net verkocht is", "#0f766e") +
+      _contentKaart("review", "⭐", "Review", "Story van een Google-review van een klant", "#E87722") +
       '</div>' +
       '</main>';
     document.body.appendChild(sc);
@@ -88,22 +102,27 @@
   function _contentKaart(modus, ic, titel, sub, kleur) {
     return '<button type="button" onclick="openSocialModus(&#39;' + modus + '&#39;)" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--bd);border-left:5px solid ' + kleur + ';border-radius:14px;padding:16px;cursor:pointer;box-shadow:0 2px 6px rgba(30,47,58,.06)">' +
       '<span style="font-size:30px;line-height:1">' + ic + '</span>' +
-      '<span style="flex:1;min-width:0"><span style="display:block;font-size:17px;font-weight:800;color:var(--nav)">' + titel + '</span>' +
+      '<span style="flex:1;min-width:0"><span style="display:block;font-size:17px;font-weight:800;color:var(--nav)">' + titel +
+      (modus === "review" ? '<span data-review-stip style="display:none;margin-left:8px;background:#E87722;color:#fff;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;vertical-align:middle">nieuw</span>' : '') + '</span>' +
       '<span style="display:block;font-size:12.5px;color:var(--gr);margin-top:3px;line-height:1.35">' + sub + '</span></span>' +
       '<span style="color:var(--gr);font-size:22px">›</span></button>';
   }
-  function openContent() { injectContentScreen(); injectScreen(); toonScherm("screen-content"); }
+  function openContent() { injectContentScreen(); injectScreen(); toonScherm("screen-content"); try { _reviewStip(); } catch (_e) {} }
   function openSocialModus(m) {
     injectScreen(); toonScherm("screen-social");
-    try { socialModus(m === "verkocht" ? "verkocht" : "nieuw"); }
+    try { socialModus(m === "verkocht" || m === "review" ? m : "nieuw"); }
     catch (_e) { try { socialEnsure(); } catch (_e2) {} }
   }
   function openSocial() { openContent(); }
 
   /* ============ Story-generator (geport uit het dashboard) ============ */
 /* ── NIEUW BINNEN: branded story-generator uit nieuwste webshop-producten ── */
-let _social={producten:[],bezig:false,blob:null,canvas:null,laatste:null,mime:'',ext:'',modus:'nieuw',verkocht:[],vbezig:false};
-function socialEnsure(){ if(_social.modus==='verkocht'){ if(!_social.verkocht.length&&!_social.vbezig)verkochtLaad(); return; } if(!_social.producten.length && !_social.bezig) socialLaad(false); }
+let _social={producten:[],bezig:false,blob:null,canvas:null,laatste:null,mime:'',ext:'',modus:'nieuw',verkocht:[],vbezig:false,reviews:[],rbezig:false};
+function socialEnsure(){
+  if(_social.modus==='review'){ if(!_social.reviews.length&&!_social.rbezig)reviewLaad(false); return; }
+  if(_social.modus==='verkocht'){ if(!_social.verkocht.length&&!_social.vbezig)verkochtLaad(); return; }
+  if(!_social.producten.length && !_social.bezig) socialLaad(false);
+}
 async function socialLaad(force){
   const grid=el('social-grid'); if(!grid)return;
   if(_social.bezig)return; _social.bezig=true;
@@ -129,6 +148,93 @@ async function _nbFeitenErbij(prods){
     prods.forEach(p=>{ const a=m[p.handle]; if(a)p.feiten=_vkFeiten(a); });
   }catch(_e){ /* zonder feitenregel werkt de story gewoon */ }
 }
+/* ===================== REVIEW-FORMAT (derde format, 2 okt 2026) =====================
+   Bron: edge function google-beoordeling met {reviews:true}. Google's Places API geeft
+   maar 5 reviews terug en je kunt niet bladeren, daarom bewaart die functie alles in
+   tabel google_reviews en geeft ze het volledige archief terug. */
+const _REV_MAX=230;          // meer tekst past niet leesbaar in één beeld
+const _RGEZIEN='nb-reviews-gezien';
+async function reviewLaad(force){
+  const grid=el('social-grid'); if(!grid)return;
+  if(_social.rbezig)return; _social.rbezig=true;
+  if(_social.modus==='review')grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">⏳ Reviews ophalen bij Google…</div>';
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/google-beoordeling',{method:'POST',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},body:JSON.stringify({reviews:true,ververs:!!force})});
+    const j=await res.json().catch(()=>({}));
+    if(j&&j.fout)throw new Error(j.fout);
+    _social.reviews=Array.isArray(j.reviews)?j.reviews:[];
+    if(j&&j.score>0){ _googleZet(j); try{ localStorage.setItem(_GKEY,JSON.stringify({score:j.score,aantal:j.aantal,ts:Date.now()})); }catch(_e){} }
+    try{ localStorage.setItem(_RGEZIEN,String((j&&j.aantal)||_social.reviews.length)); }catch(_e){}
+    _reviewStip();
+    if(_social.modus==='review')reviewRenderGrid();   // intussen van tab gewisseld? niet overschrijven
+  }catch(e){ if(_social.modus==='review')grid.innerHTML='<div style="padding:18px;color:var(--rd);background:#fef2f2;border:1px solid #fecaca;border-radius:10px">Kon reviews niet laden: '+esc(String(e.message||e))+'</div>'; }
+  finally{ _social.rbezig=false; }
+}
+function _revTekst(r){ return (r&&r.tekst_kort&&r.tekst_kort.trim())||(r&&r.tekst)||''; }
+function _revNaam(r){ return (((r&&r.voornaam)||'')+' '+((r&&r.initiaal)||'')).trim()||(r&&r.naam)||'Een klant'; }
+function reviewRenderGrid(){
+  const grid=el('social-grid'); if(!grid)return;
+  if(!_social.reviews.length){ grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">Nog geen reviews gevonden.</div>'; return; }
+  let h='<div style="display:grid;gap:12px">';
+  _social.reviews.forEach((r,i)=>{
+    const t=_revTekst(r), lang=t.length>_REV_MAX;
+    h+='<div style="border:1px solid var(--bd);border-radius:12px;background:#fff;padding:12px 13px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<span style="color:#E87722;font-size:14px;letter-spacing:1px">'+'★'.repeat(Math.max(1,Math.min(5,r.sterren||5)))+'</span>'
+        +'<strong style="font-size:13px;color:var(--nav)">'+esc(_revNaam(r))+'</strong>'
+        +'<span style="font-size:11.5px;color:var(--gr);margin-left:auto">'+esc(r.wanneer||'')+'</span>'
+      +'</div>'
+      +'<div style="font-size:12.5px;color:var(--nav);line-height:1.45;max-height:56px;overflow:hidden">'+esc(t)+'</div>'
+      +'<div style="font-size:11px;color:'+(lang?'#b45309':'var(--gr)')+';margin:6px 0 9px">'+t.length+' tekens'+(lang?' — te lang voor één beeld':'')+(r.gepost_op?' · ✅ al gepost':'')+'</div>'
+      +'<div style="display:flex;gap:6px">'
+        +'<button class="btn btn-gy btn-sm" style="flex:0 0 auto;padding-left:12px;padding-right:12px" onclick="reviewInkort('+i+')" title="Inkorten">✂️</button>'
+        +'<button class="btn btn-gy btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="reviewMaak('+i+',\'foto\')">📷 Foto</button>'
+        +'<button class="btn btn-or btn-sm" style="flex:1;padding-left:4px;padding-right:4px" onclick="reviewMaak('+i+',\'video\')">🎬 Video</button>'
+      +'</div></div>';
+  });
+  grid.innerHTML=h+'</div>';
+}
+let _revIdx=-1;
+function reviewInkort(i){
+  _revIdx=i; const r=_social.reviews[i]; if(!r)return;
+  const ov=el('review-ov'), ta=el('review-kort'); if(!ov||!ta)return;
+  ta.value=_revTekst(r); ov.style.display='flex'; ta.oninput=_revTel; _revTel();
+}
+function _revTel(){
+  const ta=el('review-kort'), t=el('review-tel'); if(!ta||!t)return;
+  const l=ta.value.trim().length;
+  t.innerHTML=l+' tekens — '+(l<=_REV_MAX?'<span style="color:#15803d;font-weight:700">past</span>':'<span style="color:#b45309;font-weight:700">nog '+(l-_REV_MAX)+' te veel</span>');
+}
+function reviewHerstel(){ const r=_social.reviews[_revIdx], ta=el('review-kort'); if(r&&ta){ ta.value=r.tekst||''; _revTel(); } }
+function reviewInkortSluit(){ const ov=el('review-ov'); if(ov)ov.style.display='none'; }
+async function reviewInkortOk(){
+  const r=_social.reviews[_revIdx], ta=el('review-kort'); if(!r||!ta)return;
+  const t=ta.value.trim();
+  r.tekst_kort=(t&&t!==r.tekst)?t:null;
+  reviewInkortSluit(); reviewRenderGrid();
+  try{ await fetch(SUPABASE_URL+'/functions/v1/google-beoordeling',{method:'POST',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},body:JSON.stringify({bewaar:r.id,tekst_kort:r.tekst_kort})}); }catch(_e){}
+}
+// Van een review-rij een 'product' maken, zodat de hele story-pijplijn hergebruikt wordt.
+function _reviewProduct(r){
+  return {review:true,sterren:Math.max(1,Math.min(5,r.sterren||5)),tekst:_revTekst(r),naam:_revNaam(r),
+    wanneer:r.wanneer||'',id:r.id,handle:'review-'+String(r.voornaam||'klant').toLowerCase().replace(/[^a-z0-9]/g,''),
+    title:_revNaam(r),images:[],image:null,tags:[],vendor:'',url:'https://nijhofbrothers.nl'};
+}
+function reviewMaak(i,soort){
+  const r=_social.reviews[i]; if(!r)return;
+  if(_revTekst(r).length>_REV_MAX){ reviewInkort(i); toast('Deze review is te lang — kort ’m eerst in','#b45309'); return; }
+  socialMaak(i,soort);
+  // als gepost markeren, zodat je in het overzicht ziet welke al geweest zijn
+  try{ fetch(SUPABASE_URL+'/functions/v1/google-beoordeling',{method:'POST',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},body:JSON.stringify({markeer:r.id,gepost:true})}); r.gepost_op=new Date().toISOString(); }catch(_e){}
+}
+// Stip bij Content zodra Google meer reviews telt dan je voor het laatst zag.
+function _reviewNieuw(){
+  try{ const g=parseInt(localStorage.getItem(_RGEZIEN)||'0',10)||0; const nu=(_GOOGLE&&_GOOGLE.aantal)||0; return (g&&nu>g)?(nu-g):0; }catch(_e){ return 0; }
+}
+function _reviewStip(){
+  const n=_reviewNieuw();
+  document.querySelectorAll('[data-review-stip]').forEach(e=>{ e.style.display=n?'inline-block':'none'; e.textContent=n>1?(n+' nieuw'):'nieuw'; });
+}
 function socialRenderGrid(){
   const grid=el('social-grid'); if(!grid)return;
   if(!_social.producten.length){ grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">Geen webshop-producten gevonden.</div>'; return; }
@@ -147,19 +253,21 @@ function socialRenderGrid(){
 }
 /* ── VERKOCHT: branded story van een verkochte bank (laat zien dat het loopt: weg = weg) ── */
 function socialModus(m){
-  _social.modus=(m==='verkocht')?'verkocht':'nieuw';
-  const v=_social.modus==='verkocht';
-  const tn=el('social-tab-nieuw'), tv=el('social-tab-verkocht');
-  if(tn)tn.className='btn btn-sm '+(v?'btn-gy':'btn-or');
-  if(tv)tv.className='btn btn-sm '+(v?'btn-or':'btn-gy');
-  const ti=el('social-titel'); if(ti)ti.innerHTML=(v?'VERKOCHT':'NIEUW BINNEN')+' <small>Story maken &amp; delen</small>';
-  const it=el('social-intro'); if(it)it.innerHTML=v
-    ?'Kies een verkochte bank en ik maak er een <strong>branded &quot;VERKOCHT&quot;-story</strong> van: de foto met een verkocht-stempel, hoe snel hij weg was en een QR om te appen. Deel &#39;m met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.'
-    :'Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.';
-  if(v){ if(_social.verkocht.length)verkochtRenderGrid(); else verkochtLaad(); }
+  _social.modus=(m==='verkocht'||m==='review')?m:'nieuw';
+  const mo=_social.modus;
+  const tabs={nieuw:el('social-tab-nieuw'),verkocht:el('social-tab-verkocht'),review:el('social-tab-review')};
+  Object.keys(tabs).forEach(k=>{ if(tabs[k])tabs[k].className='btn btn-sm '+(mo===k?'btn-or':'btn-gy'); });
+  const ti=el('social-titel'); if(ti)ti.innerHTML={nieuw:'NIEUW BINNEN',verkocht:'VERKOCHT',review:'REVIEW'}[mo]+' <small>Story maken &amp; delen</small>';
+  const it=el('social-intro'); if(it)it.innerHTML={
+    nieuw:'Kies je nieuwste webshop-product en ik maak er een <strong>branded &quot;NIEUW BINNEN&quot;-story</strong> van (foto of video + logo + prijs + QR naar de productpagina). Deel &#39;m daarna met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.',
+    verkocht:'Kies een verkochte bank en ik maak er een <strong>branded &quot;VERKOCHT&quot;-story</strong> van: de foto met een verkocht-stempel en een QR om te appen. Deel &#39;m met &eacute;&eacute;n tik naar WhatsApp Status, Instagram of je Kanaal.',
+    review:'Je Google-reviews, rechtstreeks opgehaald. Kies er één en ik maak er een <strong>branded review-story</strong> van. Te lang voor één beeld? Kort ’m zelf in met ✂️ — de woorden blijven van de klant.'
+  }[mo];
+  if(mo==='review'){ if(_social.reviews.length)reviewRenderGrid(); else reviewLaad(false); }
+  else if(mo==='verkocht'){ if(_social.verkocht.length)verkochtRenderGrid(); else verkochtLaad(); }
   else { if(_social.producten.length)socialRenderGrid(); else socialLaad(false); }
 }
-function socialVerversen(){ if(_social.modus==='verkocht')verkochtLaad(); else socialLaad(true); }
+function socialVerversen(){ if(_social.modus==='review')reviewLaad(true); else if(_social.modus==='verkocht')verkochtLaad(); else socialLaad(true); }
 async function _vkRest(pad){
   const res=await fetch(SUPABASE_URL+'/rest/v1/'+pad,{headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON)}});
   if(!res.ok)throw new Error('HTTP '+res.status);
@@ -309,7 +417,7 @@ function _socialWaLink(p){
   // artikelnummer eruit halen, anders wordt de QR weer veel te dicht om te scannen.
   const h=String((p&&p.handle)||'').toUpperCase(), m=h.match(/NB-[0-9]+/);
   const nr=m?m[0]:'';
-  const txt=(p&&p.verkocht)?('Zoiets zoek ik'+(nr?': '+nr:'')):('Interesse in'+(nr?' '+nr:' jullie meubel'));
+  const txt=(p&&p.review)?'Ik zoek ook een bank':((p&&p.verkocht)?('Zoiets zoek ik'+(nr?': '+nr:'')):('Interesse in'+(nr?' '+nr:' jullie meubel')));
   return 'https://wa.me/31555690039?text='+encodeURIComponent(txt);
 }
 // Laadt tot 3 foto's (voor het filmpje), logo, merk-mark en QR één keer — hergebruikt voor foto én video.
@@ -460,6 +568,81 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.restore();
   }
   // 7. filmkorrel
+  _vkKorrel(ctx,a);
+}
+// ── REVIEW-story: tekstgedreven en gecentreerd ─────────────────────────
+// Derde format (user 2 okt 2026). Zelfde systeem als de andere twee — veilige zones,
+// warm papier, oranje als accent, filmkorrel, QR linksonder, sluitende lus — maar zonder
+// productfoto en als enige GECENTREERD, zodat je 'm meteen herkent tussen de andere twee.
+var _RV={W:1080,H:1920,M:90,TOP:300,BOT:1570,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+function _reviewDrawFrame(ctx,a,p,t,DUR){
+  const W=_RV.W,H=_RV.H,M=_RV.M,OR=_RV.OR,INK=_RV.INK,PAP=_RV.PAPIER;
+  DUR=DUR||6;
+  const isStatic=t>=900;
+  const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
+  const LOOP=0.8, SHOW=Math.max(1,DUR-LOOP);
+  ctx.fillStyle=PAP; ctx.fillRect(0,0,W,H);
+  const ov=isStatic?1:(t>=SHOW?Math.max(0,1-ease((t-SHOW)/(LOOP*0.6))):1);
+  // merk bovenaan, gecentreerd (Verkocht heeft 'm linksboven, Nieuw binnen rechtsonder)
+  if(a.logo){ const lw=180,lsc=lw/a.logo.width,lh=a.logo.height*lsc;
+    ctx.save(); ctx.globalAlpha=ov; ctx.drawImage(a.logo,(W-lw)/2,_RV.TOP,lw,lh); ctx.restore(); }
+  if(ov<=0.002){ _vkKorrel(ctx,a); return; }
+  // groot aanhalingsteken als rustig accent
+  ctx.save(); ctx.globalAlpha=ov*0.16; ctx.fillStyle=OR; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font='800 230px Sora, sans-serif'; ctx.fillText('“',W/2,470); ctx.restore();
+  // tekstblok opmeten: lettergrootte zakt tot het past
+  const tekst=String(p.tekst||'');
+  let qf=64,qlh=88,ql=[];
+  for(const f of [64,57,51,45,40,36]){
+    qf=f; qlh=Math.round(f*1.36); ctx.font='600 '+f+'px Inter, sans-serif';
+    ql=_socialWrap(ctx,'“'+tekst+'”',W-2*M,8);
+    // past het binnen 8 regels én binnen de hoogte tussen logo en QR? dan deze maat houden
+    if(!/…$/.test(ql[ql.length-1]||'') && (64+54+ql.length*qlh+56+46+34)<=880) break;
+  }
+  const hSter=64, hNaam=46, hVia=34;
+  const totaal=hSter+54+ql.length*qlh+56+hNaam+hVia;
+  let y=Math.max(620,Math.round(920-(totaal/2)));  // 920 = midden tussen logo (~470) en QR (1370)
+  // sterren: landen één voor één
+  const nst=Math.max(1,Math.min(5,p.sterren||5)), rr=26, st=rr*2+16, breed=nst*st-16;
+  for(let i=0;i<nst;i++){
+    const si=isStatic?1:ease((t-(0.3+i*0.12))/0.35);
+    if(si<=0)continue;
+    ctx.save(); ctx.globalAlpha=ov*si;
+    const cx=(W-breed)/2+rr+i*st, cy=y+rr+(1-si)*14, sc=0.8+0.2*si;
+    ctx.translate(cx,cy); ctx.scale(sc,sc); ctx.fillStyle=OR; _vkSter(ctx,0,0,rr); ctx.restore();
+  }
+  y+=hSter+54;
+  // de review zelf
+  const qi=isStatic?1:ease((t-0.95)/0.6);
+  if(qi>0){
+    ctx.save(); ctx.globalAlpha=ov*qi; ctx.translate(0,14*(1-qi));
+    ctx.fillStyle=INK; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='600 '+qf+'px Inter, sans-serif';
+    ql.forEach((l,i)=>ctx.fillText(l,W/2,y+i*qlh));
+    ctx.restore();
+  }
+  y+=ql.length*qlh+56;
+  // naam + bron
+  const ni=isStatic?1:ease((t-1.5)/0.5);
+  if(ni>0){
+    ctx.save(); ctx.globalAlpha=ov*ni; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillStyle=OR; ctx.font='800 38px Sora, sans-serif'; ctx.fillText('— '+(p.naam||'Een klant'),W/2,y);
+    ctx.fillStyle=_RV.GRIJS; ctx.font='600 27px Inter, sans-serif';
+    ctx.fillText('via Google'+(p.wanneer?' · '+p.wanneer:''),W/2,y+hNaam);
+    ctx.restore();
+  }
+  // QR linksonder, zelfde onderbalk als de andere formats
+  const fi=isStatic?1:ease((t-1.8)/0.6);
+  if(a.qr&&fi>0){ const qs=_QR_PX, qx=M, qy=_RV.BOT-qs;
+    ctx.save(); ctx.globalAlpha=ov*fi;
+    _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.fillStyle='#ffffff'; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(36,36,36,0.12)'; _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.stroke();
+    ctx.imageSmoothingEnabled=false; ctx.drawImage(a.qr,qx,qy,qs,qs); ctx.imageSmoothingEnabled=true;
+    _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+40,qy+60,3);
+    ctx.fillStyle=_RV.GRIJS; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+40,qy+104);
+    ctx.restore();
+  }
   _vkKorrel(ctx,a);
 }
 // ── VERKOCHT-story: eigen ontwerp, bewust anders dan Nieuw binnen ────────
@@ -663,11 +846,14 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
   // 8. filmkorrel over het geheel
   _vkKorrel(ctx,a);
 }
+// Elk format heeft een eigen tekenfunctie en een eigen lengte.
+function _socialTeken(p){ return p&&p.review?_reviewDrawFrame:(p&&p.verkocht?_verkochtDrawFrame:_socialDrawFrame); }
+function _socialDuur(p){ return p&&p.review?6:(p&&p.verkocht?7:8); }
 async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
   try{ await document.fonts.ready; }catch(_e){}
-  (p.verkocht?_verkochtDrawFrame:_socialDrawFrame)(canvas.getContext('2d'),a,p,999,p.verkocht?7:8);
+  _socialTeken(p)(canvas.getContext('2d'),a,p,999,_socialDuur(p));
   return canvas;
 }
 // Laadt de mp4-muxer lib pas wanneer nodig (video maken)
@@ -690,7 +876,7 @@ async function _pickAvcConfig(W,H,FPS){
 async function _socialVideo(p,onProgress){
   if(typeof VideoEncoder==='undefined')throw new Error('Dit toestel kan geen video in de browser maken — gebruik de foto-optie.');
   const M=await _ensureMuxer();
-  const W=1080,H=1920,FPS=30,DUR=p.verkocht?7:8,TOTAL=Math.round(FPS*DUR);  // Verkocht is korter en heeft een eigen opbouw
+  const W=1080,H=1920,FPS=30,DUR=_socialDuur(p),TOTAL=Math.round(FPS*DUR);  // Verkocht is korter en heeft een eigen opbouw
   const a=await _socialAssets(p);
   try{ await document.fonts.ready; }catch(_e){}
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H; const ctx=canvas.getContext('2d');
@@ -702,7 +888,7 @@ async function _socialVideo(p,onProgress){
   for(let f=0;f<TOTAL;f++){
     if(encErr)throw encErr;
     const t=f/FPS;
-    (p.verkocht?_verkochtDrawFrame:_socialDrawFrame)(ctx,a,p,t,DUR);
+    _socialTeken(p)(ctx,a,p,t,DUR);
     const frame=new VideoFrame(canvas,{timestamp:Math.round(t*1e6),duration:Math.round(1e6/FPS)});
     enc.encode(frame,{keyFrame:f%30===0}); frame.close();
     if(onProgress&&f%5===0)onProgress(f/TOTAL);
@@ -713,11 +899,14 @@ async function _socialVideo(p,onProgress){
   return new Blob([target.buffer],{type:'video/mp4'});
 }
 async function socialMaak(i,type){
-  const p=(_social.modus==='verkocht'?_social.verkocht:_social.producten)[i]; if(!p)return; type=type||'foto';
+  let p;
+  if(_social.modus==='review'){ const r=_social.reviews[i]; p=r?_reviewProduct(r):null; }
+  else p=(_social.modus==='verkocht'?_social.verkocht:_social.producten)[i];
+  if(!p)return; type=type||'foto';
   _social.laatste=p; _social.blob=null; _social.canvas=null; _social.mime=''; _social.ext='';
   { const ct=el('social-cap-text'), cw=el('social-cap-wrap'), cb=el('social-cap-btn'); if(ct)ct.value=_socialCaption(); if(cb)cb.textContent='📋 Kopieer'; if(cw)cw.style.display='block'; }
   const ov=el('social-ov'); if(ov)ov.style.display='flex';
-  { const ot=el('social-ov-titel'); if(ot)ot.textContent=p.verkocht?'✅ Verkocht-story':'🆕 Story-voorbeeld'; }
+  { const ot=el('social-ov-titel'); if(ot)ot.textContent=p.review?'⭐ Review-story':(p.verkocht?'✅ Verkocht-story':'🆕 Story-voorbeeld'); }
   const prev=el('social-prev'), hint=el('social-hint');
   if(hint)hint.textContent='Kopieer het bijschrift hieronder met 📋, tik dan 📲 Deel (of 📥 Download) en plak het in je post.';
   if(type==='video'){
@@ -737,8 +926,9 @@ async function socialMaak(i,type){
     canvas.toBlob(b=>{ _social.blob=b; _social.mime='image/png'; _social.ext='png'; if(!b&&hint)hint.textContent='⚠️ Deze foto kon niet geëxporteerd worden (bron blokkeert export). Probeer een ander product.'; },'image/png');
   }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de story niet maken: '+esc(String(e.message||e))+'</div>'; }
 }
-function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.verkocht?'verkocht-':'nieuw-binnen-')+(p.handle||'story')+'.'+(_social.ext||'png'); }
-function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Deze is weg.\n'+p.title+(p.feiten?'\n'+p.feiten:'')+'\n\nZoek je iets vergelijkbaars? Stuur ons gerust een berichtje — we hebben er vaak meerdere staan.\n'+p.url; return 'Nieuw binnen.\n'+p.title+' — '+eur(p.price)+(p.feiten?'\n'+p.feiten:'')+'\n\nÉén exemplaar. Bekijk hem op de website of stuur ons gerust een berichtje.\n'+p.url; }
+function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.review?'':(p.verkocht?'verkocht-':'nieuw-binnen-'))+(p.handle||'story')+'.'+(_social.ext||'png'); }
+function _socialCaption(){ const p=_social.laatste; if(!p)return '';
+  if(p.review)return '“'+p.tekst+'”\n— '+p.naam+', via Google\n\nDank je wel. Zelf op zoek naar een bank? Kom gerust langs in Apeldoorn of stuur ons een berichtje.\nhttps://nijhofbrothers.nl'; if(p.verkocht)return 'Deze is weg.\n'+p.title+(p.feiten?'\n'+p.feiten:'')+'\n\nZoek je iets vergelijkbaars? Stuur ons gerust een berichtje — we hebben er vaak meerdere staan.\n'+p.url; return 'Nieuw binnen.\n'+p.title+' — '+eur(p.price)+(p.feiten?'\n'+p.feiten:'')+'\n\nÉén exemplaar. Bekijk hem op de website of stuur ons gerust een berichtje.\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
   if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
@@ -783,6 +973,14 @@ function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none';
   window.socialDownload = socialDownload;
   window.socialKopieer = socialKopieer;
   window.socialSluit = socialSluit;
+  // Review-format: deze worden vanuit inline onclick in het overzicht aangeroepen,
+  // dus ze MOETEN aan window hangen (de rest van de module zit in een IIFE).
+  window.reviewMaak = reviewMaak;
+  window.reviewInkort = reviewInkort;
+  window.reviewInkortOk = reviewInkortOk;
+  window.reviewInkortSluit = reviewInkortSluit;
+  window.reviewHerstel = reviewHerstel;
+  window.reviewLaad = reviewLaad;
 
   /* ---- Opstarten ---- */
   function boot() { try { injectKeuzeKnop(); injectScreen(); _googleLaad(); } catch (e) { console.warn("Nieuw binnen init:", e); } }
