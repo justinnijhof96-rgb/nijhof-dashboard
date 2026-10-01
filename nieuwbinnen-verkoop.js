@@ -153,9 +153,8 @@ async function _vkRest(pad){
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.json();
 }
-// Dagen tussen online zetten en verkoop → korte, trotse tekst. Stond hij langer dan 14 dagen,
-// dan "Alweer verkocht!", zodat een post nooit laat zien dat iets lang bleef staan.
-function _vkDagenTekst(d){ if(d==null||d>14)return 'Alweer verkocht!'; if(d<=0)return 'Dezelfde dag verkocht'; return 'In '+d+(d===1?' dag':' dagen')+' verkocht'; }
+// Dagen tussen online zetten en verkoop: alleen ter info in het overzicht, NIET in de story
+// (user 1 okt 2026: de story mag niet beschrijven "in tien dagen verkocht").
 async function verkochtLaad(){
   const grid=el('social-grid'); if(!grid)return;
   if(_social.vbezig)return; _social.vbezig=true;
@@ -182,7 +181,7 @@ async function verkochtLaad(){
       let d=null;
       if(eigen&&eigen.gepubliceerd_op){ d=Math.round((Date.parse(v.datum+'T12:00:00')-Date.parse(String(eigen.gepubliceerd_op).slice(0,10)+'T12:00:00'))/864e5); if(!(d>=0))d=null; }
       lijst.push({verkocht:true,title:(a&&a.ai_titel&&a.ai_titel.trim())||it.naam||'Meubel',images:imgs.slice(0,3),image:imgs[0],
-        vendor:(a&&a.merk)||'',tags:[],handle:String(it.artikelnummer||'story').toLowerCase(),datum:v.datum,dagen:d,dagenTekst:_vkDagenTekst(d),
+        vendor:(a&&a.merk)||'',tags:[],handle:String(it.artikelnummer||'story').toLowerCase(),datum:v.datum,dagen:d,
         url:'https://nijhofbrothers.nl/collections/occasions'});
     });
     _social.verkocht=lijst;
@@ -295,7 +294,9 @@ async function _socialAssets(p){
   const srcs=(Array.isArray(p.images)&&p.images.length?p.images:[p.image]).filter(Boolean).slice(0,3);
   const loaded=await Promise.all(srcs.map(s=>{ const src=s+(String(s).indexOf('?')>=0?'&':'?')+'_cb=cors'; return _socialImg(src,true).catch(()=>null); }));
   a.imgs=loaded.filter(Boolean);
-  if(a.imgs.length){ a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,Math.round(1920*0.62)); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null; }
+  // Verkocht-story gebruikt de VOLLE hoogte; Nieuw binnen het fotovlak van 62%
+  const _ph=(p&&p.verkocht)?1920:Math.round(1920*0.62);
+  if(a.imgs.length){ a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,_ph); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null; }
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
   try{ a.qr=await _socialQR(_socialWaLink(p),300); }catch(_e){}
@@ -341,19 +342,6 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   const gl=0.30+0.65*(0.5-0.5*Math.cos(2*Math.PI*(isStatic?0.9:t)/1.8));
   ctx.save(); ctx.globalAlpha=gl; ctx.strokeStyle=OR; ctx.lineWidth=26; ctx.shadowColor=OR; ctx.shadowBlur=44; ctx.strokeRect(15,15,W-30,fotoH-30); ctx.restore();
   ctx.fillStyle=OR; ctx.fillRect(0,fotoH,W,10);
-  // VERKOCHT-stempel schuin over de foto; in de video 'slaat' hij erop na ±1 seconde
-  if(p.verkocht){
-    const sp=isStatic?1:ease((t-0.9)/0.35);
-    if(sp>0){
-      ctx.save(); ctx.globalAlpha=Math.min(1,sp*1.2); ctx.translate(W/2,fotoH*0.5); ctx.rotate(-0.17); const ssc=1+0.6*(1-sp); ctx.scale(ssc,ssc);
-      ctx.font='800 124px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      const stt='VERKOCHT', stw=ctx.measureText(stt).width+120, sth=200;
-      _socialRR(ctx,-stw/2,-sth/2,stw,sth,26); ctx.fillStyle='rgba(255,255,255,0.93)'; ctx.fill();
-      ctx.lineWidth=12; ctx.strokeStyle=OR; _socialRR(ctx,-stw/2,-sth/2,stw,sth,26); ctx.stroke();
-      ctx.fillStyle=OR; ctx.fillText(stt,0,6);
-      ctx.restore(); ctx.textAlign='left'; ctx.textBaseline='top';
-    }
-  }
   // --- info-vlak ---
   ctx.textAlign='left'; ctx.textBaseline='top';
   let y=fotoH+42;
@@ -370,33 +358,119 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.fillStyle=GREY; ctx.font='600 30px Inter, sans-serif'; ctx.textAlign='center'; ctx.fillText('nijhofbrothers.nl',qx+qs/2,qy+qs+18); ctx.textAlign='left'; }
   // prijs — schuift van links in (groot, oranje)
   const pin=isStatic?1:ease((t-1.4)/0.45);
-  // Bij VERKOCHT staat hier "In X dagen verkocht" (max. 2 regels) in plaats van de prijs
-  let vLines=null; if(p.verkocht){ ctx.font='800 72px Sora, sans-serif'; vLines=_socialWrap(ctx,p.dagenTekst||'Alweer verkocht!',600,2); }
   if(pin>0){
-    ctx.save(); ctx.globalAlpha=pin; ctx.textAlign='left'; ctx.textBaseline='top';
-    if(vLines){
-      ctx.font='800 72px Sora, sans-serif';
-      const vw=Math.max(...vLines.map(l=>ctx.measureText(l).width)), startX=-vw-120, x=startX+(70-startX)*pin;
-      ctx.fillStyle=OR; vLines.forEach((l,i)=>ctx.fillText(l,x,prijsY+i*82));
-    } else {
-      ctx.font='800 96px Sora, sans-serif';
-      const ptxt=eur(p.price), startX=-ctx.measureText(ptxt).width-120, x=startX+(70-startX)*pin;
-      ctx.fillStyle=OR; ctx.fillText(ptxt,x,prijsY);
-    }
+    ctx.save(); ctx.globalAlpha=pin; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.font='800 96px Sora, sans-serif';
+    const ptxt=eur(p.price), startX=-ctx.measureText(ptxt).width-120, x=startX+(70-startX)*pin;
+    ctx.fillStyle=OR; ctx.fillText(ptxt,x,prijsY);
     ctx.restore();
   }
   // volledig Nijhof Brothers-logo linksonder
-  if(a.logo){ const lw=190, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=prijsY+(vLines?vLines.length*82+46:128); ctx.drawImage(a.logo,70,ly,lw,lh); }
+  if(a.logo){ const lw=190, sc=lw/a.logo.width, lh=a.logo.height*sc, ly=prijsY+128; ctx.drawImage(a.logo,70,ly,lw,lh); }
   // badge NIEUW BINNEN
-  if(!p.verkocht&&(isStatic||t>=0.5)){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
+  if(isStatic||t>=0.5){ const bp=isStatic?1:ease((t-0.5)/0.35); ctx.save(); ctx.globalAlpha=bp; ctx.font='800 46px Sora, sans-serif'; ctx.textBaseline='middle'; const btxt='NIEUW BINNEN',bpad=34,bw=ctx.measureText(btxt).width+bpad*2,bh=94,bx=54,by=200,sc=0.9+0.1*bp; ctx.translate(bx,by+bh/2-10*(1-bp)); ctx.scale(sc,sc); _socialRR(ctx,0,-bh/2,bw,bh,18); ctx.fillStyle=OR; ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(btxt,bpad,2); ctx.restore(); }
   // CTA-eindkaart (alleen video, laatste ~3,5s): oranje sluier over de foto + witte CTA
   if(!isStatic && t>=PHOTO_DUR-0.3){
     const cp=ease((t-(PHOTO_DUR-0.3))/0.5);
     ctx.save(); ctx.globalAlpha=cp*0.92; ctx.fillStyle=OR; ctx.fillRect(0,0,W,fotoH); ctx.restore();
     ctx.save(); ctx.globalAlpha=cp; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='800 82px Sora, sans-serif'; ctx.fillText(p.verkocht?'Ook zo’n bank?':'Interesse?',W/2,fotoH*0.34);
-    ctx.font='800 48px Sora, sans-serif'; ctx.fillText(p.verkocht?'Kijk op nijhofbrothers.nl':'App of ga naar nijhofbrothers.nl',W/2,fotoH*0.34+112);
-    ctx.font='700 42px Inter, sans-serif'; ctx.fillText(p.verkocht?'of stuur ons een appje':'🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
+    ctx.font='800 82px Sora, sans-serif'; ctx.fillText('Interesse?',W/2,fotoH*0.34);
+    ctx.font='800 48px Sora, sans-serif'; ctx.fillText('App of ga naar nijhofbrothers.nl',W/2,fotoH*0.34+112);
+    ctx.font='700 42px Inter, sans-serif'; ctx.fillText('🚚 Bezorging door heel Nederland',W/2,fotoH*0.34+190);
+    ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
+  }
+}
+// ── VERKOCHT-story: eigen ontwerp, bewust anders dan Nieuw binnen ──────────
+// Foto over het HELE beeld (hele bank zichtbaar via het blur-paneel), stempel hoog in
+// beeld, donkere verloopband onderaan met merk, titel en oproep; logo links, QR rechts.
+// Geen prijs en geen "in X dagen verkocht" (user 1 okt 2026: niet beschrijven, en niet
+// dezelfde opmaak als de nieuwe-voorraadpost).
+function _verkochtKB(ctx,panel,prog,idx,W,H){
+  const p=Math.max(0,Math.min(1,prog));
+  const sc=1.14-0.12*p, dw=W*sc, dh=H*sc, mx=(dw-W)/2, my=(dh-H)/2;  // uitzoomen (Nieuw binnen zoomt juist in)
+  const dir=(idx%2===0)?1:-1;
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
+  ctx.drawImage(panel,-mx,-my+dir*my*(p-0.5)*0.6,dw,dh);
+  ctx.restore();
+}
+function _verkochtDrawFrame(ctx,a,p,t,DUR){
+  const W=1080,H=1920,OR='#E87722';
+  DUR=DUR||7;
+  const isStatic=t>=900;
+  const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
+  const CTA_DUR=2.2, FOTO_DUR=Math.max(1,DUR-CTA_DUR);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+  // 1. foto vult het beeld; in de video wisselen foto's met een SCHUIF (geen crossfade)
+  const panels=(a.panels&&a.panels.length)?a.panels:(a.panel?[a.panel]:[]);
+  if(isStatic){ if(panels[0])ctx.drawImage(panels[0],0,0,W,H); else if(a.img)_socialCover(ctx,a.img,0,0,W,H); }
+  else if(panels.length){
+    const N=panels.length, slot=FOTO_DUR/N, SL=Math.min(0.45,slot*0.3);
+    let idx=Math.floor(t/slot); if(idx>N-1)idx=N-1; if(idx<0)idx=0;
+    const lok=t-idx*slot;
+    _verkochtKB(ctx,panels[idx],Math.min(1,lok/slot),idx,W,H);
+    if(idx<N-1&&lok>slot-SL){
+      const f=ease((lok-(slot-SL))/SL);
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); ctx.translate(W*(1-f),0);
+      _verkochtKB(ctx,panels[idx+1],0,idx+1,W,H);
+      ctx.restore();
+    }
+  } else if(a.img){ _socialCover(ctx,a.img,0,0,W,H); }
+  // 2. donkere verloopband onderaan: tekst blijft leesbaar op elke foto
+  const bandTop=H*0.46;
+  const g=ctx.createLinearGradient(0,bandTop,0,H);
+  g.addColorStop(0,'rgba(20,24,28,0)'); g.addColorStop(0.45,'rgba(20,24,28,0.72)'); g.addColorStop(1,'rgba(20,24,28,0.94)');
+  ctx.fillStyle=g; ctx.fillRect(0,bandTop,W,H-bandTop);
+  // 3. VERKOCHT-stempel slaat erop, met korte witte flits in de video
+  const sp=isStatic?1:ease((t-0.55)/0.3);
+  if(sp>0){
+    const over=isStatic?1:(1+0.5*(1-sp));
+    ctx.save(); ctx.globalAlpha=Math.min(1,sp*1.3); ctx.translate(W/2,H*0.30); ctx.rotate(-0.16); ctx.scale(over,over);
+    ctx.font='800 128px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const stt='VERKOCHT', stw=ctx.measureText(stt).width+130, sth=210;
+    const fit=Math.min(1,(W*0.82)/stw); if(fit<1)ctx.scale(fit,fit);  // nooit tot aan de randen
+    _socialRR(ctx,-stw/2,-sth/2,stw,sth,28); ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
+    ctx.lineWidth=13; ctx.strokeStyle=OR; _socialRR(ctx,-stw/2,-sth/2,stw,sth,28); ctx.stroke();
+    ctx.fillStyle=OR; ctx.fillText(stt,0,7);
+    ctx.restore(); ctx.textAlign='left'; ctx.textBaseline='top';
+  }
+  if(!isStatic&&t>=0.55&&t<0.95){ ctx.save(); ctx.globalAlpha=0.45*(1-(t-0.55)/0.4); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H); ctx.restore(); }
+  // 4. tekstblok onderin; schuift omhoog in de video
+  const tin=isStatic?1:ease((t-1.1)/0.5);
+  if(tin>0){
+    ctx.save(); ctx.globalAlpha=tin; ctx.translate(0,60*(1-tin));
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    let y=H-700;  // ruimte houden tot het QR-label onderin
+    if(a.brand){ ctx.font='800 34px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),70,y,5); y+=56; }
+    ctx.font='800 62px Sora, sans-serif'; ctx.fillStyle='#ffffff';
+    const lns=_socialWrap(ctx,p.title,W-420,2); lns.forEach((l,i)=>ctx.fillText(l,70,y+i*74)); y+=lns.length*74+12;
+    ctx.fillStyle=OR; ctx.fillRect(70,y,96,7); y+=34;
+    ctx.font='700 40px Inter, sans-serif'; ctx.fillStyle='rgba(255,255,255,0.88)';
+    ctx.fillText('Ook zo’n bank? Stuur ons een appje',70,y);
+    ctx.restore();
+  }
+  // 5. QR rechtsonder + logo linksonder
+  const bin=isStatic?1:ease((t-1.5)/0.5);
+  if(a.qr&&bin>0){ const qs=232,qx=W-qs-70,qy=H-qs-96;
+    ctx.save(); ctx.globalAlpha=bin;
+    _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+    ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    ctx.fillText('SCAN & APP',qx+qs/2,qy-30);
+    ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
+  }
+  if(a.logo&&bin>0){ const lw=200, sc=lw/a.logo.width, lh=a.logo.height*sc; ctx.save(); ctx.globalAlpha=bin; ctx.drawImage(a.logo,70,H-lh-96,lw,lh); ctx.restore(); }
+  // 6. eindkaart (alleen video): donker beeld met oproep; QR blijft scanbaar
+  if(!isStatic&&t>=FOTO_DUR-0.3){
+    const cp=ease((t-(FOTO_DUR-0.3))/0.5);
+    ctx.save(); ctx.globalAlpha=cp*0.93; ctx.fillStyle='#141b20'; ctx.fillRect(0,0,W,H); ctx.restore();
+    ctx.save(); ctx.globalAlpha=cp; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#ffffff'; ctx.font='800 92px Sora, sans-serif'; ctx.fillText('Ook zo’n bank?',W/2,H*0.30);
+    ctx.fillStyle=OR; ctx.font='800 52px Sora, sans-serif'; ctx.fillText('nijhofbrothers.nl',W/2,H*0.30+118);
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='700 42px Inter, sans-serif'; ctx.fillText('of scan en app ons',W/2,H*0.30+192);
+    if(a.qr){ const qs=300,qx=(W-qs)/2,qy=H*0.46;
+      _socialRR(ctx,qx-18,qy-18,qs+36,qs+36,18); ctx.fillStyle='#fff'; ctx.fill();
+      ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
+      if(a.logo){ const lw=210, lsc=lw/a.logo.width, lh=a.logo.height*lsc; ctx.drawImage(a.logo,(W-lw)/2,qy+qs+70,lw,lh); }
+    }
     ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
   }
 }
@@ -404,7 +478,7 @@ async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
   try{ await document.fonts.ready; }catch(_e){}
-  _socialDrawFrame(canvas.getContext('2d'),a,p,999,9.5);
+  (p.verkocht?_verkochtDrawFrame:_socialDrawFrame)(canvas.getContext('2d'),a,p,999,p.verkocht?7:9.5);
   return canvas;
 }
 // Laadt de mp4-muxer lib pas wanneer nodig (video maken)
@@ -427,7 +501,7 @@ async function _pickAvcConfig(W,H,FPS){
 async function _socialVideo(p,onProgress){
   if(typeof VideoEncoder==='undefined')throw new Error('Dit toestel kan geen video in de browser maken — gebruik de foto-optie.');
   const M=await _ensureMuxer();
-  const W=1080,H=1920,FPS=30,DUR=9.5,TOTAL=Math.round(FPS*DUR);
+  const W=1080,H=1920,FPS=30,DUR=p.verkocht?7:9.5,TOTAL=Math.round(FPS*DUR);  // Verkocht is korter en heeft een eigen opbouw
   const a=await _socialAssets(p);
   try{ await document.fonts.ready; }catch(_e){}
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H; const ctx=canvas.getContext('2d');
@@ -439,7 +513,7 @@ async function _socialVideo(p,onProgress){
   for(let f=0;f<TOTAL;f++){
     if(encErr)throw encErr;
     const t=f/FPS;
-    _socialDrawFrame(ctx,a,p,t,DUR);
+    (p.verkocht?_verkochtDrawFrame:_socialDrawFrame)(ctx,a,p,t,DUR);
     const frame=new VideoFrame(canvas,{timestamp:Math.round(t*1e6),duration:Math.round(1e6/FPS)});
     enc.encode(frame,{keyFrame:f%30===0}); frame.close();
     if(onProgress&&f%5===0)onProgress(f/TOTAL);
@@ -475,7 +549,7 @@ async function socialMaak(i,type){
   }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de story niet maken: '+esc(String(e.message||e))+'</div>'; }
 }
 function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.verkocht?'verkocht-':'nieuw-binnen-')+(p.handle||'story')+'.'+(_social.ext||'png'); }
-function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Alweer verkocht! ✅\n'+p.title+(p.dagenTekst&&p.dagenTekst!=='Alweer verkocht!'?' — '+p.dagenTekst.charAt(0).toLowerCase()+p.dagenTekst.slice(1)+'.':'')+'\n\nOok op zoek naar een kwaliteitsbank? Bekijk ons actuele aanbod of stuur ons een appje.\n'+p.url; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
+function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Alweer verkocht! ✅\n'+p.title+'\n\nOok op zoek naar een kwaliteitsbank? Bekijk ons actuele aanbod of stuur ons een appje.\n'+p.url; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
   if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
