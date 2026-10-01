@@ -309,6 +309,8 @@ async function _socialAssets(p){
   try{ a.qr=await _socialQR(_socialWaLink(p),300); }catch(_e){}
   a.brand=_socialBrand(p);
   try{ a.grain=_socialGrain(); }catch(_e){}
+  // hooguit 1,2 s wachten op de actuele Google-score; daarna gewoon doorgaan
+  try{ await Promise.race([_googleLaad(),new Promise(r=>setTimeout(r,1200))]); }catch(_e){}
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
@@ -399,10 +401,36 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
 //  - GEEN eindkaart meer: de laatste seconde keert terug naar de eerste foto, zodat het
 //    filmpje naadloos rondloopt (meer kijktijd op Reels) en het product in beeld blijft.
 var _VK={W:1080,H:1920,M:80,TOP:285,BOT:1575,OR:'#E87722',INK:'#1C1917',WIT:'#FAF7F2'};
-// Google-beoordeling in de story. User 1 okt 2026: 5,0 uit 36 reviews, maar het AANTAL bewust
-// NIET tonen — dat loopt op en zou elke keer handmatig bijgewerkt moeten worden. Wil je het er
-// toch bij: zet 'aantal' op een getal (bv. 36) en het komt er automatisch achter te staan.
-var _GOOGLE={score:'5,0',sterren:5,aantal:null};
+// Google-beoordeling in de story. Wordt automatisch opgehaald bij de edge function
+// 'google-beoordeling' (user 1 okt 2026: het aantal reviews loopt op, dus niets handmatig
+// bijhouden). Deze waarden zijn alleen de terugval als dat niet lukt; het aantal tonen we
+// dan NIET, want een verouderd aantal is erger dan geen aantal.
+// Wil je het aantal nooit tonen: zet toonAantal op false.
+var _GOOGLE={score:'5,0',sterren:5,aantal:null,toonAantal:true};
+function _googleTekst(){ const g=_GOOGLE||{}; return g.score+' op Google'+((g.toonAantal!==false&&g.aantal)?' · '+g.aantal+' reviews':''); }
+var _GKEY='nb-google-beoordeling', _gBezig=null;
+function _googleZet(j){
+  if(!j||!(j.score>0))return false;
+  _GOOGLE.score=(Math.round(j.score*10)/10).toFixed(1).replace('.',',');
+  _GOOGLE.sterren=Math.max(1,Math.min(5,Math.round(j.score)));
+  _GOOGLE.aantal=j.aantal||null;
+  return true;
+}
+// 24 uur in localStorage → hooguit één keer per dag per toestel naar de edge function
+// (die cachet zelf nog eens 6 uur), dus verwaarloosbaar verkeer richting Google.
+function _googleLaad(){
+  if(_gBezig)return _gBezig;
+  try{ const j=JSON.parse(localStorage.getItem(_GKEY)||'null');
+    if(j&&j.score>0&&(Date.now()-(j.ts||0))<864e5&&_googleZet(j))return (_gBezig=Promise.resolve()); }catch(_e){}
+  _gBezig=(async()=>{
+    try{
+      const r=await fetch(SUPABASE_URL+'/functions/v1/google-beoordeling',{method:'POST',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},body:'{}'});
+      const j=await r.json().catch(()=>({}));
+      if(_googleZet(j)){ try{ localStorage.setItem(_GKEY,JSON.stringify({score:j.score,aantal:j.aantal,ts:Date.now()})); }catch(_e){} }
+    }catch(_e){ /* stil falen: de vaste terugval blijft staan */ }
+  })();
+  return _gBezig;
+}
 function _vkSter(ctx,cx,cy,r){
   ctx.beginPath();
   for(let i=0;i<10;i++){ const rr=(i%2)?r*0.46:r, aa=-Math.PI/2+i*Math.PI/5, px=cx+Math.cos(aa)*rr, py=cy+Math.sin(aa)*rr;
@@ -542,7 +570,7 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
     if(ster){
       const sb=_vkSterren(ctx,M,y+2,ster,12);
       ctx.font='600 28px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.74)';
-      ctx.fillText(_GOOGLE.score+' op Google'+(_GOOGLE.aantal?' · '+_GOOGLE.aantal+' reviews':''),M+sb+16,y+3);
+      ctx.fillText(_googleTekst(),M+sb+16,y+3);
     }
     ctx.restore();
   }
@@ -683,7 +711,7 @@ function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none';
   window.socialSluit = socialSluit;
 
   /* ---- Opstarten ---- */
-  function boot() { try { injectKeuzeKnop(); injectScreen(); } catch (e) { console.warn("Nieuw binnen init:", e); } }
+  function boot() { try { injectKeuzeKnop(); injectScreen(); _googleLaad(); } catch (e) { console.warn("Nieuw binnen init:", e); } }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();
