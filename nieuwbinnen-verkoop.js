@@ -399,6 +399,17 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
 //  - GEEN eindkaart meer: de laatste seconde keert terug naar de eerste foto, zodat het
 //    filmpje naadloos rondloopt (meer kijktijd op Reels) en het product in beeld blijft.
 var _VK={W:1080,H:1920,M:80,TOP:285,BOT:1575,OR:'#E87722',INK:'#1C1917',WIT:'#FAF7F2'};
+// Google-beoordeling in de story. User 1 okt 2026: 5,0 uit 36 reviews, maar het AANTAL bewust
+// NIET tonen — dat loopt op en zou elke keer handmatig bijgewerkt moeten worden. Wil je het er
+// toch bij: zet 'aantal' op een getal (bv. 36) en het komt er automatisch achter te staan.
+var _GOOGLE={score:'5,0',sterren:5,aantal:null};
+function _vkSter(ctx,cx,cy,r){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){ const rr=(i%2)?r*0.46:r, aa=-Math.PI/2+i*Math.PI/5, px=cx+Math.cos(aa)*rr, py=cy+Math.sin(aa)*rr;
+    if(i)ctx.lineTo(px,py); else ctx.moveTo(px,py); }
+  ctx.closePath(); ctx.fill();
+}
+function _vkSterren(ctx,x,y,aantal,r){ r=r||12; const st=r*2+6; ctx.save(); ctx.fillStyle=_VK.OR; for(let i=0;i<aantal;i++)_vkSter(ctx,x+r+i*st,y+r,r); ctx.restore(); return aantal*st-6; }
 // Filmkorrel: één klein ruis-tegeltje, voor elk frame hergebruikt (statisch, dus geen geflikker).
 var _grainTile;
 function _socialGrain(){
@@ -518,7 +529,8 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
     ctx.font='800 62px Sora, sans-serif';
     let tl=_socialWrap(ctx,d.hoofd,maxW,2), tf=62, lh=74;
     if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=52; lh=63; ctx.font='800 52px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
-    const hoogte=(a.brand?44:0)+tl.length*lh+(d.sub?50:0)+34+(feiten?48:0)+46;
+    const ster=(_GOOGLE&&_GOOGLE.sterren)?_GOOGLE.sterren:0;
+    const hoogte=(a.brand?44:0)+tl.length*lh+(d.sub?50:0)+34+(feiten?48:0)+46+(ster?48:0);
     let y=1380-hoogte;
     if(a.brand){ ctx.font='800 32px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=44; }
     ctx.fillStyle=WIT; ctx.font='800 '+tf+'px Sora, sans-serif';
@@ -526,7 +538,12 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
     if(d.sub){ ctx.font='500 34px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.70)'; ctx.fillText(d.sub,M,y+4); y+=50; }
     ctx.fillStyle=OR; ctx.fillRect(M,y+12,88,6); y+=34;
     if(feiten){ ctx.font='600 34px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.90)'; ctx.fillText(feiten,M,y); y+=48; }
-    ctx.font='700 36px Inter, sans-serif'; ctx.fillStyle=WIT; ctx.fillText('Zoek je zoiets? Stuur ons een berichtje.',M,y);
+    ctx.font='700 36px Inter, sans-serif'; ctx.fillStyle=WIT; ctx.fillText('Zoek je zoiets? Stuur ons een berichtje.',M,y); y+=48;
+    if(ster){
+      const sb=_vkSterren(ctx,M,y+2,ster,12);
+      ctx.font='600 28px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.74)';
+      ctx.fillText(_GOOGLE.score+' op Google'+(_GOOGLE.aantal?' · '+_GOOGLE.aantal+' reviews':''),M+sb+16,y+3);
+    }
     ctx.restore();
   }
   // 7. QR linksonder (rechts blijft vrij voor de Reels-knoppen), met het adres ernaast
