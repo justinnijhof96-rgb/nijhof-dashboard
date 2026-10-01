@@ -19,8 +19,8 @@
     if (el("nb-social-style")) return;
     var st = document.createElement("style"); st.id = "nb-social-style";
     st.textContent =
-      "#screen-social.view.show{display:flex;flex-direction:column;height:100vh;height:100dvh}" +
-      "#screen-social > main{flex:1;min-height:0;overflow-y:auto}" +
+      "#screen-social.view.show,#screen-content.view.show{display:flex;flex-direction:column;height:100vh;height:100dvh}" +
+      "#screen-social > main,#screen-content > main{flex:1;min-height:0;overflow-y:auto}" +
       "#screen-social .btn-sm{min-height:42px;padding:10px 12px;font-size:13px}";
     document.head.appendChild(st);
   }
@@ -30,7 +30,7 @@
     var sc = document.createElement("div"); sc.id = "screen-social"; sc.className = "view";
     sc.innerHTML =
       '<div class="top">' +
-      '<button class="btn-icon" onclick="toonScherm(\'screen-keuze\')" title="Terug">←</button>' +
+      '<button class="btn-icon" onclick="openContent()" title="Terug">←</button>' +
       '<div class="logo" id="social-titel">NIEUW BINNEN <small>Story maken &amp; delen</small></div>' +
       '<button class="btn-icon" onclick="socialVerversen()" title="Ververs">↻</button>' +
       '</div>' +
@@ -62,11 +62,43 @@
     var box = scherm.querySelector(".kz-grid") || scherm.querySelector("main > div"); if (!box) return;
     var btn = document.createElement("button");
     btn.id = "keuze-social"; btn.className = "kz-tegel"; btn.setAttribute("style", "--kz:#db2777");
-    btn.onclick = openSocial;
-    btn.innerHTML = '<span class="kz-ic">🆕</span><span class="kz-t">Nieuw binnen</span><span class="kz-s">Nieuw &amp; verkocht delen</span>';
+    btn.onclick = openContent;
+    btn.innerHTML = '<span class="kz-ic">🎬</span><span class="kz-t">Content</span><span class="kz-s">Nieuw binnen &amp; verkocht</span>';
     box.appendChild(btn);
   }
-  function openSocial() { injectScreen(); toonScherm("screen-social"); try { socialEnsure(); } catch (_e) {} }
+  // Content-keuzescherm: eerst kiezen wat je maakt, daarna pas de story-generator.
+  function injectContentScreen() {
+    if (el("screen-content")) return;
+    injectStyle();
+    var sc = document.createElement("div"); sc.id = "screen-content"; sc.className = "view";
+    sc.innerHTML =
+      '<div class="top">' +
+      '<button class="btn-icon" onclick="terugNaarKeuze()" title="Terug">←</button>' +
+      '<div class="logo">CONTENT <small>Wat wil je maken?</small></div>' +
+      '<span style="width:36px"></span>' +
+      '</div>' +
+      '<main>' +
+      '<div style="display:grid;gap:14px;max-width:460px;margin:0 auto">' +
+      _contentKaart("nieuw", "🆕", "Nieuw binnen", "Story van je nieuwste bank uit de webshop", "#db2777") +
+      _contentKaart("verkocht", "✅", "Verkocht", "Story van een bank die net verkocht is", "#0f766e") +
+      '</div>' +
+      '</main>';
+    document.body.appendChild(sc);
+  }
+  function _contentKaart(modus, ic, titel, sub, kleur) {
+    return '<button type="button" onclick="openSocialModus(&#39;' + modus + '&#39;)" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--bd);border-left:5px solid ' + kleur + ';border-radius:14px;padding:16px;cursor:pointer;box-shadow:0 2px 6px rgba(30,47,58,.06)">' +
+      '<span style="font-size:30px;line-height:1">' + ic + '</span>' +
+      '<span style="flex:1;min-width:0"><span style="display:block;font-size:17px;font-weight:800;color:var(--nav)">' + titel + '</span>' +
+      '<span style="display:block;font-size:12.5px;color:var(--gr);margin-top:3px;line-height:1.35">' + sub + '</span></span>' +
+      '<span style="color:var(--gr);font-size:22px">›</span></button>';
+  }
+  function openContent() { injectContentScreen(); injectScreen(); toonScherm("screen-content"); }
+  function openSocialModus(m) {
+    injectScreen(); toonScherm("screen-social");
+    try { socialModus(m === "verkocht" ? "verkocht" : "nieuw"); }
+    catch (_e) { try { socialEnsure(); } catch (_e2) {} }
+  }
+  function openSocial() { openContent(); }
 
   /* ============ Story-generator (geport uit het dashboard) ============ */
 /* ── NIEUW BINNEN: branded story-generator uit nieuwste webshop-producten ── */
@@ -478,6 +510,8 @@ function socialKopieer(){
 function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none'; const cw=el('social-cap-wrap'); if(cw)cw.style.display='none'; _social.blob=null; _social.canvas=null; }
 
   /* ---- Publieke handlers voor inline onclick ---- */
+  window.openContent = openContent;
+  window.openSocialModus = openSocialModus;
   window.socialModus = socialModus;
   window.socialVerversen = socialVerversen;
   window.socialLaad = socialLaad;

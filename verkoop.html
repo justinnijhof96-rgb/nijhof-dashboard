@@ -719,7 +719,12 @@ function _onthoudScherm(id){
   const bewaar=['screen-keuze','screen-adverteren','screen-adv-menu','screen-adv-centrum','screen-inkoop','screen-bonnetje','screen-splitsen'];
   try{ if(bewaar.indexOf(id)>=0) localStorage.setItem(_SCHERM_KEY,id); }catch(e){}
 }
+// De app opent ALTIJD op "Wat ga je doen?" (user 1 okt 2026). Het laatste scherm wordt nog
+// wel onthouden, maar niet meer hersteld - anders start je middenin een vorig scherm.
 function _herstelScherm(){
+  toonScherm('screen-keuze');
+}
+function _herstelSchermOud(){
   let id='screen-keuze';
   try{ id=localStorage.getItem(_SCHERM_KEY)||'screen-keuze'; }catch(e){}
   // Adverteren-schermen komen uit adverteren-verkoop.js dat iets later laadt → kort wachten tot de functie bestaat.
