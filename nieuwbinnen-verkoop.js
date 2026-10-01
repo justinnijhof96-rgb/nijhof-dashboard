@@ -358,7 +358,7 @@ function _socialQRMerk(ctx,a,cx,cy,qs){
 // Verkocht is donker met de foto over het hele beeld, Nieuw binnen blijft LICHT met de
 // foto bovenin en een papierkleurig infovlak eronder. Weg: de pulserende oranje gloed en
 // de schermvullende oranje eindkaart (user 1 okt 2026: niet schreeuwen).
-var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1570,FOTO_H:920,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1570,FOTO_H:860,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
 function _socialDrawFrame(ctx,a,p,t,DUR){
   const W=_NB.W,H=_NB.H,M=_NB.M,OR=_NB.OR,INK=_NB.INK,PAP=_NB.PAPIER,FH=_NB.FOTO_H;
   DUR=DUR||8;
@@ -408,15 +408,26 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
   if(ti>0){
     const d=_socialTitelDelen(p.title), feiten=p.feiten||'', ster=(_GOOGLE&&_GOOGLE.sterren)?_GOOGLE.sterren:0, maxW=W-2*M;
     ctx.save(); ctx.globalAlpha=ov*ti; ctx.translate(0,12*(1-ti)); ctx.textAlign='left'; ctx.textBaseline='top';
-    ctx.font='800 60px Sora, sans-serif';
-    let tl=_socialWrap(ctx,d.hoofd,maxW,2), tf=60, lh=70;
-    if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=50; lh=60; ctx.font='800 50px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
-    const hoogte=(a.brand?42:0)+tl.length*lh+(d.sub?46:0)+96+(feiten?44:0)+(ster?46:0);
-    let y=1330-hoogte;  // ruimte voor de grotere QR eronder
+    // Het blok wordt van onderaf opgebouwd (boven de QR). Bij een lange titel liep het
+    // daardoor tégen de foto aan en kwam het merklabel op de foto te liggen (user 1 okt 2026).
+    // Daarom past de indeling zich nu aan: eerst de ondertitel laten vallen, dan de titel
+    // kleiner. Het blok begint nooit hoger dan net onder de foto.
+    const ONDER=1330, BOVEN=FH+36, RUIMTE=ONDER-BOVEN;
+    const vast=(a.brand?42:0)+96+(feiten?44:0)+(ster?46:0);
+    const opties=[[60,70,2,!!d.sub],[60,70,2,false],[50,60,3,false],[50,60,2,false]];
+    let tf=60, lh=70, toonSub=!!d.sub, tl=null, hoogte=0;
+    for(const o of opties){
+      tf=o[0]; lh=o[1]; toonSub=o[3];
+      ctx.font='800 '+tf+'px Sora, sans-serif';
+      tl=_socialWrap(ctx,d.hoofd,maxW,o[2]);
+      hoogte=vast+tl.length*lh+(toonSub?46:0);
+      if(hoogte<=RUIMTE)break;
+    }
+    let y=Math.max(BOVEN,ONDER-hoogte);
     if(a.brand){ ctx.font='800 30px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=42; }
     ctx.fillStyle=INK; ctx.font='800 '+tf+'px Sora, sans-serif';
     tl.forEach((l,i)=>ctx.fillText(l,M,y+i*lh)); y+=tl.length*lh;
-    if(d.sub){ ctx.font='500 32px Inter, sans-serif'; ctx.fillStyle=_NB.GRIJS; ctx.fillText(d.sub,M,y+2); y+=46; }
+    if(toonSub){ ctx.font='500 32px Inter, sans-serif'; ctx.fillStyle=_NB.GRIJS; ctx.fillText(d.sub,M,y+2); y+=46; }
     // prijs: vervaagt rustig omhoog (schoof eerst van buiten beeld naar binnen)
     const pi=isStatic?1:ease((t-1.3)/0.5);
     ctx.save(); ctx.globalAlpha=ov*ti*pi; ctx.translate(0,16*(1-pi));
