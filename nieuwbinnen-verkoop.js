@@ -305,7 +305,10 @@ function _socialSpaced(ctx,text,x,y,ls){ let cx=x; for(const ch of String(text))
 // (versie 13+, ~70 blokjes) dat hij op een telefoonscherm niet meer te scannen was (user 1 okt
 // 2026). Met het artikelnummer blijft hij rond versie 5 (~37 blokjes) en dus goed leesbaar.
 function _socialWaLink(p){
-  const nr=String((p&&p.handle)||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');
+  // Let op: webshop-handles zijn lange slugs (nb-1147-hoekbank-ribstof-...). Alleen het
+  // artikelnummer eruit halen, anders wordt de QR weer veel te dicht om te scannen.
+  const h=String((p&&p.handle)||'').toUpperCase(), m=h.match(/NB-[0-9]+/);
+  const nr=m?m[0]:'';
   const txt=(p&&p.verkocht)?('Zoiets zoek ik'+(nr?': '+nr:'')):('Interesse in'+(nr?' '+nr:' jullie meubel'));
   return 'https://wa.me/31555690039?text='+encodeURIComponent(txt);
 }
