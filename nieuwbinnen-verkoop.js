@@ -165,7 +165,7 @@ async function verkochtLaad(){
     const items=ids.length?((await _vkRest('items?select=id,naam,artikelnummer,foto_url,partij_parent_id&id=in.('+ids.join(',')+')'))||[]):[];
     const ouders=[...new Set(items.map(i=>i.partij_parent_id).filter(Boolean))];
     const alleIds=[...new Set([...ids,...ouders])];
-    const advs=alleIds.length?((await _vkRest('advertenties?select=item_id,ai_titel,fotos,gepubliceerd_op,merk&item_id=in.('+alleIds.join(',')+')'))||[]):[];
+    const advs=alleIds.length?((await _vkRest('advertenties?select=item_id,ai_titel,fotos,gepubliceerd_op,merk,maten,materiaal,kleur,bezorging&item_id=in.('+alleIds.join(',')+')'))||[]):[];
     const iMap={},aMap={};
     items.forEach(i=>{iMap[i.id]=i;});
     advs.forEach(a=>{if(!aMap[a.item_id])aMap[a.item_id]=a;});
@@ -181,7 +181,7 @@ async function verkochtLaad(){
       let d=null;
       if(eigen&&eigen.gepubliceerd_op){ d=Math.round((Date.parse(v.datum+'T12:00:00')-Date.parse(String(eigen.gepubliceerd_op).slice(0,10)+'T12:00:00'))/864e5); if(!(d>=0))d=null; }
       lijst.push({verkocht:true,title:(a&&a.ai_titel&&a.ai_titel.trim())||it.naam||'Meubel',images:imgs.slice(0,3),image:imgs[0],
-        vendor:(a&&a.merk)||'',tags:[],handle:String(it.artikelnummer||'story').toLowerCase(),datum:v.datum,dagen:d,
+        vendor:(a&&a.merk)||'',tags:[],handle:String(it.artikelnummer||'story').toLowerCase(),datum:v.datum,dagen:d,feiten:_vkFeiten(a),
         url:'https://nijhofbrothers.nl/collections/occasions'});
     });
     _social.verkocht=lijst;
@@ -213,12 +213,14 @@ function _socialCoverZoom(ctx,img,x,y,w,h,zoom){ zoom=zoom||1; const ir=img.widt
 function _socialContain(ctx,img,x,y,w,h){ const ir=img.width/img.height, r=w/h; let dw,dh; if(ir>r){ dw=w; dh=w/ir; } else { dh=h; dw=h*ir; } ctx.drawImage(img,0,0,img.width,img.height,x+(w-dw)/2,y+(h-dh)/2,dw,dh); }
 // Bouwt het foto-vlak: de HELE productfoto blijft altijd zichtbaar (contain), met een zachte,
 // uitvergrote blur van dezelfde foto als vulling. Nooit meer een afgesneden hoek van de bank.
-function _socialPhotoPanel(img,w,h){
+function _socialPhotoPanel(img,w,h,donker){
   const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d');
-  x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
-  try{ x.save(); x.beginPath(); x.rect(0,0,w,h); x.clip(); x.filter='blur(34px)'; _socialCoverZoom(x,img,0,0,w,h,1.16); x.filter='none'; x.fillStyle='rgba(255,255,255,0.20)'; x.fillRect(0,0,w,h); x.restore(); }
+  x.fillStyle=donker?'#1C1917':'#ffffff'; x.fillRect(0,0,w,h);
+  try{ x.save(); x.beginPath(); x.rect(0,0,w,h); x.clip(); x.filter='blur(34px)'; _socialCoverZoom(x,img,0,0,w,h,1.16); x.filter='none'; x.fillStyle=donker?'rgba(28,25,23,0.66)':'rgba(255,255,255,0.20)'; x.fillRect(0,0,w,h); x.restore(); }
   catch(_e){ /* canvas-blur niet ondersteund → witte achtergrond blijft staan */ }
-  _socialContain(x,img,0,0,w,h);
+  if(donker){ const ir=img.width/img.height, r=w/h, dw=(ir>r)?w:h*ir, dh=(ir>r)?(w/ir):h;
+    x.drawImage(img,0,0,img.width,img.height,(w-dw)/2,Math.min(420,(h-dh)/2),dw,dh); }
+  else _socialContain(x,img,0,0,w,h);
   return c;
 }
 function _socialWrap(ctx,text,maxW,maxLines){
@@ -296,11 +298,17 @@ async function _socialAssets(p){
   a.imgs=loaded.filter(Boolean);
   // Verkocht-story gebruikt de VOLLE hoogte; Nieuw binnen het fotovlak van 62%
   const _ph=(p&&p.verkocht)?1920:Math.round(1920*0.62);
-  if(a.imgs.length){ a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,_ph); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null; }
+  const _dk=!!(p&&p.verkocht);
+  if(a.imgs.length){
+    a.img=a.imgs[0]; a.panels=a.imgs.map(im=>{ try{ return _socialPhotoPanel(im,1080,_ph,_dk); }catch(_e){ return null; } }).filter(Boolean); a.panel=a.panels[0]||null;
+    // waar staat de foto zelf binnen het paneel? (contain → banden boven/onder bij liggende foto's)
+    try{ const ir=a.img.width/a.img.height, r=1080/_ph; const dh=(ir>r)?(1080/ir):_ph; a.band={top:_dk?Math.min(420,(_ph-dh)/2):(_ph-dh)/2,h:dh}; }catch(_e){}
+  }
   try{ a.logo=_socialLogoTransparant(await _socialImg('logo.png',false)); }catch(_e){}
   try{ a.mark=_socialLogoTransparant(await _socialImg('logo-mark.png',false)); }catch(_e){}
   try{ a.qr=await _socialQR(_socialWaLink(p),300); }catch(_e){}
   a.brand=_socialBrand(p);
+  try{ a.grain=_socialGrain(); }catch(_e){}
   return a;
 }
 // Tekent één frame op tijdstip t (seconden). t groot (bv. 999) = eindbeeld (statische foto).
@@ -379,100 +387,162 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
   }
 }
-// ── VERKOCHT-story: eigen ontwerp, bewust anders dan Nieuw binnen ──────────
-// Foto over het HELE beeld (hele bank zichtbaar via het blur-paneel), stempel hoog in
-// beeld, donkere verloopband onderaan met merk, titel en oproep; logo links, QR rechts.
-// Geen prijs en geen "in X dagen verkocht" (user 1 okt 2026: niet beschrijven, en niet
-// dezelfde opmaak als de nieuwe-voorraadpost).
+// ── VERKOCHT-story: eigen ontwerp, bewust anders dan Nieuw binnen ────────
+// Uitgangspunten (user 1 okt 2026): rustiger dan de nieuwe-voorraadpost, niets zeggen
+// over hoe snel het ging, en vooral geen "marketinggeschreeuw". Daarom:
+//  - warme kleuren (#1C1917 / #FAF7F2) in plaats van knalwit en koelblauw; oranje alleen als accent;
+//  - alles binnen de veilige zone: Instagram legt zelf knoppen over de bovenste ~260 px,
+//    de onderste ~340 px en de rechterrand (Reels-rail), dus tekst/QR blijven links en in het midden;
+//  - een open stempel in plaats van een witte pil, zonder schermvullende flits;
+//  - de titel wordt gesplitst op | of - zodat de productnaam niet meer afgekapt wordt;
+//  - een feitenregel (breedte, materiaal, bezorging) — dat is wat een koper wil weten;
+//  - GEEN eindkaart meer: de laatste seconde keert terug naar de eerste foto, zodat het
+//    filmpje naadloos rondloopt (meer kijktijd op Reels) en het product in beeld blijft.
+var _VK={W:1080,H:1920,M:80,TOP:285,BOT:1575,OR:'#E87722',INK:'#1C1917',WIT:'#FAF7F2'};
+// Filmkorrel: één klein ruis-tegeltje, voor elk frame hergebruikt (statisch, dus geen geflikker).
+var _grainTile;
+function _socialGrain(){
+  if(_grainTile)return _grainTile;
+  const n=128,c=document.createElement('canvas'); c.width=n; c.height=n;
+  const x=c.getContext('2d'), id=x.createImageData(n,n), d=id.data;
+  for(let i=0;i<d.length;i+=4){ const v=Math.random()<0.5?255:0; d[i]=d[i+1]=d[i+2]=v; d[i+3]=Math.random()*24; }
+  x.putImageData(id,0,0); _grainTile=c; return c;
+}
+function _grainPat(ctx,a){ if(a._gp&&a._gpCtx===ctx)return a._gp; try{ a._gp=a.grain?ctx.createPattern(a.grain,'repeat'):null; a._gpCtx=ctx; }catch(_e){ a._gp=null; } return a._gp; }
+function _vkKorrel(ctx,a){ const pat=_grainPat(ctx,a); if(!pat)return; ctx.save(); ctx.globalAlpha=0.55; ctx.fillStyle=pat; ctx.fillRect(0,0,_VK.W,_VK.H); ctx.restore(); }
+// Advertentietitels zijn vaak "Productnaam | extra" of "Productnaam - extra".
+// Het eerste deel is de naam; de rest zetten we klein eronder in plaats van af te kappen.
+function _socialTitelDelen(t){
+  const s=String(t||'').replace(/\s+/g,' ').trim();
+  const i=s.indexOf('|');
+  if(i>0) return {hoofd:s.slice(0,i).trim(),sub:s.slice(i+1).trim()};
+  const j=s.indexOf(' - ');
+  if(j>0) return {hoofd:s.slice(0,j).trim(),sub:s.slice(j+3).trim()};
+  return {hoofd:s,sub:''};
+}
+// Feitenregel uit de advertentie: breedte + materiaal + bezorging. 'staat' is in de praktijk leeg.
+function _vkFeiten(a){
+  if(!a)return '';
+  const d=[], m=(a.maten&&typeof a.maten==='object')?a.maten:{};
+  const br=parseInt(String(m.breedte||'').replace(/[^0-9]/g,''),10);
+  if(br>50&&br<1000)d.push(br+' cm breed');
+  const mat=String(a.materiaal||'').trim(); if(mat)d.push(mat.toLowerCase());
+  const bz=(a.bezorging&&typeof a.bezorging==='object')?a.bezorging:null;
+  if(!bz||bz.bezorgen!==false)d.push('bezorgd door heel NL');
+  return d.join(' · ');
+}
+function _vkSpacedW(ctx,text,ls){ let w=0; for(const ch of String(text))w+=ctx.measureText(ch).width+ls; return w-ls; }
+// Zacht uitzoomen (Nieuw binnen zoomt juist in). prog 0 = ruimste beeld = ook het eindbeeld van de lus.
 function _verkochtKB(ctx,panel,prog,idx,W,H){
   const p=Math.max(0,Math.min(1,prog));
-  const sc=1.14-0.12*p, dw=W*sc, dh=H*sc, mx=(dw-W)/2, my=(dh-H)/2;  // uitzoomen (Nieuw binnen zoomt juist in)
+  const sc=1.12-0.10*p, dw=W*sc, dh=H*sc, mx=(dw-W)/2, my=(dh-H)/2;
   const dir=(idx%2===0)?1:-1;
   ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
-  ctx.drawImage(panel,-mx,-my+dir*my*(p-0.5)*0.6,dw,dh);
+  ctx.drawImage(panel,-mx,-my+dir*my*(p-0.5)*0.5,dw,dh);
   ctx.restore();
 }
 function _verkochtDrawFrame(ctx,a,p,t,DUR){
-  const W=1080,H=1920,OR='#E87722';
+  const W=_VK.W,H=_VK.H,M=_VK.M,OR=_VK.OR,INK=_VK.INK,WIT=_VK.WIT;
   DUR=DUR||7;
   const isStatic=t>=900;
   const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
-  const CTA_DUR=2.2, FOTO_DUR=Math.max(1,DUR-CTA_DUR);
-  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
-  // 1. foto vult het beeld; in de video wisselen foto's met een SCHUIF (geen crossfade)
+  const eio=x=>{x=Math.max(0,Math.min(1,x));return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;};
+  const LOOP=0.9, SHOW=Math.max(1,DUR-LOOP);
+  ctx.fillStyle=INK; ctx.fillRect(0,0,W,H);
+  // 1. foto's over het hele beeld; wisselen met een zachte schuif
   const panels=(a.panels&&a.panels.length)?a.panels:(a.panel?[a.panel]:[]);
   if(isStatic){ if(panels[0])ctx.drawImage(panels[0],0,0,W,H); else if(a.img)_socialCover(ctx,a.img,0,0,W,H); }
   else if(panels.length){
-    const N=panels.length, slot=FOTO_DUR/N, SL=Math.min(0.45,slot*0.3);
-    let idx=Math.floor(t/slot); if(idx>N-1)idx=N-1; if(idx<0)idx=0;
-    const lok=t-idx*slot;
-    _verkochtKB(ctx,panels[idx],Math.min(1,lok/slot),idx,W,H);
-    if(idx<N-1&&lok>slot-SL){
-      const f=ease((lok-(slot-SL))/SL);
-      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); ctx.translate(W*(1-f),0);
-      _verkochtKB(ctx,panels[idx+1],0,idx+1,W,H);
-      ctx.restore();
+    const N=panels.length, slot=SHOW/N, SL=Math.min(0.55,slot*0.3);
+    if(t>=SHOW){
+      // lus-uitloop: de eerste foto komt terug en zoomt terug naar precies het openingsbeeld
+      const f=Math.min(1,(t-SHOW)/LOOP);
+      if(N>1){
+        const sl=Math.min(0.5,LOOP*0.55), fs=eio(Math.min(1,(t-SHOW)/sl));
+        _verkochtKB(ctx,panels[N-1],1,N-1,W,H);
+        ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); ctx.translate(W*(1-fs),0); _verkochtKB(ctx,panels[0],1-f,0,W,H); ctx.restore();
+      } else { _verkochtKB(ctx,panels[0],1-f,0,W,H); }
+    } else {
+      let idx=Math.floor(t/slot); if(idx>N-1)idx=N-1; if(idx<0)idx=0;
+      const lok=t-idx*slot;
+      _verkochtKB(ctx,panels[idx],Math.min(1,lok/slot),idx,W,H);
+      if(idx<N-1&&lok>slot-SL){
+        const f=eio((lok-(slot-SL))/SL);
+        ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); ctx.translate(W*(1-f),0); _verkochtKB(ctx,panels[idx+1],0,idx+1,W,H); ctx.restore();
+      }
     }
   } else if(a.img){ _socialCover(ctx,a.img,0,0,W,H); }
-  // 2. donkere verloopband onderaan: tekst blijft leesbaar op elke foto
-  const bandTop=H*0.46;
-  const g=ctx.createLinearGradient(0,bandTop,0,H);
-  g.addColorStop(0,'rgba(20,24,28,0)'); g.addColorStop(0.45,'rgba(20,24,28,0.72)'); g.addColorStop(1,'rgba(20,24,28,0.94)');
-  ctx.fillStyle=g; ctx.fillRect(0,bandTop,W,H-bandTop);
-  // 3. VERKOCHT-stempel slaat erop, met korte witte flits in de video
-  const sp=isStatic?1:ease((t-0.55)/0.3);
+  // 2. warme vignettering + scrims: boven voor logo/stempel, onder voor de tekst
+  const vg=ctx.createRadialGradient(W/2,H*0.45,H*0.24,W/2,H*0.45,H*0.74);
+  vg.addColorStop(0,'rgba(28,25,23,0)'); vg.addColorStop(1,'rgba(28,25,23,0.32)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  const tg=ctx.createLinearGradient(0,0,0,640);
+  tg.addColorStop(0,'rgba(28,25,23,0.34)'); tg.addColorStop(1,'rgba(28,25,23,0)');
+  ctx.fillStyle=tg; ctx.fillRect(0,0,W,640);
+  const bg=ctx.createLinearGradient(0,820,0,H);
+  bg.addColorStop(0,'rgba(28,25,23,0)'); bg.addColorStop(0.42,'rgba(28,25,23,0.62)'); bg.addColorStop(1,'rgba(28,25,23,0.93)');
+  ctx.fillStyle=bg; ctx.fillRect(0,820,W,H-820);
+  // 3. alles wat op de foto ligt vervaagt in de laatste seconde → het laatste frame is weer het eerste
+  const ov=isStatic?1:(t>=SHOW?Math.max(0,1-ease((t-SHOW)/(LOOP*0.55))):1);
+  if(ov<=0.002){ _vkKorrel(ctx,a); return; }
+  // 4. merk linksboven (vaste signatuur, net onder de Instagram-balk)
+  if(a.logo){ const li=isStatic?1:ease((t-0.15)/0.5); const lw=150,lsc=lw/a.logo.width,lh=a.logo.height*lsc;
+    ctx.save(); ctx.globalAlpha=ov*li; ctx.drawImage(a.logo,M,_VK.TOP,lw,lh); ctx.restore(); }
+  // 5. open stempel: dun oranje kader op een donkere plaat, met een lichtveeg in plaats van een flits
+  const sp=isStatic?1:ease((t-0.5)/0.4);
   if(sp>0){
-    const over=isStatic?1:(1+0.5*(1-sp));
-    ctx.save(); ctx.globalAlpha=Math.min(1,sp*1.3); ctx.translate(W/2,H*0.30); ctx.rotate(-0.16); ctx.scale(over,over);
-    ctx.font='800 128px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    const stt='VERKOCHT', stw=ctx.measureText(stt).width+130, sth=210;
-    const fit=Math.min(1,(W*0.82)/stw); if(fit<1)ctx.scale(fit,fit);  // nooit tot aan de randen
-    _socialRR(ctx,-stw/2,-sth/2,stw,sth,28); ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
-    ctx.lineWidth=13; ctx.strokeStyle=OR; _socialRR(ctx,-stw/2,-sth/2,stw,sth,28); ctx.stroke();
-    ctx.fillStyle=OR; ctx.fillText(stt,0,7);
+    ctx.save(); ctx.globalAlpha=ov*Math.min(1,sp*1.25);
+    const _by=a.band?Math.max(430,Math.min(900,a.band.top+a.band.h*0.18)):560;
+    ctx.translate(W/2,_by); ctx.rotate(-0.19+0.06*sp); const ss=0.9+0.1*sp; ctx.scale(ss,ss);
+    ctx.font='800 104px Sora, sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+    const LS=10, tw=_vkSpacedW(ctx,'VERKOCHT',LS), pw=tw+120, ph=176, fit=Math.min(1,(W*0.54)/pw);
+    ctx.scale(fit,fit);
+    _socialRR(ctx,-pw/2,-ph/2,pw,ph,22); ctx.fillStyle='rgba(28,25,23,0.45)'; ctx.fill();
+    ctx.lineWidth=5; ctx.strokeStyle=OR; _socialRR(ctx,-pw/2,-ph/2,pw,ph,22); ctx.stroke();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(232,119,34,0.55)'; _socialRR(ctx,-pw/2+15,-ph/2+15,pw-30,ph-30,13); ctx.stroke();
+    ctx.fillStyle=WIT; _socialSpaced(ctx,'VERKOCHT',-tw/2,3,LS);
+    if(!isStatic&&t>0.55&&t<1.3){
+      const f=(t-0.55)/0.75, x0=-pw/2+pw*1.7*f;
+      ctx.save(); _socialRR(ctx,-pw/2,-ph/2,pw,ph,22); ctx.clip();
+      const sg=ctx.createLinearGradient(x0-130,-ph/2,x0+130,ph/2);
+      sg.addColorStop(0,'rgba(255,255,255,0)'); sg.addColorStop(0.5,'rgba(255,255,255,0.28)'); sg.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=sg; ctx.fillRect(-pw/2,-ph/2,pw,ph); ctx.restore();
+    }
     ctx.restore(); ctx.textAlign='left'; ctx.textBaseline='top';
   }
-  if(!isStatic&&t>=0.55&&t<0.95){ ctx.save(); ctx.globalAlpha=0.45*(1-(t-0.55)/0.4); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H); ctx.restore(); }
-  // 4. tekstblok onderin; schuift omhoog in de video
-  const tin=isStatic?1:ease((t-1.1)/0.5);
-  if(tin>0){
-    ctx.save(); ctx.globalAlpha=tin; ctx.translate(0,60*(1-tin));
-    ctx.textAlign='left'; ctx.textBaseline='top';
-    let y=H-700;  // ruimte houden tot het QR-label onderin
-    if(a.brand){ ctx.font='800 34px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),70,y,5); y+=56; }
-    ctx.font='800 62px Sora, sans-serif'; ctx.fillStyle='#ffffff';
-    const lns=_socialWrap(ctx,p.title,W-420,2); lns.forEach((l,i)=>ctx.fillText(l,70,y+i*74)); y+=lns.length*74+12;
-    ctx.fillStyle=OR; ctx.fillRect(70,y,96,7); y+=34;
-    ctx.font='700 40px Inter, sans-serif'; ctx.fillStyle='rgba(255,255,255,0.88)';
-    ctx.fillText('Ook zo’n bank? Stuur ons een appje',70,y);
+  // 6. tekstblok, van onderaf opgebouwd zodat het nooit in de Instagram-balk valt
+  const ti=isStatic?1:ease((t-1.0)/0.6);
+  if(ti>0){
+    const d=_socialTitelDelen(p.title), feiten=p.feiten||'', maxW=860;
+    ctx.save(); ctx.globalAlpha=ov*ti; ctx.translate(0,14*(1-ti)); ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.font='800 62px Sora, sans-serif';
+    let tl=_socialWrap(ctx,d.hoofd,maxW,2), tf=62, lh=74;
+    if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=52; lh=63; ctx.font='800 52px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
+    const hoogte=(a.brand?44:0)+tl.length*lh+(d.sub?50:0)+34+(feiten?48:0)+46;
+    let y=1380-hoogte;
+    if(a.brand){ ctx.font='800 32px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=44; }
+    ctx.fillStyle=WIT; ctx.font='800 '+tf+'px Sora, sans-serif';
+    tl.forEach((l,i)=>ctx.fillText(l,M,y+i*lh)); y+=tl.length*lh;
+    if(d.sub){ ctx.font='500 34px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.70)'; ctx.fillText(d.sub,M,y+4); y+=50; }
+    ctx.fillStyle=OR; ctx.fillRect(M,y+12,88,6); y+=34;
+    if(feiten){ ctx.font='600 34px Inter, sans-serif'; ctx.fillStyle='rgba(250,247,242,0.90)'; ctx.fillText(feiten,M,y); y+=48; }
+    ctx.font='700 36px Inter, sans-serif'; ctx.fillStyle=WIT; ctx.fillText('Zoek je zoiets? Stuur ons een berichtje.',M,y);
     ctx.restore();
   }
-  // 5. QR rechtsonder + logo linksonder
-  const bin=isStatic?1:ease((t-1.5)/0.5);
-  if(a.qr&&bin>0){ const qs=232,qx=W-qs-70,qy=H-qs-96;
-    ctx.save(); ctx.globalAlpha=bin;
-    _socialRR(ctx,qx-16,qy-16,qs+32,qs+32,16); ctx.fillStyle='#fff'; ctx.fill();
+  // 7. QR linksonder (rechts blijft vrij voor de Reels-knoppen), met het adres ernaast
+  const fi=isStatic?1:ease((t-1.4)/0.6);
+  if(a.qr&&fi>0){
+    const qs=150, qx=M, qy=_VK.BOT-qs;
+    ctx.save(); ctx.globalAlpha=ov*fi;
+    _socialRR(ctx,qx-12,qy-12,qs+24,qs+24,14); ctx.fillStyle=WIT; ctx.fill();
     ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
-    ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-    ctx.fillText('SCAN & APP',qx+qs/2,qy-30);
-    ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillStyle=OR; ctx.font='800 24px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+38,qy+32,3);
+    ctx.fillStyle='rgba(250,247,242,0.82)'; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+38,qy+76);
+    ctx.restore();
   }
-  if(a.logo&&bin>0){ const lw=200, sc=lw/a.logo.width, lh=a.logo.height*sc; ctx.save(); ctx.globalAlpha=bin; ctx.drawImage(a.logo,70,H-lh-96,lw,lh); ctx.restore(); }
-  // 6. eindkaart (alleen video): donker beeld met oproep; QR blijft scanbaar
-  if(!isStatic&&t>=FOTO_DUR-0.3){
-    const cp=ease((t-(FOTO_DUR-0.3))/0.5);
-    ctx.save(); ctx.globalAlpha=cp*0.93; ctx.fillStyle='#141b20'; ctx.fillRect(0,0,W,H); ctx.restore();
-    ctx.save(); ctx.globalAlpha=cp; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillStyle='#ffffff'; ctx.font='800 92px Sora, sans-serif'; ctx.fillText('Ook zo’n bank?',W/2,H*0.30);
-    ctx.fillStyle=OR; ctx.font='800 52px Sora, sans-serif'; ctx.fillText('nijhofbrothers.nl',W/2,H*0.30+118);
-    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='700 42px Inter, sans-serif'; ctx.fillText('of scan en app ons',W/2,H*0.30+192);
-    if(a.qr){ const qs=300,qx=(W-qs)/2,qy=H*0.46;
-      _socialRR(ctx,qx-18,qy-18,qs+36,qs+36,18); ctx.fillStyle='#fff'; ctx.fill();
-      ctx.drawImage(a.qr,qx,qy,qs,qs); _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
-      if(a.logo){ const lw=210, lsc=lw/a.logo.width, lh=a.logo.height*lsc; ctx.drawImage(a.logo,(W-lw)/2,qy+qs+70,lw,lh); }
-    }
-    ctx.textAlign='left'; ctx.textBaseline='top'; ctx.restore();
-  }
+  // 8. filmkorrel over het geheel
+  _vkKorrel(ctx,a);
 }
 async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
@@ -549,7 +619,7 @@ async function socialMaak(i,type){
   }catch(e){ if(prev)prev.innerHTML='<div style="padding:22px;color:var(--rd)">Kon de story niet maken: '+esc(String(e.message||e))+'</div>'; }
 }
 function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.verkocht?'verkocht-':'nieuw-binnen-')+(p.handle||'story')+'.'+(_social.ext||'png'); }
-function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Alweer verkocht! ✅\n'+p.title+'\n\nOok op zoek naar een kwaliteitsbank? Bekijk ons actuele aanbod of stuur ons een appje.\n'+p.url; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
+function _socialCaption(){ const p=_social.laatste; if(!p)return ''; if(p.verkocht)return 'Deze is weg.\n'+p.title+(p.feiten?'\n'+p.feiten:'')+'\n\nZoek je iets vergelijkbaars? Stuur ons gerust een berichtje — we hebben er vaak meerdere staan.\n'+p.url; return 'Nieuw binnen bij Nijhof Brothers 🛋️\n'+p.title+' — '+eur(p.price)+'\n\nBekijk hem op onze website. Wees er snel bij, weg = weg\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
   if(!_social.blob && _social.canvas){ try{ _social.blob=await new Promise(r=>_social.canvas.toBlob(b=>r(b),'image/png')); _social.mime=_social.mime||'image/png'; _social.ext=_social.ext||'png'; }catch(_e){} }
