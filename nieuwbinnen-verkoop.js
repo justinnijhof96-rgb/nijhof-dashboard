@@ -153,6 +153,9 @@ async function _nbFeitenErbij(prods){
    maar 5 reviews terug en je kunt niet bladeren, daarom bewaart die functie alles in
    tabel google_reviews en geeft ze het volledige archief terug. */
 const _REV_MAX=230;          // meer tekst past niet leesbaar in één beeld
+const _REV_MULTI_MAX=5;     // Instagram knipt een story-video na 15 s; 5 × 2,8 s blijft daaronder
+const _REV_PER=2.8;         // seconden per review in een verzamelfilmpje
+let _revSel=[];             // ids van aangevinkte reviews
 const _RGEZIEN='nb-reviews-gezien';
 async function reviewLaad(force){
   const grid=el('social-grid'); if(!grid)return;
@@ -175,11 +178,16 @@ function _revNaam(r){ return (((r&&r.voornaam)||'')+' '+((r&&r.initiaal)||'')).t
 function reviewRenderGrid(){
   const grid=el('social-grid'); if(!grid)return;
   if(!_social.reviews.length){ grid.innerHTML='<div style="padding:24px;color:var(--gr);text-align:center">Nog geen reviews gevonden.</div>'; return; }
-  let h='<div style="display:grid;gap:12px">';
+  let h='<div id="review-bar" style="position:sticky;top:0;z-index:5;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;margin-bottom:12px;display:none;align-items:center;gap:10px">'
+    +'<span id="review-bar-tekst" style="flex:1;font-size:12.5px;color:#9a3412;line-height:1.35"></span>'
+    +'<button class="btn btn-or btn-sm" style="flex:0 0 auto" onclick="reviewFilm()">🎬 Film maken</button>'
+    +'</div>'
+    +'<div style="display:grid;gap:12px">';
   _social.reviews.forEach((r,i)=>{
-    const t=_revTekst(r), lang=t.length>_REV_MAX;
-    h+='<div style="border:1px solid var(--bd);border-radius:12px;background:#fff;padding:12px 13px">'
+    const t=_revTekst(r), lang=t.length>_REV_MAX, aan=_revSel.indexOf(r.id)>=0;
+    h+='<div style="border:1.5px solid '+(aan?'#E87722':'var(--bd)')+';border-radius:12px;background:#fff;padding:12px 13px">'
       +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<input type="checkbox" '+(aan?'checked':'')+' onchange="reviewKies('+i+',this.checked)" style="width:18px;height:18px;accent-color:#E87722;flex:0 0 auto" title="Meenemen in een verzamelfilmpje">'
         +'<span style="color:#E87722;font-size:14px;letter-spacing:1px">'+'★'.repeat(Math.max(1,Math.min(5,r.sterren||5)))+'</span>'
         +'<strong style="font-size:13px;color:var(--nav)">'+esc(_revNaam(r))+'</strong>'
         +'<span style="font-size:11.5px;color:var(--gr);margin-left:auto">'+esc(r.wanneer||'')+'</span>'
@@ -193,6 +201,36 @@ function reviewRenderGrid(){
       +'</div></div>';
   });
   grid.innerHTML=h+'</div>';
+  _revBalk();
+}
+// ── verzamelfilmpje: meerdere reviews achter elkaar ─────────────────────────
+function _revBalk(){
+  const b=el('review-bar'), t=el('review-bar-tekst'); if(!b||!t)return;
+  const n=_revSel.length;
+  b.style.display=n?'flex':'none';
+  t.innerHTML=n<2
+    ? '<strong>'+n+' gekozen</strong> — kies er nog minstens één voor een verzamelfilmpje.'
+    : '<strong>'+n+' reviews</strong> · filmpje van '+String(Math.round(n*_REV_PER*10)/10).replace('.',',')+' seconden';
+}
+function reviewKies(i,aan){
+  const r=_social.reviews[i]; if(!r)return;
+  const p=_revSel.indexOf(r.id);
+  if(aan){
+    if(_revTekst(r).length>_REV_MAX){ toast('Kort deze review eerst in met ✂️','#b45309'); reviewRenderGrid(); return; }
+    if(_revSel.length>=_REV_MULTI_MAX){ toast('Maximaal '+_REV_MULTI_MAX+' reviews per filmpje','#b45309'); reviewRenderGrid(); return; }
+    if(p<0)_revSel.push(r.id);
+  } else if(p>=0) _revSel.splice(p,1);
+  reviewRenderGrid();
+}
+function reviewFilm(){
+  const gekozen=_revSel.map(id=>_social.reviews.find(r=>r.id===id)).filter(Boolean);
+  if(gekozen.length<2){ toast('Kies er minstens twee','#b45309'); return; }
+  const p={review:true,multi:gekozen.map(r=>({tekst:_revTekst(r),naam:_revNaam(r),wanneer:r.wanneer||'',sterren:Math.max(1,Math.min(5,r.sterren||5))})),
+    sterren:5,tekst:_revTekst(gekozen[0]),naam:_revNaam(gekozen[0]),wanneer:gekozen[0].wanneer||'',
+    handle:'reviews-'+gekozen.length,title:'Reviews',images:[],image:null,tags:[],vendor:'',url:'https://nijhofbrothers.nl'};
+  _socialToon(p,'video');
+  gekozen.forEach(r=>{ r.gepost_op=new Date().toISOString();
+    try{ fetch(SUPABASE_URL+'/functions/v1/google-beoordeling',{method:'POST',headers:{'apikey':SUPABASE_ANON,'Authorization':'Bearer '+(_getToken()||SUPABASE_ANON),'Content-Type':'application/json'},body:JSON.stringify({markeer:r.id,gepost:true})}); }catch(_e){} });
 }
 let _revIdx=-1;
 function reviewInkort(i){
@@ -359,6 +397,13 @@ function _socialWrap(ctx,text,maxW,maxLines){
 // Weergavegrootte van de QR in de story. De code wordt op exact deze grootte gegenereerd en
 // 1-op-1 getekend; verkleinen van een grotere QR maakt de randen zacht en dan haakt de scanner af.
 var _QR_PX=200;
+// Veilige zone waar GEEN enkel platform z'n eigen knoppen overheen legt.
+// Instagram/Facebook story: balk boven (~250 px) en antwoordbalk onder (~250 px).
+// Instagram Reels: knoppenrail rechts (x > ~900) en bijschrift onderin.
+// TikTok is de krapste: bijschrift + naam + muziekregel vullen de onderste ~480 px en
+// de rail rechts loopt tot x ~1040. Daarom: alles wat moet kunnen worden gelezen of
+// gescand tussen y 280 en 1420 en links van x 900 (user 2 okt 2026).
+var _VEILIG={TOP:280,BOT:1420,LINKS:80,RECHTS:900};
 function _socialQR(text,size){
   return new Promise((resolve,reject)=>{
     try{
@@ -466,7 +511,7 @@ function _socialQRMerk(ctx,a,cx,cy,qs){
 // Verkocht is donker met de foto over het hele beeld, Nieuw binnen blijft LICHT met de
 // foto bovenin en een papierkleurig infovlak eronder. Weg: de pulserende oranje gloed en
 // de schermvullende oranje eindkaart (user 1 okt 2026: niet schreeuwen).
-var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1570,FOTO_H:860,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+var _NB={W:1080,H:1920,M:80,TOP:300,BOT:1420,FOTO_H:800,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
 function _socialDrawFrame(ctx,a,p,t,DUR){
   const W=_NB.W,H=_NB.H,M=_NB.M,OR=_NB.OR,INK=_NB.INK,PAP=_NB.PAPIER,FH=_NB.FOTO_H;
   DUR=DUR||8;
@@ -520,8 +565,8 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     // daardoor tégen de foto aan en kwam het merklabel op de foto te liggen (user 1 okt 2026).
     // Daarom past de indeling zich nu aan: eerst de ondertitel laten vallen, dan de titel
     // kleiner. Het blok begint nooit hoger dan net onder de foto.
-    const ONDER=1330, BOVEN=FH+36, RUIMTE=ONDER-BOVEN;
-    const vast=(a.brand?42:0)+96+(feiten?44:0)+(ster?46:0);
+    const ONDER=1180, BOVEN=FH+36, RUIMTE=ONDER-BOVEN;
+    const vast=(a.brand?42:0)+96+(feiten?44:0);
     const opties=[[60,70,2,!!d.sub],[60,70,2,false],[50,60,3,false],[50,60,2,false]];
     let tf=60, lh=70, toonSub=!!d.sub, tl=null, hoogte=0;
     for(const o of opties){
@@ -542,11 +587,6 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
     ctx.fillStyle=OR; ctx.font='800 84px Sora, sans-serif'; ctx.fillText(eur(p.price),M,y);
     ctx.restore(); y+=96;
     if(feiten){ ctx.font='600 32px Inter, sans-serif'; ctx.fillStyle=_NB.GRIJS; ctx.fillText(feiten,M,y); y+=44; }
-    if(ster){
-      const sb=_vkSterren(ctx,M,y+1,ster,11);
-      ctx.font='600 27px Inter, sans-serif'; ctx.fillStyle=_NB.GRIJS;
-      ctx.fillText(_googleTekst(),M+sb+14,y+1);
-    }
     ctx.restore();
   }
   // 6. QR linksonder (rechterrand vrij voor de Reels-knoppen), merk rechtsonder
@@ -561,7 +601,12 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
       _socialQRMerk(ctx,a,qx+qs/2,qy+qs/2,qs);
       ctx.textAlign='left'; ctx.textBaseline='top';
       ctx.fillStyle=OR; ctx.font='800 26px Sora, sans-serif'; _socialSpaced(ctx,'SCAN & APP',qx+qs+40,qy+60,3);
-      ctx.fillStyle=_NB.GRIJS; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+40,qy+104);
+      ctx.fillStyle=_NB.GRIJS; ctx.font='600 30px Inter, sans-serif'; ctx.fillText('nijhofbrothers.nl',qx+qs+40,qy+100);
+      if(_GOOGLE&&_GOOGLE.sterren){
+        const sb=_vkSterren(ctx,qx+qs+40,qy+146,_GOOGLE.sterren,10,'#FBBC04');
+        ctx.font='600 25px Inter, sans-serif'; ctx.fillStyle=_NB.GRIJS;
+        ctx.fillText(_googleTekst(),qx+qs+40+sb+12,qy+146);
+      }
     }
     if(a.logo){ const lw=168, lsc=lw/a.logo.width, lh2=a.logo.height*lsc;
       ctx.drawImage(a.logo,W-M-lw,qy+(_QR_PX-lh2)/2,lw,lh2); }
@@ -574,64 +619,108 @@ function _socialDrawFrame(ctx,a,p,t,DUR){
 // Derde format (user 2 okt 2026). Zelfde systeem als de andere twee — veilige zones,
 // warm papier, oranje als accent, filmkorrel, QR linksonder, sluitende lus — maar zonder
 // productfoto en als enige GECENTREERD, zodat je 'm meteen herkent tussen de andere twee.
-var _RV={W:1080,H:1920,M:90,TOP:300,BOT:1570,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+var _RV={W:1080,H:1920,M:90,TOP:290,BOT:1420,OR:'#E87722',INK:'#242424',GRIJS:'#6b6560',PAPIER:'#FAF7F2'};
+// Het woord Google in de bekende kleurvolgorde. Geen namaak-logo: gewoon de bron
+// benoemen in de kleuren die iedereen herkent (en de Places-voorwaarden vragen attributie).
+var _GKLEUR=['#4285F4','#EA4335','#FBBC05','#4285F4','#34A853','#EA4335'];
+function _googleWoord(ctx,x,y,px){
+  const w='Google'; ctx.save(); ctx.font='700 '+px+'px Inter, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
+  let cx=x;
+  for(let i=0;i<w.length;i++){ ctx.fillStyle=_GKLEUR[i]; ctx.fillText(w[i],cx,y); cx+=ctx.measureText(w[i]).width; }
+  ctx.restore(); return cx-x;
+}
+function _googleWoordBreedte(ctx,px){ ctx.save(); ctx.font='700 '+px+'px Inter, sans-serif'; const w=ctx.measureText('Google').width; ctx.restore(); return w; }
 function _reviewDrawFrame(ctx,a,p,t,DUR){
-  const W=_RV.W,H=_RV.H,M=_RV.M,OR=_RV.OR,INK=_RV.INK,PAP=_RV.PAPIER;
+  const W=_RV.W,H=_RV.H,M=_RV.M,OR=_RV.OR,INK=_RV.INK,PAP=_RV.PAPIER,GOUD='#FBBC04';
   DUR=DUR||6;
   const isStatic=t>=900;
   const ease=x=>{x=Math.max(0,Math.min(1,x));return 1-Math.pow(1-x,3);};
   const LOOP=0.8, SHOW=Math.max(1,DUR-LOOP);
+  const multi=Array.isArray(p.multi)&&p.multi.length>1;
   ctx.fillStyle=PAP; ctx.fillRect(0,0,W,H);
-  const ov=isStatic?1:(t>=SHOW?Math.max(0,1-ease((t-SHOW)/(LOOP*0.6))):1);
-  // merk bovenaan, gecentreerd (Verkocht heeft 'm linksboven, Nieuw binnen rechtsonder)
-  if(a.logo){ const lw=180,lsc=lw/a.logo.width,lh=a.logo.height*lsc;
+  // Bij een verzamelfilmpje blijft de kaart staan en wisselt alleen de inhoud; de lus
+  // sluit doordat elke review in- en uitvaagt. Bij één review vaagt alles aan het eind uit.
+  let huidig=multi?p.multi[0]:p, tf=1;
+  if(!isStatic&&multi){
+    const PER=DUR/p.multi.length;
+    const i=Math.max(0,Math.min(p.multi.length-1,Math.floor(t/PER)));
+    huidig=p.multi[i];
+    const lok=t-i*PER;
+    tf=Math.max(0,Math.min(1,Math.min(ease(lok/0.45),ease((PER-lok)/0.45))));
+  } else if(!isStatic){ tf=ease((t-0.85)/0.55); }
+  const ov=(isStatic||multi)?1:(t>=SHOW?Math.max(0,1-ease((t-SHOW)/(LOOP*0.6))):1);
+  // merk bovenaan — de post blijft van Nijhof Brothers, de review komt van Google
+  if(a.logo){ const lw=170,lsc=lw/a.logo.width,lh=a.logo.height*lsc;
     ctx.save(); ctx.globalAlpha=ov; ctx.drawImage(a.logo,(W-lw)/2,_RV.TOP,lw,lh); ctx.restore(); }
   if(ov<=0.002){ _vkKorrel(ctx,a); return; }
-  // groot aanhalingsteken als rustig accent
-  ctx.save(); ctx.globalAlpha=ov*0.16; ctx.fillStyle=OR; ctx.textAlign='center'; ctx.textBaseline='top';
-  ctx.font='800 230px Sora, sans-serif'; ctx.fillText('“',W/2,470); ctx.restore();
-  // tekstblok opmeten: lettergrootte zakt tot het past
-  const tekst=String(p.tekst||'');
-  let qf=64,qlh=88,ql=[];
-  for(const f of [64,57,51,45,40,36]){
-    qf=f; qlh=Math.round(f*1.36); ctx.font='600 '+f+'px Inter, sans-serif';
-    ql=_socialWrap(ctx,'“'+tekst+'”',W-2*M,8);
-    // past het binnen 8 regels én binnen de hoogte tussen logo en QR? dan deze maat houden
-    if(!/…$/.test(ql[ql.length-1]||'') && (64+54+ql.length*qlh+56+46+34)<=880) break;
+  // ── kaart opmeten ────────────────────────────────────────────────────
+  const cx=M, cw=W-2*M, pad=52, binnen=cw-2*pad;
+  const tekst=String(huidig.tekst||'');
+  let qf=44,qlh=60,ql=[];
+  for(const f of [46,42,38,34,31]){
+    qf=f; qlh=Math.round(f*1.4); ctx.font='400 '+f+'px Inter, sans-serif';
+    ql=_socialWrap(ctx,tekst,binnen,9);
+    if(!/…$/.test(ql[ql.length-1]||'') && ql.length*qlh<=360) break;
   }
-  const hSter=64, hNaam=46, hVia=34;
-  const totaal=hSter+54+ql.length*qlh+56+hNaam+hVia;
-  let y=Math.max(620,Math.round(920-(totaal/2)));  // 920 = midden tussen logo (~470) en QR (1370)
-  // sterren: landen één voor één
-  const nst=Math.max(1,Math.min(5,p.sterren||5)), rr=26, st=rr*2+16, breed=nst*st-16;
+  const hKop=96, hSter=62, hVoet=46;
+  const chNodig=pad+hKop+hSter+ql.length*qlh+28+hVoet+pad;
+  const ch=Math.max(620,chNodig);          // ook een korte review krijgt een volwaardige kaart
+  const cy=Math.round(470+(710-ch)/2);
+  const extra=Math.round((ch-chNodig)/2);  // bij een korte tekst de inhoud optisch centreren
+  // ── de kaart ─────────────────────────────────────────────────────────
+  const ki=isStatic?1:ease((t-0.15)/0.5);
+  ctx.save(); ctx.globalAlpha=ov*ki;
+  ctx.shadowColor='rgba(36,30,24,0.13)'; ctx.shadowBlur=36; ctx.shadowOffsetY=12;
+  _socialRR(ctx,cx,cy,cw,ch,30); ctx.fillStyle='#ffffff'; ctx.fill();
+  ctx.restore();
+  if(ki<=0.01){ _vkKorrel(ctx,a); return; }
+  // ── inhoud van de kaart ──────────────────────────────────────────────
+  ctx.save(); ctx.globalAlpha=ov*ki*(multi?1:1);
+  let y=cy+pad+extra;
+  // kopregel: rondje met initiaal (zoals Google doet zonder profielfoto), naam, wanneer
+  ctx.save(); ctx.globalAlpha=ctx.globalAlpha*tf;
+  const naam=String(huidig.naam||'Een klant'), letter=(naam.trim()[0]||'K').toUpperCase();
+  const kl=_GKLEUR[(letter.charCodeAt(0)+naam.length)%4===3?4:(letter.charCodeAt(0)+naam.length)%4];
+  const ar=38, ax=cx+pad+ar, ay=y+ar;
+  ctx.beginPath(); ctx.arc(ax,ay,ar,0,2*Math.PI); ctx.fillStyle=kl; ctx.fill();
+  ctx.fillStyle='#ffffff'; ctx.font='700 40px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(letter,ax,ay+2);
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillStyle=INK; ctx.font='700 38px Inter, sans-serif'; ctx.fillText(naam,ax+ar+26,y+6);
+  ctx.fillStyle='#8a8279'; ctx.font='400 27px Inter, sans-serif'; ctx.fillText(String(huidig.wanneer||''),ax+ar+26,y+50);
+  ctx.restore();
+  y+=hKop;
+  // sterren in Google-goud: het sterkste herkenningspunt
+  const nst=Math.max(1,Math.min(5,(multi?5:huidig.sterren)||5)), sr=21;
   for(let i=0;i<nst;i++){
-    const si=isStatic?1:ease((t-(0.3+i*0.12))/0.35);
+    const si=isStatic?1:(multi?1:ease((t-(0.45+i*0.1))/0.3));
     if(si<=0)continue;
-    ctx.save(); ctx.globalAlpha=ov*si;
-    const cx=(W-breed)/2+rr+i*st, cy=y+rr+(1-si)*14, sc=0.8+0.2*si;
-    ctx.translate(cx,cy); ctx.scale(sc,sc); ctx.fillStyle=OR; _vkSter(ctx,0,0,rr); ctx.restore();
+    ctx.save(); ctx.globalAlpha=ov*ki*si;
+    ctx.translate(cx+pad+sr+i*(sr*2+10),y+sr+(1-si)*10); ctx.scale(0.82+0.18*si,0.82+0.18*si);
+    ctx.fillStyle=GOUD; _vkSter(ctx,0,0,sr); ctx.restore();
   }
-  y+=hSter+54;
+  y+=hSter;
   // de review zelf
-  const qi=isStatic?1:ease((t-0.95)/0.6);
-  if(qi>0){
-    ctx.save(); ctx.globalAlpha=ov*qi; ctx.translate(0,14*(1-qi));
-    ctx.fillStyle=INK; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='600 '+qf+'px Inter, sans-serif';
-    ql.forEach((l,i)=>ctx.fillText(l,W/2,y+i*qlh));
-    ctx.restore();
+  ctx.save(); ctx.globalAlpha=ov*ki*tf; ctx.translate(0,12*(1-tf));
+  ctx.fillStyle='#3b3630'; ctx.font='400 '+qf+'px Inter, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
+  ql.forEach((l,i)=>ctx.fillText(l,cx+pad,y+i*qlh));
+  ctx.restore();
+  y+=ql.length*qlh+28;
+  // voetregel in de kaart: hier staat waar het vandaan komt
+  ctx.save(); ctx.globalAlpha=ov*ki;
+  ctx.fillStyle='#8a8279'; ctx.font='400 28px Inter, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
+  const gb=_googleWoordBreedte(ctx,30);
+  ctx.fillText('Geplaatst op',cx+pad,y+2);
+  const na=ctx.measureText('Geplaatst op').width;
+  _googleWoord(ctx,cx+pad+na+12,y,30);
+  if(_GOOGLE&&_GOOGLE.score){
+    ctx.textAlign='right'; ctx.fillStyle='#8a8279'; ctx.font='400 26px Inter, sans-serif';
+    ctx.fillText(_googleTekst(),cx+cw-pad,y+3); ctx.textAlign='left';
   }
-  y+=ql.length*qlh+56;
-  // naam + bron
-  const ni=isStatic?1:ease((t-1.5)/0.5);
-  if(ni>0){
-    ctx.save(); ctx.globalAlpha=ov*ni; ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillStyle=OR; ctx.font='800 38px Sora, sans-serif'; ctx.fillText('— '+(p.naam||'Een klant'),W/2,y);
-    ctx.fillStyle=_RV.GRIJS; ctx.font='600 27px Inter, sans-serif';
-    ctx.fillText('via Google'+(p.wanneer?' · '+p.wanneer:''),W/2,y+hNaam);
-    ctx.restore();
-  }
-  // QR linksonder, zelfde onderbalk als de andere formats
-  const fi=isStatic?1:ease((t-1.8)/0.6);
+  ctx.restore();
+  ctx.restore();
+  // ── QR, binnen de veilige zone van Instagram, Facebook én TikTok ──────
+  const fi=isStatic?1:ease((t-1.5)/0.6);
   if(a.qr&&fi>0){ const qs=_QR_PX, qx=M, qy=_RV.BOT-qs;
     ctx.save(); ctx.globalAlpha=ov*fi;
     _socialRR(ctx,qx-14,qy-14,qs+28,qs+28,16); ctx.fillStyle='#ffffff'; ctx.fill();
@@ -656,7 +745,7 @@ function _reviewDrawFrame(ctx,a,p,t,DUR){
 //  - een feitenregel (breedte, materiaal, bezorging) — dat is wat een koper wil weten;
 //  - GEEN eindkaart meer: de laatste seconde keert terug naar de eerste foto, zodat het
 //    filmpje naadloos rondloopt (meer kijktijd op Reels) en het product in beeld blijft.
-var _VK={W:1080,H:1920,M:80,TOP:285,BOT:1575,OR:'#E87722',INK:'#1C1917',WIT:'#FAF7F2'};
+var _VK={W:1080,H:1920,M:80,TOP:290,BOT:1420,OR:'#E87722',INK:'#1C1917',WIT:'#FAF7F2'};
 // Google-beoordeling in de story. Wordt automatisch opgehaald bij de edge function
 // 'google-beoordeling' (user 1 okt 2026: het aantal reviews loopt op, dus niets handmatig
 // bijhouden). Deze waarden zijn alleen de terugval als dat niet lukt; het aantal tonen we
@@ -693,7 +782,7 @@ function _vkSter(ctx,cx,cy,r){
     if(i)ctx.lineTo(px,py); else ctx.moveTo(px,py); }
   ctx.closePath(); ctx.fill();
 }
-function _vkSterren(ctx,x,y,aantal,r){ r=r||12; const st=r*2+6; ctx.save(); ctx.fillStyle=_VK.OR; for(let i=0;i<aantal;i++)_vkSter(ctx,x+r+i*st,y+r,r); ctx.restore(); return aantal*st-6; }
+function _vkSterren(ctx,x,y,aantal,r,kleur){ r=r||12; const st=r*2+6; ctx.save(); ctx.fillStyle=kleur||_VK.OR; for(let i=0;i<aantal;i++)_vkSter(ctx,x+r+i*st,y+r,r); ctx.restore(); return aantal*st-6; }
 // Filmkorrel: één klein ruis-tegeltje, voor elk frame hergebruikt (statisch, dus geen geflikker).
 var _grainTile;
 function _socialGrain(){
@@ -815,7 +904,7 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
     if(tl.length&&/…$/.test(tl[tl.length-1])){ tf=52; lh=63; ctx.font='800 52px Sora, sans-serif'; tl=_socialWrap(ctx,d.hoofd,maxW,3); }
     const ster=(_GOOGLE&&_GOOGLE.sterren)?_GOOGLE.sterren:0;
     const hoogte=(a.brand?44:0)+tl.length*lh+(d.sub?50:0)+34+(feiten?48:0)+46+(ster?48:0);
-    let y=1330-hoogte;  // ruimte voor de grotere QR eronder
+    let y=1180-hoogte;  // ruimte voor de QR eronder, binnen de veilige zone
     if(a.brand){ ctx.font='800 32px Sora, sans-serif'; ctx.fillStyle=OR; _socialSpaced(ctx,a.brand.toUpperCase(),M,y,5); y+=44; }
     ctx.fillStyle=WIT; ctx.font='800 '+tf+'px Sora, sans-serif';
     tl.forEach((l,i)=>ctx.fillText(l,M,y+i*lh)); y+=tl.length*lh;
@@ -848,7 +937,10 @@ function _verkochtDrawFrame(ctx,a,p,t,DUR){
 }
 // Elk format heeft een eigen tekenfunctie en een eigen lengte.
 function _socialTeken(p){ return p&&p.review?_reviewDrawFrame:(p&&p.verkocht?_verkochtDrawFrame:_socialDrawFrame); }
-function _socialDuur(p){ return p&&p.review?6:(p&&p.verkocht?7:8); }
+function _socialDuur(p){
+  if(p&&p.review&&p.multi&&p.multi.length>1)return Math.round(Math.min(_REV_MULTI_MAX,p.multi.length)*_REV_PER*10)/10;
+  return p&&p.review?6:(p&&p.verkocht?7:8);
+}
 async function _socialCanvas(p){
   const W=1080,H=1920; const a=await _socialAssets(p);
   const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
@@ -902,6 +994,12 @@ async function socialMaak(i,type){
   let p;
   if(_social.modus==='review'){ const r=_social.reviews[i]; p=r?_reviewProduct(r):null; }
   else p=(_social.modus==='verkocht'?_social.verkocht:_social.producten)[i];
+  if(!p)return;
+  return _socialToon(p,type);
+}
+// Alles vanaf hier werkt op een kant-en-klare 'p', zodat ook een zelfgebouwd item
+// (zoals het verzamelfilmpje van meerdere reviews) dezelfde pijplijn gebruikt.
+async function _socialToon(p,type){
   if(!p)return; type=type||'foto';
   _social.laatste=p; _social.blob=null; _social.canvas=null; _social.mime=''; _social.ext='';
   { const ct=el('social-cap-text'), cw=el('social-cap-wrap'), cb=el('social-cap-btn'); if(ct)ct.value=_socialCaption(); if(cb)cb.textContent='📋 Kopieer'; if(cw)cw.style.display='block'; }
@@ -928,6 +1026,7 @@ async function socialMaak(i,type){
 }
 function _socialBestandsnaam(){ const p=_social.laatste||{}; return (p.review?'':(p.verkocht?'verkocht-':'nieuw-binnen-'))+(p.handle||'story')+'.'+(_social.ext||'png'); }
 function _socialCaption(){ const p=_social.laatste; if(!p)return '';
+  if(p.review&&p.multi&&p.multi.length>1)return 'Wat klanten over ons zeggen.\n\n'+p.multi.map(r=>'“'+r.tekst+'”\n— '+r.naam).join('\n\n')+'\n\nAllemaal via Google. Dank jullie wel. Zelf op zoek naar een bank? Kom gerust langs in Apeldoorn of stuur ons een berichtje.\nhttps://nijhofbrothers.nl';
   if(p.review)return '“'+p.tekst+'”\n— '+p.naam+', via Google\n\nDank je wel. Zelf op zoek naar een bank? Kom gerust langs in Apeldoorn of stuur ons een berichtje.\nhttps://nijhofbrothers.nl'; if(p.verkocht)return 'Deze is weg.\n'+p.title+(p.feiten?'\n'+p.feiten:'')+'\n\nZoek je iets vergelijkbaars? Stuur ons gerust een berichtje — we hebben er vaak meerdere staan.\n'+p.url; return 'Nieuw binnen.\n'+p.title+' — '+eur(p.price)+(p.feiten?'\n'+p.feiten:'')+'\n\nÉén exemplaar. Bekijk hem op de website of stuur ons gerust een berichtje.\n'+p.url; }
 function _socialBlob(cb){ if(_social.blob){cb(_social.blob);return;} if(_social.canvas){_social.canvas.toBlob(b=>{_social.blob=b;_social.mime='image/png';_social.ext='png';cb(b);},'image/png');return;} cb(null); }
 async function socialDeel(){
@@ -976,6 +1075,8 @@ function socialSluit(){ const ov=el('social-ov'); if(ov)ov.style.display='none';
   // Review-format: deze worden vanuit inline onclick in het overzicht aangeroepen,
   // dus ze MOETEN aan window hangen (de rest van de module zit in een IIFE).
   window.reviewMaak = reviewMaak;
+  window.reviewKies = reviewKies;
+  window.reviewFilm = reviewFilm;
   window.reviewInkort = reviewInkort;
   window.reviewInkortOk = reviewInkortOk;
   window.reviewInkortSluit = reviewInkortSluit;
