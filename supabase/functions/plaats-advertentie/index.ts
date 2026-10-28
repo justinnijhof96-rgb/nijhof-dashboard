@@ -103,6 +103,49 @@ function isGemapteCollectie(type: unknown): boolean {
   return !!_COLL_LC[String(type ?? "").trim().toLowerCase()];
 }
 
+// ── nbf.*-metafields: de rijke productdata waar de webshop-productpagina en de
+// Product JSON-LD (structured data) op draaien. Zonder deze velden krijgt een nieuwe
+// advertentie een kale productpagina en zwakkere Google-vindbaarheid.
+// Maat-key in `adv.maten`  ->  metafield-key (allemaal number_decimal, in cm)
+const MAAT_NAAR_MF: Record<string, string> = {
+  breedte: "breedte_cm", diepte: "diepte_cm", hoogte: "hoogte_cm",
+  zithoogte: "zithoogte_cm", zitdiepte: "zitdiepte_cm",
+};
+function _mfTekst(ns: string, key: string, type: string, waarde: unknown) {
+  const v = String(waarde ?? "").trim();
+  return v ? { namespace: ns, key, type, value: v } : null;
+}
+function bouwMetafields(adv: any): any[] {
+  const maten = adv?.maten && typeof adv.maten === "object" ? adv.maten : {};
+  const uit: any[] = [];
+  // De advertentieflow verkoopt tweedehands meubels; die horen in de Occasions-lijn.
+  // (Zet dit op "Exclusives" zodra er een nieuwe-goederenlijn via deze flow loopt.)
+  uit.push(_mfTekst("nbf", "lijn", "single_line_text_field", "Occasions"));
+  uit.push(_mfTekst("nbf", "merk", "single_line_text_field", adv?.merk));
+  uit.push(_mfTekst("nbf", "staat", "single_line_text_field", adv?.staat));
+  uit.push(_mfTekst("nbf", "materiaal", "single_line_text_field", adv?.materiaal));
+  uit.push(_mfTekst("nbf", "kleur", "single_line_text_field", adv?.kleur));
+  uit.push(_mfTekst("nbf", "bijzonderheden", "multi_line_text_field", adv?.notitie));
+  for (const [maatKey, mfKey] of Object.entries(MAAT_NAAR_MF)) {
+    // number_decimal eist een geldig getal; "290 cm" of "" mag er niet in.
+    const n = Number(String((maten as any)[maatKey] ?? "").replace(",", ".").replace(/[^0-9.\-]/g, ""));
+    if (Number.isFinite(n) && n > 0) uit.push({ namespace: "nbf", key: mfKey, type: "number_decimal", value: String(n) });
+  }
+  return uit.filter(Boolean);
+}
+// Korte SEO-omschrijving (<=160 tekens) voor Google. Shopify zet dit op global.description_tag.
+function bouwSeoTekst(titel: string, adv: any, maten: Record<string, unknown>): string {
+  const delen: string[] = [String(titel || "").trim()];
+  const br = String((maten as any)?.breedte ?? "").trim();
+  if (br) delen.push(br + " cm breed");
+  if (adv?.materiaal) delen.push(String(adv.materiaal));
+  if (adv?.kleur) delen.push(String(adv.kleur));
+  let s = delen.filter(Boolean).join(", ");
+  s += ". Tweedehands, professioneel gereinigd. Gratis bezorging rond Apeldoorn.";
+  if (s.length > 160) { s = s.slice(0, 157).replace(/[\s,.]+$/, "") + "..."; }
+  return s;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -195,7 +238,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const tags = ["marktplaats"];
-    if (adv.merk) tags.push(String(adv.merk));
+    // "occasions" vult de gelijknamige smart collection (TAG = occasions) = de Occasions-lijn
+    // van de webshop. Zonder deze tag stond een nieuwe advertentie niet in die lijn en moest
+    // hij handmatig bijgetagd worden.
+    tags.push("occasions");
+    if (adv.merk) {
+      tags.push(String(adv.merk));
+      // De merkcollecties draaien op een genormaliseerde tag (bv. merk-eric-kuster).
+      const _merkSlug = slugify(String(adv.merk));
+      if (_merkSlug) { tags.push("merk-" + _merkSlug); tags.push(_merkSlug); }
+    }
     if (adv.kleur) tags.push(String(adv.kleur));
     if (adv.maat_profiel) tags.push(String(adv.maat_profiel));
     if (isVerkocht) tags.push("verkocht");
@@ -232,6 +284,10 @@ Deno.serve(async (req: Request) => {
       // Shopify eist productOptions zodra variants meegaan — óók bij updates
       // ("Product options input is required when updating variants")
       productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
+      // Rijke productdata voor de webshop-productpagina + Product JSON-LD, en een
+      // SEO-omschrijving (Shopify slaat die op als global.description_tag).
+      metafields: bouwMetafields(adv),
+      seo: { description: bouwSeoTekst(titel, adv, adv?.maten && typeof adv.maten === "object" ? adv.maten : {}) },
     };
 
     const isCreate = !adv.shopify_product_id;
@@ -240,16 +296,38 @@ Deno.serve(async (req: Request) => {
     // het Shopify-product van de eerste.
     const handle = slugify(`${artikelnr || ""}-${baseTitel}-${String(advertentie_id).slice(-6)}`);
     if (isCreate) input.handle = handle;
-    // Foto's: bij aanmaken én bij updaten meesturen. productSet behandelt media als een
-    // list-field (volledige sync): meegestuurde foto's worden gezet, weggelaten media
-    // verwijderd. Zo komen gewijzigde/toegevoegde foto's óók op een bestaande advertentie
-    // door — voorheen gebeurde dat alleen bij aanmaken. Bij offline (verkocht/verwijderd)
-    // laten we media met rust.
+    // Foto's: productSet behandelt media als een list-field (volledige sync): meegestuurde
+    // foto's worden opnieuw geüpload onder nieuwe bestandsnamen en de oude verwijderd.
+    // Dat deden we eerst bij ELKE update, ook bij alleen een prijswijziging. Gevolg: de
+    // Marktplaats Pro-app (Woosify) stuurde de oude, verwijderde foto-URL's door en de
+    // update bleef hangen (foto's op ERROR, oude prijs op Marktplaats). Daarom sturen we
+    // de foto's alleen mee bij aanmaken of als de lijst echt veranderd is. De laatst
+    // gesynchroniseerde lijst staat in het metafield nbf.foto_bron. Bij offline
+    // (verkocht/verwijderd) laten we media met rust.
     if (!offline) {
       const fotos = Array.isArray(adv.fotos) ? adv.fotos : [];
       let urls: string[] = fotos.map((f: any) => f?.url).filter(Boolean);
       if (urls.length === 0 && item?.foto_url) urls = [item.foto_url];
-      if (urls.length) input.files = urls.map((u) => ({ originalSource: u, contentType: "IMAGE" }));
+      if (urls.length) {
+        const fotoBron = JSON.stringify(urls);
+        let fotosGewijzigd = true;
+        if (adv.shopify_product_id) {
+          try {
+            const huidig = await shopify(
+              `query($id: ID!) { product(id: $id) { metafield(namespace: "nbf", key: "foto_bron") { value } media(first: 250) { nodes { id } } } }`,
+              { id: adv.shopify_product_id },
+            );
+            const p = huidig?.product;
+            const opgeslagen = p?.metafield?.value;
+            if (opgeslagen) fotosGewijzigd = opgeslagen !== fotoBron;
+            // Producten van vóór dit metafield: zelfde aantal foto's = ongewijzigd
+            // aannemen; het metafield wordt hieronder alsnog gezet.
+            else if (p) fotosGewijzigd = (p.media?.nodes?.length ?? 0) !== urls.length;
+          } catch (_e) { /* bij twijfel de foto's gewoon meesturen (oude gedrag) */ }
+        }
+        if (fotosGewijzigd) input.files = urls.map((u) => ({ originalSource: u, contentType: "IMAGE" }));
+        input.metafields.push({ namespace: "nbf", key: "foto_bron", type: "json", value: fotoBron });
+      }
     }
 
     const identifier = adv.shopify_product_id ? { id: adv.shopify_product_id } : { handle };
