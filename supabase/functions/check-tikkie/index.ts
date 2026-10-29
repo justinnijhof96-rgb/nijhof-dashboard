@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
     let betaaldOp: string | null = null;
     if (betaald) {
       try {
-        const rp = await fetch(`${base}/paymentrequests/${encodeURIComponent(token)}/payments`, {
+        // pageNumber/pageSize zijn verplicht; zonder die twee geeft Tikkie geen lijst en bleef betaald_op leeg.
+        const rp = await fetch(`${base}/paymentrequests/${encodeURIComponent(token)}/payments?pageNumber=0&pageSize=50`, {
           method: "GET",
           headers: { "API-Key": apiKey, "X-App-Token": appToken },
         });
@@ -80,7 +81,7 @@ Deno.serve(async (req: Request) => {
           const jp: any = await rp.json().catch(() => ({}));
           const lijst: any[] = Array.isArray(jp?.payments) ? jp.payments : [];
           const datums = lijst
-            .map((p) => String(p?.dateTimePaid || p?.created || ""))
+            .map((p) => String(p?.createdDateTime || p?.dateTimePaid || p?.created || ""))
             .filter(Boolean)
             .sort();
           if (datums.length) betaaldOp = datums[datums.length - 1].slice(0, 10);
