@@ -10,6 +10,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { logApi } from "../_shared/api-gebruik.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +82,7 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       });
       if (!r.ok) { const t = await r.text(); return json({ error: `AI-fout ${r.status}`, detail: t.slice(0, 500) }, 502); }
       const j = await r.json();
+      await logApi({ bron: "analyseer-foto", provider: "anthropic", model: j.model || model, usage: j.usage });
       rawText = (j.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("").trim();
     } else {
       const apiKey = Deno.env.get("OPENAI_API_KEY");
@@ -101,6 +103,7 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       });
       if (!r.ok) { const t = await r.text(); return json({ error: `AI-fout ${r.status}`, detail: t.slice(0, 500) }, 502); }
       const j = await r.json();
+      await logApi({ bron: "analyseer-foto", provider: "openai", model: j.model || model, usage: j.usage });
       rawText = (j.choices?.[0]?.message?.content || "").trim();
     }
 
