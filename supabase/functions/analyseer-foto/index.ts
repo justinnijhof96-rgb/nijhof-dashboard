@@ -21,12 +21,34 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 }
 
-// Standaard maat-sleutels (de unie van alle maat-profielen in de app). De AI gebruikt
-// hiervan wat van toepassing is; de app vult ze in de juiste profielvelden.
+// Standaard maat-sleutels: zo heten de vaste velden in de app (en de webshop-metafields).
+// Alles wat daarbuiten op de maatfoto staat komt OOK mee, onder een eigen beschrijvende
+// sleutel — de advertentietekst moet élke maat van de foto bevatten, niet alleen deze.
 const MAAT_KEYS = [
   "breedte", "diepte", "hoogte", "zithoogte", "zitdiepte", "diepte_lounge",
   "zitdiepte_lounge", "lengte", "diameter", "matrasmaat", "vorm", "deuren", "planken", "zitplaatsen",
 ];
+const MAX_MATEN = 40;
+// Veelvoorkomende varianten terug naar de standaardsleutel, zodat de vaste velden gevuld raken.
+const MAAT_SYNONIEM: Record<string, string> = {
+  totale_breedte: "breedte", breedte_totaal: "breedte", totale_lengte: "lengte", lengte_totaal: "lengte",
+  totale_hoogte: "hoogte", hoogte_totaal: "hoogte", totale_diepte: "diepte", diepte_totaal: "diepte",
+  zit_hoogte: "zithoogte", zit_diepte: "zitdiepte",
+  lounge_diepte: "diepte_lounge", diepte_chaise_longue: "diepte_lounge", diepte_chaise: "diepte_lounge",
+  lengte_lounge: "diepte_lounge", lengte_chaise_longue: "diepte_lounge", lengte_chaise: "diepte_lounge",
+  lounge_zitdiepte: "zitdiepte_lounge", zitdiepte_chaise_longue: "zitdiepte_lounge", zitdiepte_chaise: "zitdiepte_lounge",
+  aantal_zitplaatsen: "zitplaatsen", aantal_deuren: "deuren", aantal_planken: "planken", aantal_lades: "planken",
+};
+// Sleutel normaliseren: kleine letters, geen accenten, underscores, max 40 tekens.
+function maatSleutel(k: unknown): string {
+  let s = String(k ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  s = s.replace(/\(cm\)|\bcm\b/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  return MAAT_SYNONIEM[s] || s;
+}
+// Waarde als tekst, zonder "cm" erachter (de tekstgenerator zet dat er zelf bij).
+function maatWaarde(v: unknown): string {
+  return String(v ?? "").trim().replace(/\s*cm\.?$/i, "").trim().slice(0, 40);
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -52,11 +74,15 @@ Deno.serve(async (req: Request) => {
 
     const systemPrompt =
 `Je analyseert een foto van een tweedehands meubel voor een Marktplaats-advertentie van meubelhandel Nijhof Brothers.
-Op de foto staan mogelijk AFMETINGEN geschreven (bijvoorbeeld "breedte 310", "diepte 95", "zithoogte 45"). Lees die exact over.
+Op de foto staan meestal AFMETINGEN geschreven of getekend (bijvoorbeeld "breedte 310", "diepte 95", "zithoogte 45", "rugleuning 85", "armleuning 20").
+Neem ÁLLE afmetingen over die op de foto staan, exact zoals ze er staan. Laat er geen één weg: elke maat op de foto moet in de advertentie komen.
 Bepaal daarnaast het materiaal en de kleur, en kies de best passende Marktplaats-rubriek.
 
 - 'rubriek': kies UITSLUITEND één waarde uit deze lijst: ${rubriekLijst}.
-- 'maten': een object met ALLEEN de afmetingen die je op de foto ziet, in centimeters (getallen zonder "cm"). Gebruik waar van toepassing deze sleutels: ${MAAT_KEYS.join(", ")}. Voor een tafel mag 'vorm' een woord zijn (rond/rechthoek/ovaal). Laat maten die je niet ziet gewoon weg.
+- 'maten': een object met ALLE afmetingen die op de foto staan, in centimeters (alleen het getal, zonder "cm").
+  Gebruik deze standaardsleutels waar ze passen: breedte (totale breedte; bij een bank of zithoek de lange zijde), diepte (totale diepte), hoogte (totale hoogte), zithoogte, zitdiepte, diepte_lounge (totale diepte of lengte van het lounge- of chaise-longuedeel), zitdiepte_lounge, lengte, diameter, matrasmaat (bv. "140x200"), vorm (rond/rechthoek/ovaal), deuren, planken, zitplaatsen.
+  Staat er een maat op die hier niet bij past, geef die dan een eigen korte sleutel in het Nederlands, kleine letters met underscores, bijvoorbeeld: hoogte_rugleuning, hoogte_armleuning, breedte_armleuning, breedte_zitting, diepte_zitting, hoogte_poten, breedte_chaise_longue, lengte_korte_zijde, lengte_lange_zijde, hoogte_hoofdsteun, dikte_blad, hoogte_onderkant.
+  Elke maat krijgt zijn eigen sleutel; voeg nooit twee maten samen. Laat alleen maten weg die écht niet op de foto staan.
 - 'materiaal' en 'kleur': kort (bv. "ribstof", "eiken", "leer" / "bruin", "antraciet").
 
 Verzin niets. Als je iets niet zeker weet, laat het veld leeg of weg.
@@ -78,7 +104,7 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model, max_tokens: 700, system: systemPrompt, messages: [{ role: "user", content }] }),
+        body: JSON.stringify({ model, max_tokens: 1200, system: systemPrompt, messages: [{ role: "user", content }] }),
       });
       if (!r.ok) { const t = await r.text(); return json({ error: `AI-fout ${r.status}`, detail: t.slice(0, 500) }, 502); }
       const j = await r.json();
@@ -114,13 +140,26 @@ Antwoord UITSLUITEND met geldige JSON in exact dit formaat, zonder extra tekst e
       return json({ error: "AI gaf geen bruikbare JSON terug", raw: rawText.slice(0, 400) }, 502);
     }
 
-    // Alleen bekende maat-sleutels doorlaten, als string (de app vult ze als tekst in).
+    // ALLE maten doorlaten (niet alleen de standaardsleutels), als string; sleutels
+    // genormaliseerd zodat de vaste velden in de app en de extra velden netjes gevuld raken.
+    // Voorheen bleef alleen MAAT_KEYS over, waardoor maten als "hoogte rugleuning" stil
+    // verdwenen en nooit in de advertentietekst kwamen.
     const maten: Record<string, string> = {};
-    if (parsed.maten && typeof parsed.maten === "object") {
-      for (const k of MAAT_KEYS) {
-        const v = parsed.maten[k];
-        if (v != null && String(v).trim() !== "") maten[k] = String(v).trim();
+    const voegToe = (rk: unknown, rv: unknown) => {
+      if (Object.keys(maten).length >= MAX_MATEN) return;
+      const k = maatSleutel(rk), v = maatWaarde(rv);
+      if (!k || !v || maten[k]) return;
+      maten[k] = v;
+    };
+    if (Array.isArray(parsed.maten)) {
+      // Mocht het model een lijst teruggeven: [{sleutel/naam/label, waarde/value}]
+      for (const m of parsed.maten) {
+        if (m && typeof m === "object") voegToe(m.sleutel ?? m.naam ?? m.label ?? m.key, m.waarde ?? m.value);
       }
+    } else if (parsed.maten && typeof parsed.maten === "object") {
+      // Standaardsleutels eerst (vaste volgorde in het formulier), daarna de rest zoals gelezen.
+      for (const k of MAAT_KEYS) if (parsed.maten[k] != null) voegToe(k, parsed.maten[k]);
+      for (const [rk, rv] of Object.entries(parsed.maten)) voegToe(rk, rv);
     }
 
     return json({

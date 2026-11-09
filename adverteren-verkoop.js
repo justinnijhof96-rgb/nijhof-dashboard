@@ -641,9 +641,65 @@
   function matenHtml(profiel, maten) {
     var velden = PROFIEL_MATEN[profiel] || PROFIEL_MATEN.accessoire;
     maten = maten || {};
-    return velden.map(function (v) {
+    var h = velden.map(function (v) {
       return '<div><label class="al" style="font-size:12px">' + X(v[1]) + '</label><input class="ai" data-maat="' + X(v[0]) + '" value="' + X(maten[v[0]] || "") + '"></div>';
     }).join("");
+    // Extra maten buiten het vaste profiel (van de slimme foto of zelf toegevoegd) krijgen
+    // een eigen veld: álles wat op de maatfoto staat moet in de advertentietekst komen,
+    // niet alleen de standaardvelden van het profiel.
+    var vast = {};
+    velden.forEach(function (v) { vast[v[0]] = true; });
+    Object.keys(maten).forEach(function (k) {
+      if (vast[k] || maten[k] == null || String(maten[k]) === "") return;
+      h += _extraMaatHtml(k, maten[k]);
+    });
+    h += '<div style="grid-column:1/-1"><button type="button" class="abtn abtn-gy abtn-sm" onclick="advMaatToevoegen()">➕ Maat toevoegen</button></div>';
+    return h;
+  }
+  function _extraMaatHtml(k, waarde) {
+    return '<div style="position:relative"><label class="al" style="font-size:12px">' + X(maatLabel(k)) + '</label>' +
+      '<input class="ai" data-maat="' + X(k) + '" value="' + X(waarde == null ? "" : waarde) + '" style="padding-right:40px">' +
+      '<button type="button" onclick="advMaatWis(this)" title="Maat weghalen" style="position:absolute;right:4px;bottom:4px;background:none;border:none;color:#9ca3af;font-size:17px;cursor:pointer;padding:4px 8px;line-height:1">✕</button></div>';
+  }
+  // Nette naam voor een maat-sleutel: het vaste label uit een profiel als dat er is, anders
+  // de sleutel leesbaar gemaakt ("hoogte_rugleuning" -> "Hoogte rugleuning (cm)").
+  var _MAAT_NIET_CM = { vorm: 1, matrasmaat: 1, deuren: 1, planken: 1, zitplaatsen: 1 };
+  function maatLabel(k) {
+    var p, i;
+    for (p in PROFIEL_MATEN) {
+      for (i = 0; i < PROFIEL_MATEN[p].length; i++) if (PROFIEL_MATEN[p][i][0] === k) return PROFIEL_MATEN[p][i][1];
+    }
+    var t = String(k || "").replace(/_/g, " ").trim();
+    t = t.charAt(0).toUpperCase() + t.slice(1);
+    return (_MAAT_NIET_CM[k] || /^aantal/.test(k)) ? t : t + " (cm)";
+  }
+  function maatSleutel(naam) {
+    return String(naam || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/\(cm\)|\bcm\b/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  }
+  function _huidigProfiel() {
+    var sel = E("adv-rubriek");
+    return profielVoorRubriek(sel ? sel.value : "");
+  }
+  function advMaatToevoegen() {
+    var naam = window.prompt("Welke maat wil je toevoegen? (bijvoorbeeld: hoogte rugleuning, breedte armleuning, lengte korte zijde)");
+    if (!naam) return;
+    var k = maatSleutel(naam);
+    if (!k) return;
+    var wrap = E("adv-maten"); if (!wrap) return;
+    var bestaand = wrap.querySelector('[data-maat="' + k + '"]');
+    if (bestaand) { bestaand.focus(); return; }
+    var knop = wrap.lastElementChild; // de "Maat toevoegen"-rij staat altijd onderaan
+    var tmp = document.createElement("div");
+    tmp.innerHTML = _extraMaatHtml(k, "");
+    var veld = tmp.firstChild;
+    if (knop) wrap.insertBefore(veld, knop); else wrap.appendChild(veld);
+    var inp = veld.querySelector("[data-maat]"); if (inp) inp.focus();
+  }
+  function advMaatWis(btn) {
+    var wrap = btn && btn.parentNode; if (!wrap || !wrap.parentNode) return;
+    var inp = wrap.querySelector("[data-maat]"); if (inp) inp.value = "";
+    wrap.parentNode.removeChild(wrap);
   }
 
   function advOpenItem(itemId) {
@@ -997,8 +1053,9 @@
       _slimVul(merged);
       if (st) {
         if (merged.rubriek || merged.materiaal || merged.kleur || Object.keys(merged.maten).length) {
-          st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe.";
-          T("✨ Velden ingevuld vanaf de foto('s)");
+          var nM = Object.keys(merged.maten).length;
+          st.style.color = "#15803d"; st.textContent = "✨ Ingevuld — " + nM + (nM === 1 ? " maat" : " maten") + " van de foto overgenomen (alle maten komen in de advertentietekst). Controleer rubriek/maten/materiaal/kleur, vul zelf merk + prijs aan, en voeg hieronder je echte foto's toe.";
+          T("✨ " + nM + " maten + velden ingevuld vanaf de foto('s)");
         } else {
           st.style.color = "#c2410c"; st.textContent = "Kon niets uitlezen" + (fout ? " (" + fout + ")" : "") + " — vul de velden handmatig in.";
         }
@@ -1017,10 +1074,14 @@
       }
     }
     if (d.maten && typeof d.maten === "object") {
+      // Niet alleen de bestaande velden vullen: maten buiten het vaste profiel krijgen een
+      // eigen veld, zodat álle maten van de foto in de advertentietekst terechtkomen.
+      var huidige = leesMaten(), nieuw = 0;
       Object.keys(d.maten).forEach(function (k) {
-        var inp = document.querySelector('#adv-maten [data-maat="' + k + '"]');
-        if (inp && d.maten[k] != null && String(d.maten[k]) !== "") inp.value = d.maten[k];
+        if (d.maten[k] == null || String(d.maten[k]) === "") return;
+        huidige[k] = d.maten[k]; nieuw++;
       });
+      if (nieuw && E("adv-maten")) E("adv-maten").innerHTML = matenHtml(_huidigProfiel(), huidige);
     }
     if (d.materiaal && E("adv-materiaal")) E("adv-materiaal").value = d.materiaal;
     if (d.kleur && E("adv-kleur")) E("adv-kleur").value = d.kleur;
@@ -1191,6 +1252,8 @@
   window.advFotoCrop = advFotoCrop;
   window.advSlimKies = advSlimKies;
   window.advSlimWis = advSlimWis;
+  window.advMaatToevoegen = advMaatToevoegen;
+  window.advMaatWis = advMaatWis;
   window.advTitelTel = advTitelTel;
   window.advPeelStart = advPeelStart;
   window.advPeelDoen = advPeelDoen;

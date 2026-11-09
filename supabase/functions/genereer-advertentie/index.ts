@@ -40,6 +40,23 @@ const CM_KEYS = new Set([
   "breedte", "diepte", "diepte_lounge", "zitdiepte", "zitdiepte_lounge",
   "zithoogte", "hoogte", "lengte", "diameter",
 ]);
+// Maten die géén centimeters zijn. Alle andere (ook onbekende sleutels van de slimme foto,
+// zoals hoogte_rugleuning) krijgen " cm" zodra de waarde een getal is.
+const NIET_CM_KEYS = new Set(["vorm", "matrasmaat", "zitplaatsen", "deuren", "planken"]);
+// Label voor een maat-sleutel: vaste naam als die er is, anders de sleutel leesbaar gemaakt
+// ("hoogte_rugleuning" -> "Hoogte rugleuning"). Zo komt élke maat van de maatfoto netjes
+// in de specificatielijst, niet alleen de standaardmaten.
+function maatLabel(k: string): string {
+  if (MAAT_LABELS[k]) return MAAT_LABELS[k];
+  const t = String(k).replace(/_/g, " ").trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function maatRegel(k: string, v: unknown): string {
+  const w = String(v ?? "").trim();
+  const numeriek = /^\d+([.,]\d+)?$/.test(w);
+  const cm = CM_KEYS.has(k) || (numeriek && !NIET_CM_KEYS.has(k) && !k.startsWith("aantal"));
+  return `${maatLabel(k)}: ${w}${cm && !/cm/i.test(w) ? " cm" : ""}`;
+}
 // Labels van maat-specificaties (kleingeschreven) — alleen déze lege "Label:"-regels
 // worden opgeschoond, zodat bewuste sjabloonkopjes ("Afmetingen:", "Kenmerken:") blijven.
 const MAAT_LABEL_SET = new Set(Object.values(MAAT_LABELS).map((l) => l.toLowerCase()));
@@ -96,8 +113,7 @@ function fillPlaceholders(tekst: string, adv: any, item: any, maten: Record<stri
   const specLines: string[] = [];
   for (const [k, v] of Object.entries(maten)) {
     if (v == null || String(v).trim() === "") continue;
-    const label = MAAT_LABELS[k] || (k.charAt(0).toUpperCase() + k.slice(1));
-    specLines.push(`${label}: ${String(v).trim()}${CM_KEYS.has(k) ? " cm" : ""}`);
+    specLines.push(maatRegel(k, v));
   }
   map["specificaties"] = specLines.join("\n");
 
@@ -210,7 +226,7 @@ Deno.serve(async (req: Request) => {
     const maten = adv.maten && typeof adv.maten === "object" ? adv.maten : {};
     const matenText = Object.entries(maten)
       .filter(([, v]) => v !== "" && v != null)
-      .map(([k, v]) => `${k}: ${v}`).join(", ") || "niet opgegeven";
+      .map(([k, v]) => maatRegel(k, v)).join(", ") || "niet opgegeven";
 
     // Realtime MarktMonitor-zoektermen — DIEPER dan alleen categorie/merk. We zoeken op
     // meerdere ingangen zodat je specifieke termen als "ribstof" of "rib" ook meepakt,
